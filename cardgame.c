@@ -1,12 +1,13 @@
 #include "db.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 int main() {
     DB db; // create db struct
 
     // set connection to postgres db
-    const char *conninfo = "host=localhost port=5432 dbname=appdb user=postgres password=postgres";
+    const char *conninfo = getenv("DB_CONNECTION");
 
     if (!db_init(&db, conninfo)) {
         return 1;
