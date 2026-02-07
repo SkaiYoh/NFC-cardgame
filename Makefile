@@ -8,7 +8,7 @@ cardgame: cardgame.c db.c
 	$(CC) $(CFLAGS) cardgame.c db.c -o cardgame $(LDFLAGS)
 
 run: clean cardgame
-	./cardgame
+	DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" ./cardgame
 
 clean:
 	rm -f cardgame

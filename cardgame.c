@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int main() {
     DB db; // create db struct
@@ -38,7 +39,7 @@ int main() {
         BeginDrawing();
         ClearBackground(BLACK);
 
-        DrawText("I fucking hate you justin", 100, 100, 40, RAYWHITE);
+        DrawText("I fucking hate you sammy", 100, 100, 40, RAYWHITE);
 
         EndDrawing();
     }
