@@ -1,8 +1,11 @@
 services:
-
+  # Remove this whole service if you don't have a Dockerfile or an image yet
   app:
+    build: .
     env_file:
       - .env
+    depends_on:
+      - db
 
   db:
     image: postgres:16
