@@ -73,9 +73,9 @@ int main() {
     cam2.rotation = -90.0f;
     cam2.zoom = 1.0f;
 
-    // card sprite test
-    Texture2D sprite = LoadTexture("assets/assassin_card.png");
-
+    // Load card textures
+    Texture2D cardTex = LoadTexture("assets/assassin_card.png");
+    printf("Card textures initialized\n");
 
     // main Raylib window
     while (!WindowShouldClose())
@@ -86,9 +86,44 @@ int main() {
         /* Player 1 */
         BeginScissorMode(0, 0, half, screenHeight); // Only draw inside this rectangle
         BeginMode2D(cam1); // Rotate camera 90 degrees
-        DrawRectangleRec(player1Area, Fade(GREEN, 0.2f)); // Background rectangle color
+        DrawRectangleRec(player1Area, Fade(GREEN, 0.2f));
+
+        int rows = 2;
+        int cols = 3;
+
+        float cellWidth  = player1Area.width  / cols;
+        float cellHeight = player1Area.height / rows;
+
+        Vector2 cellCenters[2][3];
+
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                Rectangle cell = {
+                    player1Area.x + col * cellWidth,
+                    player1Area.y + row * cellHeight,
+                    cellWidth,
+                    cellHeight
+                };
+                cellCenters[row][col] = RectCenter(cell);
+                DrawRectangleLinesEx(cell, 2, YELLOW);
+                DrawCircleV(cellCenters[row][col], 5, RED);
+            }
+        }
+
+        // card sprite test
+        float cw = (float)cardTex.width;
+        float ch = (float)cardTex.height;
+
+        DrawTexturePro(cardTex,
+            (Rectangle){ 0, 0, cw, ch },
+            (Rectangle){ cellCenters[0][0].x, cellCenters[0][0].y, cw, ch },
+            (Vector2){ cw / 2.0f, ch / 2.0f },
+            0.0f, WHITE);
+
+
+
         DrawText("PLAYER 1", player1Area.x + 40, player1Area.y + 40, 40, DARKGREEN);
-        DrawTexture(sprite, player1Area.x + 40, player1Area.y + 100, WHITE); // draws card
+        // DrawTexture(sprite, player1Area.x + 40, player1Area.y + 100, WHITE); // draws card
         EndMode2D(); // End camera rotation
         EndScissorMode(); // End scissor function
 
@@ -97,7 +132,7 @@ int main() {
         BeginMode2D(cam2); // Rotate camera 90 degrees
         DrawRectangleRec(player2Area, Fade(RED, 0.2f));
         DrawText("PLAYER 2", player2Area.x + 40, player2Area.y + 40, 40, MAROON);
-        DrawTexture(sprite, player2Area.x + 40, player2Area.y + 100, WHITE);
+        // DrawTexture(sprite, player2Area.x + 40, player2Area.y + 100, WHITE);
         EndMode2D();
         EndScissorMode();
 
