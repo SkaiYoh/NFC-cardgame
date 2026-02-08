@@ -87,6 +87,7 @@ int main() {
         BeginScissorMode(0, 0, half, screenHeight); // Only draw inside this rectangle
         BeginMode2D(cam1); // Rotate camera 90 degrees
         DrawRectangleRec(player1Area, Fade(GREEN, 0.2f));
+        DrawText("PLAYER 1", player1Area.x + 40, player1Area.y + 40, 40, DARKGREEN);
 
         int rows = 2;
         int cols = 3;
@@ -120,10 +121,6 @@ int main() {
             (Vector2){ cw / 2.0f, ch / 2.0f },
             0.0f, WHITE);
 
-
-
-        DrawText("PLAYER 1", player1Area.x + 40, player1Area.y + 40, 40, DARKGREEN);
-        // DrawTexture(sprite, player1Area.x + 40, player1Area.y + 100, WHITE); // draws card
         EndMode2D(); // End camera rotation
         EndScissorMode(); // End scissor function
 
