@@ -1,3 +1,4 @@
 cardgame
 .env
 .*.kate-swp
+*.txt
