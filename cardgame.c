@@ -94,7 +94,6 @@ int main() {
 
         /* Player 2 */
         BeginScissorMode(half, 0, half, screenHeight);
-        BeginMode2D(cam2);
         DrawRectangleRec(player2Area, Fade(RED, 0.2f));
         DrawText("PLAYER 2", player2Area.x + 40, player2Area.y + 40, 40, MAROON);
         DrawTexture(sprite, player2Area.x + 40, player2Area.y + 100, WHITE);
