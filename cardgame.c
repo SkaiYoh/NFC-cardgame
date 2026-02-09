@@ -5,6 +5,47 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Tile definition: which texture + source rect within that texture
+typedef struct {
+    Texture2D *texture;
+    Rectangle source;
+} TileDef;
+
+// Tile type indices
+#define TILE_GRASS_0  0
+#define TILE_GRASS_1  1
+#define TILE_GRASS_2  2
+#define TILE_GRASS_3  3
+#define TILE_GRASS_4  4
+#define TILE_GRASS_5  5
+#define TILE_GRASS_6  6
+#define TILE_GRASS_7  7
+#define TILE_GRASS_8  8
+#define TILE_GRASS_9  9
+#define TILE_GRASS_10 10
+#define TILE_GRASS_11 11
+#define TILE_GRASS_12 12
+#define TILE_GRASS_13 13
+#define TILE_GRASS_14 14
+#define TILE_GRASS_15 15
+#define TILE_FLOWER_0  16
+#define TILE_FLOWER_1  17
+#define TILE_FLOWER_2  18
+#define TILE_FLOWER_3  19
+#define TILE_FLOWER_4  20
+#define TILE_FLOWER_5  21
+#define TILE_FLOWER_6  22
+#define TILE_FLOWER_7  23
+#define TILE_FLOWER_8  24
+#define TILE_FLOWER_9  25
+#define TILE_FLOWER_10 26
+#define TILE_FLOWER_11 27
+#define TILE_FLOWER_12 28
+#define TILE_FLOWER_13 29
+#define TILE_FLOWER_14 30
+#define TILE_FLOWER_15 31
+#define TILE_COUNT     32
+
 int main() {
     DB db; // create db struct
 
@@ -77,6 +118,50 @@ int main() {
     Texture2D cardTex = LoadTexture("assets/assassin_card.png");
     printf("Card textures initialized\n");
 
+    // Load grass tileset (128x128 grass area, 4x4 grid of 32x32 tiles)
+    Texture2D grassTex = LoadTexture("assets/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png");
+    SetTextureFilter(grassTex, TEXTURE_FILTER_POINT); // nearest-neighbor for crisp pixels
+
+    float tileScale = 2.0f;
+    float srcTileSize = 32.0f;
+    float tileSize = srcTileSize * tileScale; // rendered size per tile
+
+    // Tile definitions: map each tile index to a texture + source rect
+    // Grass tiles are the top-left 128x128 of the tileset (4x4 grid of 32x32)
+    TileDef tileDefs[TILE_COUNT];
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            tileDefs[r * 4 + c] = (TileDef){
+                .texture = &grassTex,
+                .source  = (Rectangle){ c * 32, r * 32, 32, 32 }
+            };
+        }
+    }
+    // Flower tiles start at x=128, y=0 in the same spritesheet (4x4 grid of 32x32)
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            tileDefs[16 + r * 4 + c] = (TileDef){
+                .texture = &grassTex,
+                .source  = (Rectangle){ 128 + c * 32, r * 32, 32, 32 }
+            };
+        }
+    }
+
+    // Tile maps for each player area
+    int mapCols = (int)(player1Area.width  / tileSize) + 1;
+    int mapRows = (int)(player1Area.height / tileSize) + 1;
+
+    int p1Map[mapRows][mapCols];
+    int p2Map[mapRows][mapCols];
+
+    // Fill both maps with randomized grass tiles
+    srand(42); // fixed seed for consistent layout between runs
+    for (int r = 0; r < mapRows; r++)
+        for (int c = 0; c < mapCols; c++) {
+            p1Map[r][c] = (rand() % 10 < 8) ? (rand() % 16) : (16 + rand() % 16);
+            p2Map[r][c] = (rand() % 10 < 8) ? (rand() % 16) : (16 + rand() % 16);
+        }
+
     // main Raylib window
     while (!WindowShouldClose())
     {
@@ -86,7 +171,17 @@ int main() {
         /* Player 1 */
         BeginScissorMode(0, 0, half, screenHeight); // Only draw inside this rectangle
         BeginMode2D(cam1); // Rotate camera 90 degrees
-        DrawRectangleRec(player1Area, Fade(GREEN, 0.2f));
+        // Tile background across player 1 area using tile map
+        for (int row = 0; row < mapRows; row++) {
+            for (int col = 0; col < mapCols; col++) {
+                TileDef *td = &tileDefs[p1Map[row][col]];
+                float tx = player1Area.x + col * tileSize;
+                float ty = player1Area.y + row * tileSize;
+                DrawTexturePro(*td->texture, td->source,
+                    (Rectangle){ tx, ty, tileSize, tileSize },
+                    (Vector2){ 0, 0 }, 0.0f, WHITE);
+            }
+        }
         DrawText("PLAYER 1", player1Area.x + 40, player1Area.y + 40, 40, DARKGREEN);
 
         int rows = 2;
@@ -106,8 +201,9 @@ int main() {
                     cellHeight
                 };
                 cellCenters[row][col] = RectCenter(cell);
-                DrawRectangleLinesEx(cell, 2, YELLOW);
-                DrawCircleV(cellCenters[row][col], 5, RED);
+                // DEBUG: Display 2x3 grid and center dots
+                // DrawRectangleLinesEx(cell, 2, YELLOW);
+                // DrawCircleV(cellCenters[row][col], 5, RED);
             }
         }
 
@@ -127,7 +223,17 @@ int main() {
         /* Player 2 */
         BeginScissorMode(half, 0, half, screenHeight);
         BeginMode2D(cam2); // Rotate camera 90 degrees
-        DrawRectangleRec(player2Area, Fade(RED, 0.2f));
+        // Tile background across player 2 area using tile map
+        for (int row = 0; row < mapRows; row++) {
+            for (int col = 0; col < mapCols; col++) {
+                TileDef *td = &tileDefs[p2Map[row][col]];
+                float tx = player2Area.x + col * tileSize;
+                float ty = player2Area.y + row * tileSize;
+                DrawTexturePro(*td->texture, td->source,
+                    (Rectangle){ tx, ty, tileSize, tileSize },
+                    (Vector2){ 0, 0 }, 0.0f, WHITE);
+            }
+        }
         DrawText("PLAYER 2", player2Area.x + 40, player2Area.y + 40, 40, MAROON);
         // DrawTexture(sprite, player2Area.x + 40, player2Area.y + 100, WHITE);
         EndMode2D();
@@ -138,6 +244,7 @@ int main() {
 
     }
 
+    UnloadTexture(grassTex);
     CloseWindow();
 
     cards_free(&deck); // free cards in memory
