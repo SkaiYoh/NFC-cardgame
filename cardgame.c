@@ -1,5 +1,6 @@
 #include "db.h"
 #include "cards.h"
+#include "card_render.h"
 #include "tilemap.h"
 #include "raylib.h"
 #include <stdio.h>
@@ -74,9 +75,17 @@ int main() {
     cam2.rotation = -90.0f;
     cam2.zoom = 1.0f;
 
-    // Load card textures
-    Texture2D cardTex = LoadTexture("assets/assassin_card.png");
-    printf("Card textures initialized\n");
+    // Load card atlas (modular card assets)
+    CardAtlas cardAtlas;
+    card_atlas_init(&cardAtlas);
+
+    // Parse card visuals from database card data
+    // For now use a default visual; when cards have "visual" in their JSON data,
+    // use card_visual_from_json(card->data) per card
+    CardVisual testVisual = card_visual_default();
+    if (deck.count > 0 && deck.cards[0].data) {
+        testVisual = card_visual_from_json(deck.cards[0].data);
+    }
 
     // Load tileset and initialize tile definitions
     Texture2D grassTex = LoadTexture("assets/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png");
@@ -127,15 +136,15 @@ int main() {
             }
         }
 
-        // card sprite test
-        float cw = (float)cardTex.width;
-        float ch = (float)cardTex.height;
-
-        DrawTexturePro(cardTex,
-            (Rectangle){ 0, 0, cw, ch },
-            (Rectangle){ cellCenters[0][0].x, cellCenters[0][0].y, cw, ch },
-            (Vector2){ cw / 2.0f, ch / 2.0f },
-            0.0f, WHITE);
+        // Draw card using modular renderer
+        float cardScale = 2.0f;
+        float cw = CARD_WIDTH  * cardScale;
+        float ch = CARD_HEIGHT * cardScale;
+        Vector2 cardPos = {
+            cellCenters[0][0].x - cw / 2.0f,
+            cellCenters[0][0].y - ch / 2.0f
+        };
+        card_draw(&cardAtlas, &testVisual, cardPos, cardScale);
 
         EndMode2D(); // End camera rotation
         EndScissorMode(); // End scissor function
@@ -156,6 +165,7 @@ int main() {
 
     tilemap_free(&p1Map);
     tilemap_free(&p2Map);
+    card_atlas_free(&cardAtlas);
     UnloadTexture(grassTex);
     CloseWindow();
 
