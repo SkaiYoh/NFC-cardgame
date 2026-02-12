@@ -33,7 +33,6 @@ int main(void) {
     card_atlas_init(&atlas);
 
     CardVisual vis = card_visual_default();
-    CardLayerOffsets offsets = card_layer_offsets_default();
     float scale = 4.0f;
     int active_layer = LAYER_BORDER;
     bool show_back = false;
@@ -62,7 +61,7 @@ int main(void) {
             back_color = wrap(back_color + dir, CLR_COUNT);
         } else if (dir != 0 && IsKeyDown(KEY_LEFT_SHIFT)) {
             /* Shift+Left/Right: nudge layer X position */
-            offsets.x[active_layer] += dir;
+            vis.offsets.x[active_layer] += dir;
         } else if (dir != 0) {
             switch (active_layer) {
             case LAYER_BORDER:      vis.border_color = wrap(vis.border_color + dir, CLR_COUNT); break;
@@ -88,7 +87,7 @@ int main(void) {
             if (active_layer == LAYER_CONTAINER && IsKeyDown(KEY_LEFT_SHIFT)) {
                 vis.container_variant = wrap(vis.container_variant + vdir, CONTAINER_COUNT);
             } else {
-                offsets.y[active_layer] += vdir;
+                vis.offsets.y[active_layer] += vdir;
             }
         }
 
@@ -119,19 +118,12 @@ int main(void) {
         if (IsKeyPressed(KEY_E)) {
             printf("\n── Card Visual JSON ──\n");
             card_visual_print_json(&vis);
-            printf("\n── Layer Offsets ──\n");
-            for (int i = 0; i < LAYER_COUNT; i++) {
-                if (offsets.x[i] != 0 || offsets.y[i] != 0) {
-                    printf("  %s: x=%+.0f y=%+.0f\n", layer_names[i], offsets.x[i], offsets.y[i]);
-                }
-            }
             printf("──────────────────────\n\n");
         }
 
         /* Reset to defaults */
         if (IsKeyPressed(KEY_R)) {
             vis = card_visual_default();
-            offsets = card_layer_offsets_default();
             back_color = CLR_BROWN;
         }
 
@@ -155,7 +147,7 @@ int main(void) {
         if (show_back) {
             card_draw_back(&atlas, back_color, cardPos, scale);
         } else {
-            card_draw_ex(&atlas, &vis, &offsets, cardPos, scale);
+            card_draw_ex(&atlas, &vis, &vis.offsets, cardPos, scale);
         }
 
         /* HUD */
@@ -230,8 +222,8 @@ int main(void) {
 
             char line[180];
             char offset_str[32] = "";
-            if (offsets.x[i] != 0 || offsets.y[i] != 0) {
-                snprintf(offset_str, sizeof(offset_str), "  (x%+.0f y%+.0f)", offsets.x[i], offsets.y[i]);
+            if (vis.offsets.x[i] != 0 || vis.offsets.y[i] != 0) {
+                snprintf(offset_str, sizeof(offset_str), "  (x%+.0f y%+.0f)", vis.offsets.x[i], vis.offsets.y[i]);
             }
 
             char marker = (i == active_layer) ? '>' : ' ';

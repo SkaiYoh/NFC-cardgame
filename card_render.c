@@ -358,16 +358,16 @@ static void get_base_positions(float *ox, float *oy) {
     ox[4] = bx + (CARD_BODY_W - 38) / 2.0f;    oy[4] = by + 24 - 20;
     /* Corner (-1,-1 to center on border) */
     ox[5] = bx - 1;                             oy[5] = by - 1;
-    /* Container centered on energy (energy at 0,0 is 12×12, center=6,6; container 1,2=14×14) */
-    ox[6] = (12 - 14) / 2.0f;                   oy[6] = (12 - 14) / 2.0f;
+    /* Container (14×14) offset +3,+3 from origin */
+    ox[6] = 3;                                  oy[6] = 3;
     /* Socket (8×8) */
     ox[7] = 4;                                  oy[7] = 4;
     /* Gem (4×4) centered on socket */
     ox[8] = 4 + (8 - 4) / 2.0f;                oy[8] = 4 + (8 - 4) / 2.0f;
-    /* Energy top (12×12) */
-    ox[9] = 0;                                  oy[9] = 0;
-    /* Energy bottom (12×12) — same position, drawn on top */
-    ox[10] = 0;                                 oy[10] = 0;
+    /* Energy top (12×12) centered on container (14×14 at ox[6],oy[6]) */
+    ox[9] = ox[6] + (14 - 12) / 2.0f;          oy[9] = oy[6] + (14 - 12) / 2.0f;
+    /* Energy bottom (12×12) centered on container */
+    ox[10] = ox[6] + (14 - 12) / 2.0f;         oy[10] = oy[6] + (14 - 12) / 2.0f;
 }
 
 CardLayerOffsets card_layer_offsets_default(void) {
@@ -437,7 +437,7 @@ void card_draw_ex(const CardAtlas *atlas, const CardVisual *visual,
 
 void card_draw(const CardAtlas *atlas, const CardVisual *visual,
                Vector2 pos, float scale) {
-    card_draw_ex(atlas, visual, NULL, pos, scale);
+    card_draw_ex(atlas, visual, &visual->offsets, pos, scale);
 }
 
 void card_draw_back(const CardAtlas *atlas, CardColor color,
@@ -565,6 +565,22 @@ CardVisual card_visual_from_json(const char *json_data) {
     if ((item = cJSON_GetObjectItemCaseSensitive(vis, "show_energy_bot")) && cJSON_IsBool(item))
         v.show_energy_bot = cJSON_IsTrue(item);
 
+    /* Per-layer offsets */
+    static const char *offset_keys[CARD_LAYER_COUNT] = {
+        "off_bg", "off_description", "off_border", "off_banner",
+        "off_innercorner", "off_corner", "off_container",
+        "off_socket", "off_gem", "off_energy_top", "off_energy_bot"
+    };
+    for (int i = 0; i < CARD_LAYER_COUNT; i++) {
+        cJSON *off = cJSON_GetObjectItemCaseSensitive(vis, offset_keys[i]);
+        if (off && cJSON_IsArray(off) && cJSON_GetArraySize(off) == 2) {
+            cJSON *ox = cJSON_GetArrayItem(off, 0);
+            cJSON *oy = cJSON_GetArrayItem(off, 1);
+            if (cJSON_IsNumber(ox)) v.offsets.x[i] = (float)ox->valuedouble;
+            if (cJSON_IsNumber(oy)) v.offsets.y[i] = (float)oy->valuedouble;
+        }
+    }
+
     cJSON_Delete(root);
     return v;
 }
@@ -593,6 +609,30 @@ void card_visual_print_json(const CardVisual *visual) {
     printf("  \"energy_top_color\": \"%s\",\n",   card_color_name(visual->energy_top_color));
     printf("  \"show_energy_top\": %s,\n",        visual->show_energy_top ? "true" : "false");
     printf("  \"energy_bot_color\": \"%s\",\n",   card_color_name(visual->energy_bot_color));
-    printf("  \"show_energy_bot\": %s\n",          visual->show_energy_bot ? "true" : "false");
+    static const char *offset_keys[CARD_LAYER_COUNT] = {
+        "off_bg", "off_description", "off_border", "off_banner",
+        "off_innercorner", "off_corner", "off_container",
+        "off_socket", "off_gem", "off_energy_top", "off_energy_bot"
+    };
+    /* Count non-zero offsets to handle trailing comma */
+    int off_count = 0;
+    for (int i = 0; i < CARD_LAYER_COUNT; i++) {
+        if (visual->offsets.x[i] != 0.0f || visual->offsets.y[i] != 0.0f)
+            off_count++;
+    }
+    if (off_count == 0) {
+        printf("  \"show_energy_bot\": %s\n",          visual->show_energy_bot ? "true" : "false");
+    } else {
+        printf("  \"show_energy_bot\": %s,\n",         visual->show_energy_bot ? "true" : "false");
+        int printed = 0;
+        for (int i = 0; i < CARD_LAYER_COUNT; i++) {
+            if (visual->offsets.x[i] != 0.0f || visual->offsets.y[i] != 0.0f) {
+                printed++;
+                printf("  \"%s\": [%.0f, %.0f]%s\n", offset_keys[i],
+                       visual->offsets.x[i], visual->offsets.y[i],
+                       (printed < off_count) ? "," : "");
+            }
+        }
+    }
     printf("}\n");
 }

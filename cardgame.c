@@ -83,8 +83,10 @@ int main() {
     // For now use a default visual; when cards have "visual" in their JSON data,
     // use card_visual_from_json(card->data) per card
     CardVisual testVisual = card_visual_default();
-    if (deck.count > 0 && deck.cards[0].data) {
-        testVisual = card_visual_from_json(deck.cards[0].data);
+    Card *testCard = cards_find(&deck, "ASSASSIN_001");
+    if (testCard && testCard->data) {
+        printf("Card data from DB: %s\n", testCard->data);
+        testVisual = card_visual_from_json(testCard->data);
     }
 
     // Load tileset and initialize tile definitions
@@ -131,8 +133,8 @@ int main() {
                 };
                 cellCenters[row][col] = RectCenter(cell);
                 // DEBUG: Display 2x3 grid and center dots
-                // DrawRectangleLinesEx(cell, 2, YELLOW);
-                // DrawCircleV(cellCenters[row][col], 5, RED);
+                DrawRectangleLinesEx(cell, 2, YELLOW);
+                DrawCircleV(cellCenters[row][col], 5, RED);
             }
         }
 

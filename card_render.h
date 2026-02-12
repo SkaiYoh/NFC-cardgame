@@ -40,6 +40,15 @@ typedef enum {
     IC_COUNT
 } InnerCornerStyle;
 
+/* Number of drawable layers */
+#define CARD_LAYER_COUNT 11
+
+/* Per-layer position offsets for fine-tuning composition */
+typedef struct {
+    float x[CARD_LAYER_COUNT];
+    float y[CARD_LAYER_COUNT];
+} CardLayerOffsets;
+
 /* Visual recipe describing how to compose a card face */
 typedef struct {
     CardColor        border_color;
@@ -65,16 +74,10 @@ typedef struct {
     bool             show_energy_top;
     CardColor        energy_bot_color;
     bool             show_energy_bot;
+
+    /* Per-layer position offsets (persisted) */
+    CardLayerOffsets  offsets;
 } CardVisual;
-
-/* Number of drawable layers */
-#define CARD_LAYER_COUNT 11
-
-/* Per-layer position offsets for fine-tuning composition */
-typedef struct {
-    float x[CARD_LAYER_COUNT];
-    float y[CARD_LAYER_COUNT];
-} CardLayerOffsets;
 
 /* Atlas: single sprite sheet texture + source rectangles for every asset */
 typedef struct {
