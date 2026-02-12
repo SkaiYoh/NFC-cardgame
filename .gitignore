@@ -2,3 +2,4 @@ cardgame
 .env
 .*.kate-swp
 *.txt
+import.json

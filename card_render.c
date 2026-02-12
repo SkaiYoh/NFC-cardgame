@@ -507,7 +507,22 @@ CardVisual card_visual_from_json(const char *json_data) {
     if (!json_data) return v;
 
     cJSON *root = cJSON_Parse(json_data);
-    if (!root) return v;
+
+    /* If parse failed or result isn't an object, try wrapping in { }
+     * (handles bare "visual": {...} format from export) */
+    if (!root || !cJSON_IsObject(root)) {
+        if (root) cJSON_Delete(root);
+        size_t len = strlen(json_data);
+        char *wrapped = malloc(len + 3);
+        if (!wrapped) return v;
+        wrapped[0] = '{';
+        memcpy(wrapped + 1, json_data, len);
+        wrapped[len + 1] = '}';
+        wrapped[len + 2] = '\0';
+        root = cJSON_Parse(wrapped);
+        free(wrapped);
+        if (!root) return v;
+    }
 
     cJSON *vis = cJSON_GetObjectItemCaseSensitive(root, "visual");
     if (!vis || !cJSON_IsObject(vis)) {
@@ -586,7 +601,7 @@ CardVisual card_visual_from_json(const char *json_data) {
 }
 
 void card_visual_print_json(const CardVisual *visual) {
-    printf("\"visual\": {\n");
+    printf("{\n\"visual\": {\n");
     printf("  \"border_color\": \"%s\",\n",      card_color_name(visual->border_color));
     printf("  \"show_border\": %s,\n",            visual->show_border ? "true" : "false");
     printf("  \"bg_style\": \"%s\",\n",           bg_style_name(visual->bg_style));
@@ -634,5 +649,5 @@ void card_visual_print_json(const CardVisual *visual) {
             }
         }
     }
-    printf("}\n");
+    printf("}\n}\n");
 }

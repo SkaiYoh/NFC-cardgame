@@ -1,177 +1,194 @@
 #include "db.h"
 #include "cards.h"
 #include "card_render.h"
+#include "card_action.h"
 #include "tilemap.h"
 #include "raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-int main() {
-    DB db; // create db struct
+#define SCREEN_WIDTH  1920
+#define SCREEN_HEIGHT 1080
 
-    // set connection to postgres db
+typedef struct GameState {
+    DB          db;
+    Deck        deck;
+    CardAtlas   cardAtlas;
+    CardVisual  testVisual;
+    Texture2D   grassTex;
+    TileDef     tileDefs[TILE_COUNT];
+    TileMap     p1Map;
+    TileMap     p2Map;
+    Rectangle   player1Area;
+    Rectangle   player2Area;
+    Camera2D    cam1;
+    Camera2D    cam2;
+    int         half;
+} GameState;
+
+static Vector2 rect_center(Rectangle r) {
+    return (Vector2){
+        r.x + r.width  / 2.0f,
+        r.y + r.height / 2.0f
+    };
+}
+
+static bool game_init(GameState *g) {
+    // Database connection
     const char *conninfo = getenv("DB_CONNECTION");
-
-    if (!db_init(&db, conninfo)) {
-        return 1;
+    if (!db_init(&g->db, conninfo)) {
+        return false;
     }
 
-    // load all cards into memory
-    Deck deck;
-    if (!cards_load(&deck, &db)) {
-        db_close(&db);
-        return 1;
+    // Load all cards into memory
+    if (!cards_load(&g->deck, &g->db)) {
+        db_close(&g->db);
+        return false;
     }
 
-    // Raylib test
-    const int screenWidth = 1920;
-    const int screenHeight = 1080;
-
-    InitWindow(screenWidth, screenHeight, "Raylib Test");
+    // Raylib window
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Raylib Test");
     SetTargetFPS(60);
 
-    // Define Rectangle struct for each player area
-    Rectangle player1Area;
-    Rectangle player2Area;
+    // Player areas
+    g->half = SCREEN_WIDTH / 2;
 
-    int half = screenWidth/ 2;
-
-    // Player 1 (left)
-    player1Area = (Rectangle){
+    g->player1Area = (Rectangle){
         .x = 0,
         .y = 0,
-        .width  = screenHeight,
-        .height = half
+        .width  = SCREEN_HEIGHT,
+        .height = g->half
     };
 
-    // Player 2 (right)
-    player2Area = (Rectangle){
-        .x = half,
+    g->player2Area = (Rectangle){
+        .x = g->half,
         .y = 0,
-        .width  = screenHeight,
-        .height = half
+        .width  = SCREEN_HEIGHT,
+        .height = g->half
     };
 
-    // function for finding the center of each player area
-    Vector2 RectCenter(Rectangle r) {
-        return (Vector2){
-            r.x + r.width  / 2.0f,
-            r.y + r.height / 2.0f
-        };
-    }
+    // Player 1 camera
+    g->cam1 = (Camera2D){0};
+    g->cam1.target   = rect_center(g->player1Area);
+    g->cam1.offset   = (Vector2){ g->half / 2.0f, SCREEN_HEIGHT / 2.0f };
+    g->cam1.rotation = 90.0f;
+    g->cam1.zoom     = 1.0f;
 
-    // Player 1  camera rotation
-    Camera2D cam1 = {0};
-    cam1.target = RectCenter(player1Area);
-    cam1.offset = (Vector2){ half / 2.0f, screenHeight / 2.0f };
-    cam1.rotation = 90.0f;
-    cam1.zoom = 1.0f;
+    // Player 2 camera
+    g->cam2 = (Camera2D){0};
+    g->cam2.target   = rect_center(g->player2Area);
+    g->cam2.offset   = (Vector2){ g->half + g->half / 2.0f, SCREEN_HEIGHT / 2.0f };
+    g->cam2.rotation = -90.0f;
+    g->cam2.zoom     = 1.0f;
 
-    // Player 2 camera rotation
-    Camera2D cam2 = {0};
-    cam2.target = RectCenter(player2Area);
-    cam2.offset = (Vector2){ half + half / 2.0f, screenHeight / 2.0f };
-    cam2.rotation = -90.0f;
-    cam2.zoom = 1.0f;
+    // Card action handlers
+    card_action_init();
 
-    // Load card atlas (modular card assets)
-    CardAtlas cardAtlas;
-    card_atlas_init(&cardAtlas);
+    // Card atlas
+    card_atlas_init(&g->cardAtlas);
 
-    // Parse card visuals from database card data
-    // For now use a default visual; when cards have "visual" in their JSON data,
-    // use card_visual_from_json(card->data) per card
-    CardVisual testVisual = card_visual_default();
-    Card *testCard = cards_find(&deck, "ASSASSIN_001");
+    // Card visual from DB
+    g->testVisual = card_visual_default();
+    Card *testCard = cards_find(&g->deck, "FARMER_001");
     if (testCard && testCard->data) {
         printf("Card data from DB: %s\n", testCard->data);
-        testVisual = card_visual_from_json(testCard->data);
+        g->testVisual = card_visual_from_json(testCard->data);
     }
 
-    // Load tileset and initialize tile definitions
-    Texture2D grassTex = LoadTexture("assets/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png");
-    SetTextureFilter(grassTex, TEXTURE_FILTER_POINT); // nearest-neighbor for crisp pixels
+    // Demo: play each card in the deck to verify dispatch
+    for (int i = 0; i < g->deck.count; i++) {
+        card_action_play(&g->deck.cards[i], NULL);
+    }
 
-    TileDef tileDefs[TILE_COUNT];
-    tilemap_init_defs(&grassTex, tileDefs);
+    // Tileset
+    g->grassTex = LoadTexture("assets/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png");
+    SetTextureFilter(g->grassTex, TEXTURE_FILTER_POINT);
+    tilemap_init_defs(&g->grassTex, g->tileDefs);
 
     float tileScale = 2.0f;
-    float tileSize = 32.0f * tileScale;
+    float tileSize  = 32.0f * tileScale;
 
-    // Create tile maps for each player area
-    TileMap p1Map = tilemap_create(player1Area, tileSize, 42);
-    TileMap p2Map = tilemap_create(player2Area, tileSize, 99);
+    // Tile maps
+    g->p1Map = tilemap_create(g->player1Area, tileSize, 42);
+    g->p2Map = tilemap_create(g->player2Area, tileSize, 99);
 
-    // main Raylib window
+    return true;
+}
+
+static void game_cleanup(GameState *g) {
+    tilemap_free(&g->p1Map);
+    tilemap_free(&g->p2Map);
+    card_atlas_free(&g->cardAtlas);
+    UnloadTexture(g->grassTex);
+    CloseWindow();
+    cards_free(&g->deck);
+    db_close(&g->db);
+}
+
+int main() {
+    GameState game = {0};
+
+    if (!game_init(&game)) {
+        return 1;
+    }
+
+    // Main loop
     while (!WindowShouldClose())
     {
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
         /* Player 1 */
-        BeginScissorMode(0, 0, half, screenHeight); // Only draw inside this rectangle
-        BeginMode2D(cam1); // Rotate camera 90 degrees
-        tilemap_draw(&p1Map, tileDefs);
-        DrawText("PLAYER 1", player1Area.x + 40, player1Area.y + 40, 40, DARKGREEN);
+        BeginScissorMode(0, 0, game.half, SCREEN_HEIGHT);
+        BeginMode2D(game.cam1);
+        tilemap_draw(&game.p1Map, game.tileDefs);
+        DrawText("PLAYER 1", game.player1Area.x + 40, game.player1Area.y + 40, 40, DARKGREEN);
 
-        int rows = 2;
+        int rows = 1;
         int cols = 3;
 
-        float cellWidth  = player1Area.width  / cols;
-        float cellHeight = player1Area.height / rows;
+        float cellWidth  = game.player1Area.width  / cols;
+        float cellHeight = game.player1Area.height / rows;
 
-        Vector2 cellCenters[2][3];
+        Vector2 cellCenters[1][3];
 
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
                 Rectangle cell = {
-                    player1Area.x + col * cellWidth,
-                    player1Area.y + row * cellHeight,
+                    game.player1Area.x + col * cellWidth,
+                    game.player1Area.y + row * cellHeight,
                     cellWidth,
                     cellHeight
                 };
-                cellCenters[row][col] = RectCenter(cell);
-                // DEBUG: Display 2x3 grid and center dots
-                DrawRectangleLinesEx(cell, 2, YELLOW);
-                DrawCircleV(cellCenters[row][col], 5, RED);
+                cellCenters[row][col] = rect_center(cell);
             }
         }
 
         // Draw card using modular renderer
-        float cardScale = 2.0f;
+        float cardScale = 2.5f;
         float cw = CARD_WIDTH  * cardScale;
         float ch = CARD_HEIGHT * cardScale;
         Vector2 cardPos = {
             cellCenters[0][0].x - cw / 2.0f,
             cellCenters[0][0].y - ch / 2.0f
         };
-        card_draw(&cardAtlas, &testVisual, cardPos, cardScale);
+        card_draw(&game.cardAtlas, &game.testVisual, cardPos, cardScale);
 
-        EndMode2D(); // End camera rotation
-        EndScissorMode(); // End scissor function
-
-        /* Player 2 */
-        BeginScissorMode(half, 0, half, screenHeight);
-        BeginMode2D(cam2); // Rotate camera 90 degrees
-        tilemap_draw(&p2Map, tileDefs);
-        DrawText("PLAYER 2", player2Area.x + 40, player2Area.y + 40, 40, MAROON);
-        // DrawTexture(sprite, player2Area.x + 40, player2Area.y + 100, WHITE);
         EndMode2D();
         EndScissorMode();
 
-        // Finish
-        EndDrawing();
+        /* Player 2 */
+        BeginScissorMode(game.half, 0, game.half, SCREEN_HEIGHT);
+        BeginMode2D(game.cam2);
+        tilemap_draw(&game.p2Map, game.tileDefs);
+        DrawText("PLAYER 2", game.player2Area.x + 40, game.player2Area.y + 40, 40, MAROON);
+        EndMode2D();
+        EndScissorMode();
 
+        EndDrawing();
     }
 
-    tilemap_free(&p1Map);
-    tilemap_free(&p2Map);
-    card_atlas_free(&cardAtlas);
-    UnloadTexture(grassTex);
-    CloseWindow();
-
-    cards_free(&deck); // free cards in memory
-    db_close(&db); // close db connection
+    game_cleanup(&game);
     return 0;
 }

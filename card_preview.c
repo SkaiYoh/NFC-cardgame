@@ -1,6 +1,22 @@
 #include "card_render.h"
 #include "raylib.h"
 #include <stdio.h>
+#include <stdlib.h>
+
+/* Read entire file into a malloc'd string. Returns NULL on failure. */
+static char *read_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(len + 1);
+    if (!buf) { fclose(f); return NULL; }
+    fread(buf, 1, len, f);
+    buf[len] = '\0';
+    fclose(f);
+    return buf;
+}
 
 /* ── layer editor ───────────────────────────────────────────────── */
 
@@ -22,7 +38,7 @@ static int wrap(int val, int max) {
     return ((val % max) + max) % max;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
     const int winW = 620;
     const int winH = 750;
 
@@ -33,6 +49,18 @@ int main(void) {
     card_atlas_init(&atlas);
 
     CardVisual vis = card_visual_default();
+
+    /* Load template from CLI argument: ./card_preview template.json */
+    if (argc > 1) {
+        char *json = read_file(argv[1]);
+        if (json) {
+            vis = card_visual_from_json(json);
+            printf("Loaded template from %s\n", argv[1]);
+            free(json);
+        } else {
+            fprintf(stderr, "Could not read file: %s\n", argv[1]);
+        }
+    }
     float scale = 4.0f;
     int active_layer = LAYER_BORDER;
     bool show_back = false;
@@ -121,6 +149,22 @@ int main(void) {
             printf("──────────────────────\n\n");
         }
 
+        /* Import from file (I key) — reads import.json from current directory */
+        if (IsKeyPressed(KEY_I)) {
+            const char *import_path = "import.json";
+            char *json = read_file(import_path);
+            if (json) {
+                printf("Read file contents:\n%s\n", json);
+                vis = card_visual_from_json(json);
+                printf("After parse: border=%s bg=%s\n",
+                       card_color_name(vis.border_color),
+                       bg_style_name(vis.bg_style));
+                free(json);
+            } else {
+                printf("No %s found in current directory\n", import_path);
+            }
+        }
+
         /* Reset to defaults */
         if (IsKeyPressed(KEY_R)) {
             vis = card_visual_default();
@@ -158,7 +202,7 @@ int main(void) {
         hudY += 14;
         DrawText("Shift+Left/Right: Shift X | Shift+Up/Down on Container: Variant", 20, hudY, 10, GRAY);
         hudY += 14;
-        DrawText("Space: Toggle | +/-: Zoom | B: Back view | E: Export | R: Reset", 20, hudY, 10, GRAY);
+        DrawText("Space: Toggle | +/-: Zoom | B: Back | E: Export | I: Import | R: Reset", 20, hudY, 10, GRAY);
         hudY += 22;
 
         if (show_back) {
