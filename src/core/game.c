@@ -47,6 +47,13 @@ bool game_init(GameState *g) {
     SetTextureFilter(g->tilesetTex, TEXTURE_FILTER_POINT);
     tilemap_init_defs(&g->tilesetTex, g->tileDefs);
 
+    // Initialize character sprite atlas
+    sprite_atlas_init(&g->spriteAtlas);
+
+    // Initialize test sprite animation
+    anim_state_init(&g->testAnimP1, ANIM_WALK, DIR_UP, 8.0f);
+    anim_state_init(&g->testAnimP2, ANIM_WALK, DIR_UP, 8.0f);
+
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
 
@@ -55,6 +62,10 @@ bool game_init(GameState *g) {
 
 void game_update(GameState *g) {
     float deltaTime = GetFrameTime();
+
+    // Update test sprite animation
+    anim_state_update(&g->testAnimP1, deltaTime);
+    anim_state_update(&g->testAnimP2, deltaTime);
 
     // Update both players
     player_update(&g->players[0], deltaTime);
@@ -84,7 +95,12 @@ void game_render(GameState *g) {
             slot->worldPos.y - ch / 2.0f
         };
         card_draw(&g->cardAtlas, &g->testVisual, cardPos, cardScale);
+
     }
+
+    // Test sprite: player 1
+    sprite_draw(&g->spriteAtlas.base, &g->testAnimP1,
+                player_lane_pos(&g->players[0], 1, 0.8f), 2.0f);
 
     // Debug: draw card slot positions
     viewport_draw_card_slots_debug(&g->players[0]);
@@ -97,6 +113,11 @@ void game_render(GameState *g) {
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
              40, MAROON);
+
+    // Test sprite: player 2
+    sprite_draw(&g->spriteAtlas.base, &g->testAnimP2,
+                player_lane_pos(&g->players[1], 1, 0.8f), 2.0f);
+
     viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
 
@@ -108,6 +129,7 @@ void game_cleanup(GameState *g) {
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
 
+    sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);
     UnloadTexture(g->tilesetTex);
     CloseWindow();

@@ -11,6 +11,7 @@
 #include "../data/cards.h"
 #include "../rendering/card_renderer.h"
 #include "../rendering/tilemap_renderer.h"
+#include "../rendering/sprite_renderer.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -80,11 +81,16 @@ struct GameState {
     Texture2D tilesetTex;
     TileDef tileDefs[TILE_COUNT];
 
+    // Character sprites (shared by all entities)
+    SpriteAtlas spriteAtlas;
+
     // Screen layout
     int halfWidth;  // Half screen width for split screen
 
     // Test visual (temporary, for development)
     CardVisual testVisual;
+    AnimState testAnimP1;
+    AnimState testAnimP2;
 };
 
 #endif //NFC_CARDGAME_TYPES_H

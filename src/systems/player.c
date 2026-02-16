@@ -146,3 +146,58 @@ bool player_slot_is_available(Player *p, int slotIndex) {
     return !p->slots[slotIndex].isOccupied &&
            p->slots[slotIndex].cooldownTimer <= 0.0f;
 }
+
+// --- Position helpers ---
+
+Vector2 player_tile_to_world(Player *p, int col, int row) {
+    float ts = p->tilemap.tileSize;
+    return (Vector2){
+        p->tilemap.originX + col * ts + ts / 2.0f,
+        p->tilemap.originY + row * ts + ts / 2.0f
+    };
+}
+
+void player_world_to_tile(Player *p, Vector2 world, int *col, int *row) {
+    float ts = p->tilemap.tileSize;
+    *col = (int)((world.x - p->tilemap.originX) / ts);
+    *row = (int)((world.y - p->tilemap.originY) / ts);
+}
+
+Vector2 player_center(Player *p) {
+    return (Vector2){
+        p->playArea.x + p->playArea.width / 2.0f,
+        p->playArea.y + p->playArea.height / 2.0f
+    };
+}
+
+Vector2 player_base_pos(Player *p) {
+    // Base sits at the back of the player's area (high Y = near their edge)
+    return (Vector2){
+        p->playArea.x + p->playArea.width / 2.0f,
+        p->playArea.y + p->playArea.height * 0.9f
+    };
+}
+
+Vector2 player_front_pos(Player *p) {
+    // Front line: the edge closest to the opponent
+    return (Vector2){
+        p->playArea.x + p->playArea.width / 2.0f,
+        p->playArea.y + p->playArea.height * 0.1f
+    };
+}
+
+Vector2 player_lane_pos(Player *p, int lane, float depth) {
+    // 3 lanes (0=left, 1=center, 2=right), depth 0.0=base .. 1.0=front
+    float laneWidth = p->playArea.width / 3.0f;
+    float x = p->playArea.x + (lane + 0.5f) * laneWidth;
+    // Lerp from base (0.9) to front (0.1)
+    float t = 0.9f - depth * 0.8f;
+    float y = p->playArea.y + p->playArea.height * t;
+    return (Vector2){ x, y };
+}
+
+Vector2 player_slot_spawn_pos(Player *p, int slotIndex) {
+    CardSlot *slot = player_get_slot(p, slotIndex);
+    if (!slot) return player_center(p);
+    return slot->worldPos;
+}

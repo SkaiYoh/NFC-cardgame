@@ -8,7 +8,7 @@ MACFLAGS = -I/opt/homebrew/opt/libpq/include -L/opt/homebrew/opt/libpq/lib -I/op
 # Source files
 SRC_CORE = src/core/game.c
 SRC_DATA = src/data/db.c src/data/cards.c
-SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c
+SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c
 SRC_SYSTEMS = src/systems/player.c
 SRC_LOGIC = src/logic/card_effects.c
 SRC_LIB = lib/cJSON.c
