@@ -1,6 +1,9 @@
-NFC table top card game!
+# NFC Tabletop Card Game
 
-Docker Commands:
-docker compose up -d    #start docker container
-docker compose down     #shutdown docker container
-docker compose logs -f  #show docker logs
+## Docker Commands
+
+```bash
+docker compose up -d    # Start container
+docker compose down     # Stop container
+docker compose logs -f  # Follow logs
+```
