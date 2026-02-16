@@ -116,7 +116,7 @@ void card_action_init(void) {
     card_action_register("healer", play_healer);
     card_action_register("assassin", play_assassin);
     card_action_register("brute", play_brute);
-    card_action_register("farmer", play_brute);
+    card_action_register("farmer", play_farmer);
 
 
 }

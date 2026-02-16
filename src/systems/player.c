@@ -16,6 +16,7 @@ static Vector2 rect_center(Rectangle r) {
 void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
                  float cameraRotation, BiomeType startBiome,
                  TileDef *tileDefs, float tileSize, unsigned int seed) {
+    (void)tileDefs; // void for now, until we get multi biome setup
     memset(p, 0, sizeof(Player));
 
     p->id = id;
