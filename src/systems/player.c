@@ -59,7 +59,7 @@ void player_init_card_slots(Player *p) {
     // Spawn position: near the player's edge of the play area
     // For player 0: near top of their area
     // For player 1: near bottom of their area (but coords are same due to rotation)
-    float spawnY = p->playArea.y + p->playArea.height * 0.2f;
+    float spawnY = p->playArea.y + p->playArea.height * 0.8f;
 
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         p->slots[i].worldPos = (Vector2){

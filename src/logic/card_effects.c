@@ -84,13 +84,39 @@ static void play_spell(const Card *card, GameState *state) {
     cJSON_Delete(root);
 }
 
-static void play_minion(const Card *card, GameState *state) {
+static void play_knight(const Card *card, GameState *state) {
     (void)state;
-    printf("[MINION] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    printf("[KNIGHT] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+}
+
+static void play_healer(const Card *card, GameState *state) {
+    (void)state;
+    printf("[HEALER] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+}
+
+static void play_assassin(const Card *card, GameState *state) {
+    (void)state;
+    printf("[ASSASSIN] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+}
+
+static void play_brute(const Card *card, GameState *state) {
+    (void)state;
+    printf("[BRUTE] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+}
+
+static void play_farmer(const Card *card, GameState *state) {
+    (void)state;
+    printf("[FARMER] %s (cost %d): would be placed on the board\n", card->name, card->cost);
 }
 
 void card_action_init(void) {
     handler_count = 0;
-    card_action_register("Spell", play_spell);
-    card_action_register("Minion", play_minion);
+    card_action_register("spell", play_spell);
+    card_action_register("knight", play_knight);
+    card_action_register("healer", play_healer);
+    card_action_register("assassin", play_assassin);
+    card_action_register("brute", play_brute);
+    card_action_register("farmer", play_brute);
+
+
 }

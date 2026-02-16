@@ -5,7 +5,7 @@
 #ifndef NFC_CARDGAME_DB_H
 #define NFC_CARDGAME_DB_H
 
-#include <libpq-fe.h>
+#include "../../lib/libpq-fe.h"
 #include <stdbool.h>
 
 typedef struct {

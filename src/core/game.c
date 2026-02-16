@@ -27,13 +27,17 @@ bool game_init(GameState *g) {
     card_action_init();
     card_atlas_init(&g->cardAtlas);
 
+    // DEBUG: set test visual
     g->testVisual = card_visual_default();
     Card *testCard = cards_find(&g->deck, "FARMER_001");
     if (testCard && testCard->data) {
-        printf("Card data from DB: %s\n", testCard->data);
+        // DEBUG
+        // printf("Card data from DB: %s\n", testCard->data);
         g->testVisual = card_visual_from_json(testCard->data);
     }
 
+
+    // test play every card in the deck
     for (int i = 0; i < g->deck.count; i++) {
         card_action_play(&g->deck.cards[i], NULL);
     }

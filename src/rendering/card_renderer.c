@@ -246,12 +246,12 @@ static void get_base_positions(float *ox, float *oy) {
 
     ox[0] = bx + (CARD_BODY_W - 38) / 2.0f;  oy[0] = by + 4;
     ox[1] = bx + (CARD_BODY_W - 38) / 2.0f;  oy[1] = by + 32 + 7;
-    ox[2] = bx;                               oy[2] = by;
-    ox[3] = bx - 1;                           oy[3] = by + 27 + 2;
+    ox[2] = bx;                              oy[2] = by;
+    ox[3] = bx - 1;                          oy[3] = by + 27 + 2;
     ox[4] = bx + (CARD_BODY_W - 38) / 2.0f;  oy[4] = by + 24 - 20;
-    ox[5] = bx - 1;                           oy[5] = by - 1;
-    ox[6] = 3;                                oy[6] = 3;
-    ox[7] = 4;                                oy[7] = 4;
+    ox[5] = bx - 1;                          oy[5] = by - 1;
+    ox[6] = 3;                               oy[6] = 3;
+    ox[7] = 4;                               oy[7] = 4;
     ox[8] = 4 + (8 - 4) / 2.0f;              oy[8] = 4 + (8 - 4) / 2.0f;
     ox[9] = ox[6] + (14 - 12) / 2.0f;        oy[9] = oy[6] + (14 - 12) / 2.0f;
     ox[10] = ox[6] + (14 - 12) / 2.0f;       oy[10] = oy[6] + (14 - 12) / 2.0f;
