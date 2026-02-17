@@ -12,6 +12,7 @@
 #include "../rendering/card_renderer.h"
 #include "../rendering/tilemap_renderer.h"
 #include "../rendering/sprite_renderer.h"
+#include "../rendering/biome.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -21,15 +22,6 @@ typedef struct GameState GameState;
 // Constants
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
-
-// Biome types
-typedef enum {
-    BIOME_GRASS,
-    BIOME_DESERT,
-    BIOME_SNOW,
-    BIOME_SWAMP,
-    BIOME_COUNT
-} BiomeType;
 
 // Card slot - represents a physical NFC reader position
 typedef struct {
@@ -47,9 +39,13 @@ struct Player {
     Camera2D camera;                // Camera for this player's view
     float cameraRotation;           // 90 or -90 for split screen orientation
 
-    // Tilemap
+    // Tilemap (per-player biome tile definitions)
     TileMap tilemap;
     BiomeType biome;
+    TileDef tileDefs[TILE_COUNT];
+    int tileDefCount;
+    TileDef detailDefs[MAX_DETAIL_DEFS];
+    int detailDefCount;
 
     // Card slots (3 NFC readers per player)
     CardSlot slots[NUM_CARD_SLOTS];
@@ -77,20 +73,14 @@ struct GameState {
     // Players
     Player players[2];
 
-    // Shared tileset (both players use same tile definitions)
-    Texture2D tilesetTex;
-    TileDef tileDefs[TILE_COUNT];
+    // Biome definitions (shared textures, per-biome tile mappings)
+    BiomeDef biomeDefs[BIOME_COUNT];
 
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
 
     // Screen layout
     int halfWidth;  // Half screen width for split screen
-
-    // Test visual (temporary, for development)
-    CardVisual testVisual;
-    AnimState testAnimP1;
-    AnimState testAnimP2;
 };
 
 #endif //NFC_CARDGAME_TYPES_H

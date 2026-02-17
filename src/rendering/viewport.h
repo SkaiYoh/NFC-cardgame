@@ -22,8 +22,8 @@ Vector2 viewport_world_to_screen(Player *p, Vector2 worldPos);
 // Convert screen coordinates to world coordinates for a player
 Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos);
 
-// Draw the tilemap for a player
-void viewport_draw_tilemap(Player *p, TileDef *tileDefs);
+// Draw the tilemap for a player (uses player's per-biome tileDefs)
+void viewport_draw_tilemap(Player *p);
 
 // Draw debug info for card slots
 void viewport_draw_card_slots_debug(Player *p);

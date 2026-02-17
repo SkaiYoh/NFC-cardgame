@@ -39,11 +39,11 @@ void viewport_init_split_screen(GameState *gs) {
 
     float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
 
-    // Initialize players
+    // Initialize players with their biome definitions
     player_init(&gs->players[0], 0, p1PlayArea, p1ScreenArea, 90.0f,
-                BIOME_GRASS, gs->tileDefs, tileSize, 42);
+                BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 42);
     player_init(&gs->players[1], 1, p2PlayArea, p2ScreenArea, -90.0f,
-                BIOME_GRASS, gs->tileDefs, tileSize, 99);
+                BIOME_UNDEAD, &gs->biomeDefs[BIOME_UNDEAD], tileSize, 99);
 
     printf("Split-screen viewports initialized\n");
 }
@@ -71,8 +71,9 @@ Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos) {
     return GetScreenToWorld2D(screenPos, p->camera);
 }
 
-void viewport_draw_tilemap(Player *p, TileDef *tileDefs) {
-    tilemap_draw(&p->tilemap, tileDefs);
+void viewport_draw_tilemap(Player *p) {
+    tilemap_draw(&p->tilemap, p->tileDefs);
+    tilemap_draw_details(&p->tilemap, p->detailDefs);
 }
 
 void viewport_draw_card_slots_debug(Player *p) {

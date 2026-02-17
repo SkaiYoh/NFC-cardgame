@@ -15,8 +15,7 @@ static Vector2 rect_center(Rectangle r) {
 
 void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
                  float cameraRotation, BiomeType startBiome,
-                 TileDef *tileDefs, float tileSize, unsigned int seed) {
-    (void)tileDefs; // void for now, until we get multi biome setup
+                 const BiomeDef *biomeDef, float tileSize, unsigned int seed) {
     memset(p, 0, sizeof(Player));
 
     p->id = id;
@@ -24,6 +23,12 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->screenArea = screenArea;
     p->cameraRotation = cameraRotation;
     p->biome = startBiome;
+
+    // Copy biome tile definitions into player-local arrays
+    biome_copy_tiledefs(biomeDef, p->tileDefs);
+    p->tileDefCount = biome_tile_count(biomeDef);
+    biome_copy_detail_defs(biomeDef, p->detailDefs);
+    p->detailDefCount = biomeDef->detailDefCount;
 
     // Setup camera
     p->camera = (Camera2D){0};
@@ -35,8 +40,8 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->camera.rotation = cameraRotation;
     p->camera.zoom = 1.0f;
 
-    // Create tilemap
-    p->tilemap = tilemap_create(playArea, tileSize, seed);
+    // Create tilemap with biome-aware distribution
+    p->tilemap = tilemap_create_biome(playArea, tileSize, seed, biomeDef);
 
     // Initialize card slots
     player_init_card_slots(p);

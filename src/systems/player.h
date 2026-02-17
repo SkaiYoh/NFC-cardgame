@@ -10,7 +10,7 @@
 // Initialize a player with their viewport area and starting biome
 void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
                  float cameraRotation, BiomeType startBiome,
-                 TileDef *tileDefs, float tileSize, unsigned int seed);
+                 const BiomeDef *biomeDef, float tileSize, unsigned int seed);
 
 // Update player state (energy regen, entity updates, etc.)
 void player_update(Player *p, float deltaTime);
