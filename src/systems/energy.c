@@ -2,6 +2,9 @@
 // Created by Nathan Davis on 2/16/26.
 //
 
+#include "energy.h"
+#include "../core/types.h"
+
 void energy_init(Player *p, float maxEnergy, float regenRate);
 void energy_update(Player *p, float deltaTime);
 bool energy_can_afford(Player *p, int cost);

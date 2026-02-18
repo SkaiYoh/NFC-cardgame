@@ -8,13 +8,14 @@ MACFLAGS = -I/opt/homebrew/opt/libpq/include -L/opt/homebrew/opt/libpq/lib -I/op
 # Source files
 SRC_CORE = src/core/game.c
 SRC_DATA = src/data/db.c src/data/cards.c
-SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/biome.c
+SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/biome.c src/rendering/ui.c
 SRC_ENTITIES = src/entities/entities.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
-SRC_SYSTEMS = src/systems/player.c
-SRC_LOGIC = src/logic/card_effects.c
+SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
+SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/pathfinding.c src/logic/win_condition.c
+SRC_HARDWARE = src/hardware/nfc_reader.c src/hardware/arduino_protocol.c
 SRC_LIB = lib/cJSON.c
 
-SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS) $(SRC_LOGIC) $(SRC_LIB)
+SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS) $(SRC_LOGIC) $(SRC_HARDWARE) $(SRC_LIB)
 
 cardgame: $(SOURCES)
 	$(CC) $(CFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
