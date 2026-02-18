@@ -8,7 +8,6 @@
 #include "../rendering/viewport.h"
 #include "../rendering/sprite_renderer.h"
 #include "../systems/player.h"
-#include "../entities/troop.h"
 #include "../entities/entities.h"
 #include <stdlib.h>
 
@@ -48,41 +47,25 @@ bool game_init(GameState *g) {
     return true;
 }
 
-// Spawn a test troop for a player at a given slot
-static void game_spawn_test_troop(GameState *g, int playerIndex, int slot) {
-    Player *p = &g->players[playerIndex];
-    if (!player_slot_is_available(p, slot)) return;
-
-    Vector2 pos = player_slot_spawn_pos(p, slot);
-
-    TroopData data = {0};
-    data.name = "Test Knight";
-    data.hp = 100;
-    data.maxHP = 100;
-    data.attack = 10;
-    data.attackSpeed = 1.0f;
-    data.attackRange = 40.0f;
-    data.moveSpeed = 60.0f;
-    data.targeting = TARGET_NEAREST;
-    data.spriteType = SPRITE_TYPE_KNIGHT;
-
-    Entity *e = troop_spawn(p, &data, pos, &g->spriteAtlas);
-    if (e) {
-        e->lane = slot;
-        player_add_entity(p, e);
+// Simulate a knight card play through the full production code path:
+// cards_find → currentPlayerIndex → card_action_play → play_knight
+//   → spawn_troop_from_card → troop_create_data_from_card → troop_spawn
+static void game_test_play_knight(GameState *g, int playerIndex) {
+    Card *card = cards_find(&g->deck, "KNIGHT_001");
+    if (!card) {
+        printf("[TEST] KNIGHT_001 not found in deck\n");
+        return;
     }
+    g->currentPlayerIndex = playerIndex;
+    card_action_play(card, g);
 }
 
 static void game_handle_test_input(GameState *g) {
-    // Player 1: keys 1, 2, 3 → slots 0, 1, 2
-    if (IsKeyPressed(KEY_ONE))   game_spawn_test_troop(g, 0, 0);
-    if (IsKeyPressed(KEY_TWO))   game_spawn_test_troop(g, 0, 1);
-    if (IsKeyPressed(KEY_THREE)) game_spawn_test_troop(g, 0, 2);
+    // Player 1: key 1
+    if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0);
 
-    // Player 2: keys Q, W, E → slots 0, 1, 2
-    if (IsKeyPressed(KEY_Q)) game_spawn_test_troop(g, 1, 0);
-    if (IsKeyPressed(KEY_W)) game_spawn_test_troop(g, 1, 1);
-    if (IsKeyPressed(KEY_E)) game_spawn_test_troop(g, 1, 2);
+    // Player 2: key Q
+    if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1);
 }
 
 void game_update(GameState *g) {
@@ -142,7 +125,7 @@ void game_render(GameState *g) {
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
              40, DARKGREEN);
-    viewport_draw_card_slots_debug(&g->players[0]);
+    // viewport_draw_card_slots_debug(&g->players[0]);
     viewport_end();
 
     // Render Player 2's viewport
@@ -153,7 +136,7 @@ void game_render(GameState *g) {
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
              40, MAROON);
-    viewport_draw_card_slots_debug(&g->players[1]);
+    // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
 
     EndDrawing();

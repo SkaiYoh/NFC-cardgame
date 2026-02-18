@@ -10,13 +10,18 @@
 #define SCREEN_HEIGHT 1080
 
 // Paths
-#define CARD_SHEET_PATH "src/assets/cards/ModularCardsRPG/modularCardsRPGSheet.png"
-#define GRASS_TILESET_PATH "src/assets/environment/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png"
+#define CARD_SHEET_PATH     "src/assets/cards/ModularCardsRPG/modularCardsRPGSheet.png"
+#define GRASS_TILESET_PATH  "src/assets/environment/Pixel Art Top Down - Basic v1.2.3/Texture/TX Tileset Grass.png"
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
 
 // Character sprites
-#define CHAR_BASE_PATH "src/assets/characters/Hana Caraka - Base Character/"
+#define CHAR_BASE_PATH      "src/assets/characters/Base/"
+#define CHAR_KNIGHT_PATH    "src/assets/characters/Knight/"
+#define CHAR_HEALER_PATH    "src/assets/characters/Healer/"
+#define CHAR_ASSASSIN_PATH  "src/assets/characters/Assassin/"
+#define CHAR_BRUTE_PATH     "src/assets/characters/Brute/"
+#define CHAR_FARMER_PATH     "src/assets/characters/Farmer/"
 #define SPRITE_FRAME_SIZE 79
 
 // Gameplay tuning
