@@ -21,10 +21,12 @@ void player_cleanup(Player *p);
 // Initialize the 3 card slot world positions based on play area
 void player_init_card_slots(Player *p);
 
-// Entity management (stubs for Phase 7)
+// Entity management
 void player_add_entity(Player *p, Entity *entity);
 void player_remove_entity(Player *p, int entityID);
 Entity *player_find_entity(Player *p, int entityID);
+void player_update_entities(Player *p, GameState *gs, float deltaTime);
+void player_draw_entities(const Player *p);
 
 // Card slot access
 CardSlot *player_get_slot(Player *p, int slotIndex);

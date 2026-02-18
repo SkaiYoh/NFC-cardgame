@@ -4,6 +4,7 @@
 
 #include "sprite_renderer.h"
 #include "../core/config.h"
+#include <string.h>
 
 // Helper: load one animation sheet and compute frame dimensions
 static SpriteSheet load_sheet(const char *path, int frameCount) {
@@ -70,6 +71,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     DrawTexturePro(sheet->texture, src, dst, origin, 0.0f, WHITE);
 }
 
+
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps) {
     state->anim = anim;
     state->dir = dir;
@@ -87,4 +89,21 @@ void anim_state_update(AnimState *state, float dt) {
         state->frame++;
     }
     // Frame wrapping is handled in sprite_draw via modulo
+}
+
+const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type) {
+    if (type >= 0 && type < SPRITE_TYPE_COUNT && atlas->typeLoaded[type]) {
+        return &atlas->types[type];
+    }
+    return &atlas->base;
+}
+
+SpriteType sprite_type_from_card(const char *cardType) {
+    if (!cardType) return SPRITE_TYPE_KNIGHT;
+    if (strcmp(cardType, "knight") == 0)   return SPRITE_TYPE_KNIGHT;
+    if (strcmp(cardType, "healer") == 0)   return SPRITE_TYPE_HEALER;
+    if (strcmp(cardType, "assassin") == 0) return SPRITE_TYPE_ASSASSIN;
+    if (strcmp(cardType, "brute") == 0)    return SPRITE_TYPE_BRUTE;
+    if (strcmp(cardType, "farmer") == 0)   return SPRITE_TYPE_FARMER;
+    return SPRITE_TYPE_KNIGHT;  // default fallback
 }

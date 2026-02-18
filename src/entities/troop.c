@@ -2,20 +2,106 @@
 // Created by Nathan Davis on 2/16/26.
 //
 
-typedef struct TroopData {
-    const char *name;
-    int hp, maxHP;
-    int attack;
-    float attackSpeed;
-    float attackRange;
-    float moveSpeed;
-    TargetingMode targeting;  // NEAREST, BUILDING, SPECIFIC_TYPE
-    const char *targetType;   // "healer", "farmer", etc. (optional)
-    Texture2D *sprite;
-} TroopData;
+#include "troop.h"
+#include "entities.h"
+#include "../../lib/cJSON.h"
+#include <stdio.h>
+#include <string.h>
 
-Entity* troop_spawn(Player *owner, TroopData *data, Vector2 position);
-void troop_update(Entity *troop, GameState *gs, float deltaTime);
-void troop_find_target(Entity *troop, GameState *gs);
-void troop_move_toward(Entity *troop, Vector2 target, float deltaTime);
-void troop_attack(Entity *attacker, Entity *target, float deltaTime);
+TroopData troop_create_data_from_card(const Card *card) {
+    TroopData data = {0};
+    data.name = card->name;
+    data.spriteType = sprite_type_from_card(card->type);
+
+    // Sensible defaults
+    data.hp = 100;
+    data.maxHP = 100;
+    data.attack = 10;
+    data.attackSpeed = 1.0f;
+    data.attackRange = 40.0f;
+    data.moveSpeed = 60.0f;
+    data.targeting = TARGET_NEAREST;
+    data.targetType = NULL;
+
+    // Override from card JSON data if available
+    if (!card->data) return data;
+
+    cJSON *root = cJSON_Parse(card->data);
+    if (!root) return data;
+
+    cJSON *hp = cJSON_GetObjectItem(root, "hp");
+    if (hp && cJSON_IsNumber(hp)) {
+        data.hp = hp->valueint;
+        data.maxHP = hp->valueint;
+    }
+
+    cJSON *maxHP = cJSON_GetObjectItem(root, "maxHP");
+    if (maxHP && cJSON_IsNumber(maxHP)) {
+        data.maxHP = maxHP->valueint;
+    }
+
+    cJSON *atk = cJSON_GetObjectItem(root, "attack");
+    if (atk && cJSON_IsNumber(atk)) {
+        data.attack = atk->valueint;
+    }
+
+    cJSON *atkSpd = cJSON_GetObjectItem(root, "attackSpeed");
+    if (atkSpd && cJSON_IsNumber(atkSpd)) {
+        data.attackSpeed = (float)atkSpd->valuedouble;
+    }
+
+    cJSON *atkRange = cJSON_GetObjectItem(root, "attackRange");
+    if (atkRange && cJSON_IsNumber(atkRange)) {
+        data.attackRange = (float)atkRange->valuedouble;
+    }
+
+    cJSON *spd = cJSON_GetObjectItem(root, "moveSpeed");
+    if (spd && cJSON_IsNumber(spd)) {
+        data.moveSpeed = (float)spd->valuedouble;
+    }
+
+    cJSON *tgt = cJSON_GetObjectItem(root, "targeting");
+    if (tgt && cJSON_IsString(tgt)) {
+        if (strcmp(tgt->valuestring, "building") == 0)
+            data.targeting = TARGET_BUILDING;
+        else if (strcmp(tgt->valuestring, "specific") == 0)
+            data.targeting = TARGET_SPECIFIC_TYPE;
+    }
+
+    cJSON *tgtType = cJSON_GetObjectItem(root, "targetType");
+    if (tgtType && cJSON_IsString(tgtType)) {
+        data.targetType = tgtType->valuestring;
+    }
+
+    cJSON_Delete(root);
+    return data;
+}
+
+Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
+                    const SpriteAtlas *atlas) {
+    Faction faction = (owner->id == 0) ? FACTION_PLAYER1 : FACTION_PLAYER2;
+    Entity *e = entity_create(ENTITY_TROOP, faction, position);
+    if (!e) return NULL;
+
+    // Stats
+    e->hp = data->hp;
+    e->maxHP = data->maxHP;
+    e->attack = data->attack;
+    e->attackSpeed = data->attackSpeed;
+    e->attackRange = data->attackRange;
+    e->moveSpeed = data->moveSpeed;
+
+    // Ownership
+    e->ownerID = owner->id;
+
+    // Sprite
+    e->sprite = sprite_atlas_get(atlas, data->spriteType);
+
+    // Start walking immediately
+    entity_set_state(e, ESTATE_WALKING);
+
+    printf("[TROOP] Spawned '%s' (id=%d) for player %d at (%.0f, %.0f)\n",
+           data->name, e->id, owner->id, position.x, position.y);
+
+    return e;
+}

@@ -3,11 +3,15 @@
 //
 
 #include "game.h"
+#include "config.h"
 #include "../logic/card_effects.h"
 #include "../rendering/viewport.h"
+#include "../rendering/sprite_renderer.h"
 #include "../systems/player.h"
-#include <stdio.h>
+#include "../entities/troop.h"
+#include "../entities/entities.h"
 #include <stdlib.h>
+
 
 bool game_init(GameState *g) {
     const char *conninfo = getenv("DB_CONNECTION");
@@ -44,12 +48,86 @@ bool game_init(GameState *g) {
     return true;
 }
 
+// Spawn a test troop for a player at a given slot
+static void game_spawn_test_troop(GameState *g, int playerIndex, int slot) {
+    Player *p = &g->players[playerIndex];
+    if (!player_slot_is_available(p, slot)) return;
+
+    Vector2 pos = player_slot_spawn_pos(p, slot);
+
+    TroopData data = {0};
+    data.name = "Test Knight";
+    data.hp = 100;
+    data.maxHP = 100;
+    data.attack = 10;
+    data.attackSpeed = 1.0f;
+    data.attackRange = 40.0f;
+    data.moveSpeed = 60.0f;
+    data.targeting = TARGET_NEAREST;
+    data.spriteType = SPRITE_TYPE_KNIGHT;
+
+    Entity *e = troop_spawn(p, &data, pos, &g->spriteAtlas);
+    if (e) {
+        e->lane = slot;
+        player_add_entity(p, e);
+    }
+}
+
+static void game_handle_test_input(GameState *g) {
+    // Player 1: keys 1, 2, 3 → slots 0, 1, 2
+    if (IsKeyPressed(KEY_ONE))   game_spawn_test_troop(g, 0, 0);
+    if (IsKeyPressed(KEY_TWO))   game_spawn_test_troop(g, 0, 1);
+    if (IsKeyPressed(KEY_THREE)) game_spawn_test_troop(g, 0, 2);
+
+    // Player 2: keys Q, W, E → slots 0, 1, 2
+    if (IsKeyPressed(KEY_Q)) game_spawn_test_troop(g, 1, 0);
+    if (IsKeyPressed(KEY_W)) game_spawn_test_troop(g, 1, 1);
+    if (IsKeyPressed(KEY_E)) game_spawn_test_troop(g, 1, 2);
+}
+
 void game_update(GameState *g) {
     float deltaTime = GetFrameTime();
+
+    game_handle_test_input(g);
 
     // Update both players
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
+
+    // Update entities for both players
+    player_update_entities(&g->players[0], g, deltaTime);
+    player_update_entities(&g->players[1], g, deltaTime);
+}
+
+// Draw entities for a viewport. Owner's entities draw normally; opponent's
+// crossed entities appear at a mirrored position walking down.
+static void game_draw_entities_for_viewport(GameState *g, const Player *viewportPlayer) {
+    for (int pid = 0; pid < 2; pid++) {
+        const Player *owner = &g->players[pid];
+        const Player *opponent = &g->players[1 - pid];
+
+        for (int i = 0; i < owner->entityCount; i++) {
+            const Entity *e = owner->entities[i];
+
+            if (viewportPlayer == owner) {
+                // Draw in owner's viewport — scissor clips at the edge naturally
+                entity_draw(e);
+            } else if (e->position.y < owner->playArea.y) {
+                // Entity has crossed the border — draw in opponent's viewport
+                float lateral = (e->position.x - owner->playArea.x) / owner->playArea.width;
+                float mirroredLateral = 1.0f - lateral;
+                float depth = owner->playArea.y - e->position.y;
+                Vector2 mappedPos = {
+                    opponent->playArea.x + mirroredLateral * opponent->playArea.width,
+                    opponent->playArea.y + depth
+                };
+
+                AnimState crossed = e->anim;
+                crossed.dir = DIR_DOWN;
+                sprite_draw(e->sprite, &crossed, mappedPos, e->spriteScale);
+            }
+        }
+    }
 }
 
 void game_render(GameState *g) {
@@ -59,25 +137,22 @@ void game_render(GameState *g) {
     // Render Player 1's viewport
     viewport_begin(&g->players[0]);
     viewport_draw_tilemap(&g->players[0]);
+    game_draw_entities_for_viewport(g, &g->players[0]);
     DrawText("PLAYER 1",
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
              40, DARKGREEN);
-
-    // Debug: draw card slot positions
     viewport_draw_card_slots_debug(&g->players[0]);
     viewport_end();
-
-    // --------------- END PLAYER 1, START PLAYER 2 --------------- //
 
     // Render Player 2's viewport
     viewport_begin(&g->players[1]);
     viewport_draw_tilemap(&g->players[1]);
+    game_draw_entities_for_viewport(g, &g->players[1]);
     DrawText("PLAYER 2",
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
              40, MAROON);
-
     viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
 

@@ -38,9 +38,21 @@ typedef struct {
     SpriteSheet anims[ANIM_COUNT];
 } CharacterSprite;
 
+// Sprite type mapping (card type → character sprite set)
+typedef enum {
+    SPRITE_TYPE_KNIGHT,
+    SPRITE_TYPE_HEALER,
+    SPRITE_TYPE_ASSASSIN,
+    SPRITE_TYPE_BRUTE,
+    SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_COUNT
+} SpriteType;
+
 // Shared atlas — one per GameState, holds all character types
 typedef struct {
-    CharacterSprite base;   // "Hana Caraka" base character
+    CharacterSprite base;                       // Default fallback
+    CharacterSprite types[SPRITE_TYPE_COUNT];    // Per-type sprites
+    bool typeLoaded[SPRITE_TYPE_COUNT];          // Whether unique assets exist
 } SpriteAtlas;
 
 // Per-entity animation state (lightweight, no texture data)
@@ -61,5 +73,9 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps);
 void anim_state_update(AnimState *state, float dt);
+
+// Sprite type registry
+const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type);
+SpriteType sprite_type_from_card(const char *cardType);
 
 #endif //NFC_CARDGAME_SPRITE_RENDERER_H

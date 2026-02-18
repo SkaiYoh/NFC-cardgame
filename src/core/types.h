@@ -19,6 +19,42 @@ typedef struct Entity Entity;
 typedef struct Player Player;
 typedef struct GameState GameState;
 
+// Entity enums
+typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
+typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
+typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_DEAD } EntityState;
+
+// Entity definition
+struct Entity {
+    int id;
+    EntityType type;
+    Faction faction;
+    EntityState state;
+
+    // Transform
+    Vector2 position;
+    float moveSpeed;
+
+    // Stats
+    int hp, maxHP;
+    int attack;
+    float attackSpeed;
+    float attackRange;
+
+    // Animation
+    AnimState anim;
+    const CharacterSprite *sprite;
+    float spriteScale;
+
+    // Ownership
+    int ownerID;    // Player index (0 or 1)
+    int lane;       // Which lane (0-2)
+
+    // Flags
+    bool alive;
+    bool markedForRemoval;
+};
+
 // Constants
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
@@ -81,6 +117,9 @@ struct GameState {
 
     // Screen layout
     int halfWidth;  // Half screen width for split screen
+
+    // Context for card plays (set before calling card_action_play)
+    int currentPlayerIndex;
 };
 
 #endif //NFC_CARDGAME_TYPES_H

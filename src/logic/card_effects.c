@@ -3,6 +3,9 @@
 //
 
 #include "card_effects.h"
+#include "../entities/troop.h"
+#include "../entities/entities.h"
+#include "../systems/player.h"
 #include "../../lib/cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -39,6 +42,33 @@ bool card_action_play(const Card *card, GameState *state) {
 
     printf("[PLAY] Unknown card type '%s' for card '%s'\n", card->type, card->name);
     return false;
+}
+
+// Helper: spawn a troop from a card for the current player
+static void spawn_troop_from_card(const Card *card, GameState *state) {
+    if (!state) {
+        printf("[%s] %s (cost %d): no game state, skipping spawn\n",
+               card->type, card->name, card->cost);
+        return;
+    }
+
+    int pi = state->currentPlayerIndex;
+    Player *player = &state->players[pi];
+
+    // Find first available slot to spawn at
+    Vector2 spawnPos = player_center(player);
+    for (int i = 0; i < NUM_CARD_SLOTS; i++) {
+        if (player_slot_is_available(player, i)) {
+            spawnPos = player_slot_spawn_pos(player, i);
+            break;
+        }
+    }
+
+    TroopData data = troop_create_data_from_card(card);
+    Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
+    if (e) {
+        player_add_entity(player, e);
+    }
 }
 
 static void play_spell(const Card *card, GameState *state) {
@@ -85,28 +115,23 @@ static void play_spell(const Card *card, GameState *state) {
 }
 
 static void play_knight(const Card *card, GameState *state) {
-    (void)state;
-    printf("[KNIGHT] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    spawn_troop_from_card(card, state);
 }
 
 static void play_healer(const Card *card, GameState *state) {
-    (void)state;
-    printf("[HEALER] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    spawn_troop_from_card(card, state);
 }
 
 static void play_assassin(const Card *card, GameState *state) {
-    (void)state;
-    printf("[ASSASSIN] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    spawn_troop_from_card(card, state);
 }
 
 static void play_brute(const Card *card, GameState *state) {
-    (void)state;
-    printf("[BRUTE] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    spawn_troop_from_card(card, state);
 }
 
 static void play_farmer(const Card *card, GameState *state) {
-    (void)state;
-    printf("[FARMER] %s (cost %d): would be placed on the board\n", card->name, card->cost);
+    spawn_troop_from_card(card, state);
 }
 
 void card_action_init(void) {
@@ -117,6 +142,4 @@ void card_action_init(void) {
     card_action_register("assassin", play_assassin);
     card_action_register("brute", play_brute);
     card_action_register("farmer", play_farmer);
-
-
 }

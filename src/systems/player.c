@@ -3,6 +3,7 @@
 //
 
 #include "player.h"
+#include "../entities/entities.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -78,6 +79,30 @@ void player_init_card_slots(Player *p) {
     }
 }
 
+void player_update_entities(Player *p, GameState *gs, float deltaTime) {
+    // Update all entities
+    for (int i = 0; i < p->entityCount; i++) {
+        entity_update(p->entities[i], gs, deltaTime);
+    }
+
+    // Sweep dead/removed entities (iterate backward for safe removal)
+    for (int i = p->entityCount - 1; i >= 0; i--) {
+        if (p->entities[i]->markedForRemoval) {
+            Entity *dead = p->entities[i];
+            // Swap with last element
+            p->entities[i] = p->entities[p->entityCount - 1];
+            p->entityCount--;
+            entity_destroy(dead);
+        }
+    }
+}
+
+void player_draw_entities(const Player *p) {
+    for (int i = 0; i < p->entityCount; i++) {
+        entity_draw(p->entities[i]);
+    }
+}
+
 void player_update(Player *p, float deltaTime) {
     // Update energy regeneration
     if (p->energy < p->maxEnergy) {
@@ -96,16 +121,13 @@ void player_update(Player *p, float deltaTime) {
             }
         }
     }
-
-    // Entity updates will be added in Phase 7
 }
 
 void player_cleanup(Player *p) {
     tilemap_free(&p->tilemap);
 
-    // Entity cleanup will be added in Phase 7
     for (int i = 0; i < p->entityCount; i++) {
-        // entity_destroy(p->entities[i]);
+        entity_destroy(p->entities[i]);
         p->entities[i] = NULL;
     }
     p->entityCount = 0;
@@ -123,16 +145,21 @@ void player_add_entity(Player *p, Entity *entity) {
 
 void player_remove_entity(Player *p, int entityID) {
     for (int i = 0; i < p->entityCount; i++) {
-        // Entity ID comparison will be implemented in Phase 7
-        // For now, stub
-        (void)entityID;
+        if (p->entities[i]->id == entityID) {
+            Entity *removed = p->entities[i];
+            p->entities[i] = p->entities[p->entityCount - 1];
+            p->entityCount--;
+            entity_destroy(removed);
+            return;
+        }
     }
 }
 
 Entity *player_find_entity(Player *p, int entityID) {
     for (int i = 0; i < p->entityCount; i++) {
-        // Entity ID comparison will be implemented in Phase 7
-        (void)entityID;
+        if (p->entities[i]->id == entityID) {
+            return p->entities[i];
+        }
     }
     return NULL;
 }
