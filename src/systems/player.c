@@ -24,6 +24,7 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->screenArea = screenArea;
     p->cameraRotation = cameraRotation;
     p->biome = startBiome;
+    p->biomeDef = biomeDef;
 
     // Copy biome tile definitions into player-local arrays
     biome_copy_tiledefs(biomeDef, p->tileDefs);

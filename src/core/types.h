@@ -78,6 +78,7 @@ struct Player {
     // Tilemap (per-player biome tile definitions)
     TileMap tilemap;
     BiomeType biome;
+    const BiomeDef *biomeDef;       // pointer into GameState::biomeDefs[]
     TileDef tileDefs[TILE_COUNT];
     int tileDefCount;
     TileDef detailDefs[MAX_DETAIL_DEFS];

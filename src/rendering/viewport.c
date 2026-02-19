@@ -74,6 +74,7 @@ Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos) {
 void viewport_draw_tilemap(Player *p) {
     tilemap_draw(&p->tilemap, p->tileDefs);
     tilemap_draw_details(&p->tilemap, p->detailDefs);
+    tilemap_draw_biome_layers(&p->tilemap, p->biomeDef);
 }
 
 void viewport_draw_card_slots_debug(Player *p) {

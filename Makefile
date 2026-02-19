@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run
+.PHONY: clean run preview-run biome-preview-run
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -29,5 +29,11 @@ run: clean cardgame
 preview-run: preview
 	./card_preview
 
+biome_preview: tools/biome_preview.c src/rendering/tilemap_renderer.c src/rendering/biome.c
+	$(CC) $(CFLAGS) tools/biome_preview.c src/rendering/tilemap_renderer.c src/rendering/biome.c -o biome_preview $(MACFLAGS) -lraylib -lm
+
+biome-preview-run: biome_preview
+	./biome_preview
+
 clean:
-	rm -f cardgame card_preview
+	rm -f cardgame card_preview biome_preview

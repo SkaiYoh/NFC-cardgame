@@ -62,6 +62,7 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
     map.originY = area.y;
     map.cells = malloc(map.rows * map.cols * sizeof(int));
     map.tileScale = biome->tileScale;
+    for (int li = 0; li < MAX_BIOME_LAYERS; li++) map.biomeLayerCells[li] = NULL;
 
     int totalWeight = 0;
     for (int i = 0; i < biome->blockCount; i++) {
@@ -134,6 +135,20 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
         map.detailCells = NULL;
     }
 
+    // Generate RANDOM biome layer cells
+    int n = map.rows * map.cols;
+    for (int li = 0; li < biome->biomeLayerCount && li < MAX_BIOME_LAYERS; li++) {
+        const BiomeLayer *bl = &biome->biomeLayerDefs[li];
+        if (bl->isRandom && bl->defCount > 0) {
+            map.biomeLayerCells[li] = malloc((size_t)n * sizeof(int));
+            for (int i = 0; i < n; i++) {
+                map.biomeLayerCells[li][i] = (rand() % 100 < bl->density)
+                                             ? (rand() % bl->defCount) : -1;
+            }
+        }
+        // PAINT layers: cells are static const data in BiomeLayer, no allocation needed
+    }
+
     return map;
 }
 
@@ -174,9 +189,63 @@ void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
     }
 }
 
+void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def) {
+    if (!def || def->biomeLayerCount <= 0) return;
+
+    for (int li = 0; li < def->biomeLayerCount && li < MAX_BIOME_LAYERS; li++) {
+        const BiomeLayer *bl = &def->biomeLayerDefs[li];
+        if (bl->defCount <= 0) continue;
+
+        float scale = bl->tileScale;
+
+        if (bl->isRandom) {
+            // RANDOM layer: cells allocated in tilemap_create_biome
+            int *layerCells = map->biomeLayerCells[li];
+            if (!layerCells) continue;
+            for (int row = 0; row < map->rows; row++) {
+                for (int col = 0; col < map->cols; col++) {
+                    int idx = layerCells[row * map->cols + col];
+                    if (idx < 0 || idx >= bl->defCount) continue;
+                    const TileDef *td = &def->biomeLayerTileDefs[li][idx];
+                    float dw = td->source.width  * scale;
+                    float dh = td->source.height * scale;
+                    float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
+                    float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
+                    DrawTexturePro(*td->texture, td->source,
+                        (Rectangle){ tx, ty, dw, dh },
+                        (Vector2){ 0, 0 }, 0.0f, WHITE);
+                }
+            }
+        } else {
+            // PAINT layer: sparse {row, col, defIdx} triples in bl->cells
+            if (!bl->cells) continue;
+            for (int ci = 0; ci < bl->cellCount; ci++) {
+                int row    = bl->cells[ci][0];
+                int col    = bl->cells[ci][1];
+                int defIdx = bl->cells[ci][2];
+                if (row < 0 || row >= map->rows) continue;
+                if (col < 0 || col >= map->cols) continue;
+                if (defIdx < 0 || defIdx >= bl->defCount) continue;
+                const TileDef *td = &def->biomeLayerTileDefs[li][defIdx];
+                float dw = td->source.width  * scale;
+                float dh = td->source.height * scale;
+                float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
+                float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
+                DrawTexturePro(*td->texture, td->source,
+                    (Rectangle){ tx, ty, dw, dh },
+                    (Vector2){ 0, 0 }, 0.0f, WHITE);
+            }
+        }
+    }
+}
+
 void tilemap_free(TileMap *map) {
     free(map->cells);
     map->cells = NULL;
     free(map->detailCells);
     map->detailCells = NULL;
+    for (int li = 0; li < MAX_BIOME_LAYERS; li++) {
+        free(map->biomeLayerCells[li]);
+        map->biomeLayerCells[li] = NULL;
+    }
 }

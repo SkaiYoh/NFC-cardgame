@@ -42,6 +42,7 @@
 #define TILE_FLOWER_15 31
 
 #define TILE_COUNT 32
+#define MAX_BIOME_LAYERS 8
 
 typedef struct {
     Texture2D *texture;
@@ -52,7 +53,8 @@ typedef struct {
     int rows;
     int cols;
     int *cells;
-    int *detailCells;   // overlay layer (-1 = empty, >= 0 = detail tileDef index)
+    int *detailCells;                       // overlay layer (-1 = empty, >= 0 = detail tileDef index)
+    int *biomeLayerCells[MAX_BIOME_LAYERS]; // per-layer cells (NULL for PAINT layers)
     float tileSize;
     float tileScale;    // source tile scale (e.g. 2.0 for 16px tiles matching 32px)
     float originX;
@@ -68,6 +70,7 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
                              const BiomeDef *biome);
 void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]);
 void tilemap_draw_details(TileMap *map, TileDef *detailDefs);
+void tilemap_draw_biome_layers(TileMap *map, const struct BiomeDef *def);
 void tilemap_free(TileMap *map);
 
 #endif //NFC_CARDGAME_TILEMAP_RENDERER_H
