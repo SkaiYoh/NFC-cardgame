@@ -213,6 +213,10 @@ static void init_rects(CardAtlas *atlas) {
     atlas->energy_bot[CLR_PINK]        = R(386, 50, 12, 12);
 }
 
+// TODO: card_atlas_init does not check whether LoadTexture succeeded. If CARD_SHEET_PATH is
+// TODO: missing, Raylib returns a 1x1 white fallback texture and the printf below reports "0x0"
+// TODO: (or "1x1"). All card draws will then produce white rectangles with no error logged.
+// TODO: Check atlas->sheet.id > 1 (or IsTextureValid) and abort with an error message if it fails.
 void card_atlas_init(CardAtlas *atlas) {
     memset(atlas, 0, sizeof(CardAtlas));
     atlas->sheet = LoadTexture(CARD_SHEET_PATH);
@@ -262,6 +266,10 @@ CardLayerOffsets card_layer_offsets_default(void) {
     return o;
 }
 
+// TODO: card_draw and card_draw_ex are never called from game.c or any game-loop code.
+// TODO: Card visuals are only used in the card_preview standalone tool. Cards are not rendered
+// TODO: in-game at all — players have no visible hand, played cards produce no on-screen feedback.
+// TODO: Integrate card_draw into the main render pass (e.g. draw the active hand above each viewport).
 void card_draw_ex(const CardAtlas *atlas, const CardVisual *visual,
                   const CardLayerOffsets *offsets, Vector2 pos, float scale) {
     Texture2D s = atlas->sheet;
@@ -370,6 +378,10 @@ CardVisual card_visual_from_json(const char *json_data) {
 
     cJSON *root = cJSON_Parse(json_data);
 
+    // TODO: The wrapped-string fallback below is a tech-debt workaround for malformed JSON stored
+    // TODO: in the database — if cJSON_Parse fails or the root is not an object, the string is
+    // TODO: wrapped in "{...}" and re-parsed. This masks data integrity issues. The correct fix is
+    // TODO: to ensure all card data rows in the DB contain valid JSON objects, then remove this fallback.
     if (!root || !cJSON_IsObject(root)) {
         if (root) cJSON_Delete(root);
         size_t len = strlen(json_data);

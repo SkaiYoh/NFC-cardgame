@@ -85,6 +85,10 @@ typedef struct {
     Rectangle sockets[CLR_COUNT];
     Rectangle energy_top[CLR_COUNT];
     Rectangle energy_bot[CLR_COUNT];
+    // TODO: energy_full[CLR_COUNT] is declared here but never populated in init_rects(). It is
+    // TODO: memset to zero and never assigned any source rectangles, so any caller using it will
+    // TODO: draw nothing (draw_layer skips zero-size rects). Either populate it with the correct
+    // TODO: atlas coordinates or remove it if the full-energy variant sprite is not yet designed.
     Rectangle energy_full[CLR_COUNT];
 } CardAtlas;
 

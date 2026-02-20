@@ -13,8 +13,11 @@
 
 
 bool game_init(GameState *g) {
+    // TODO: If DB_CONNECTION env var is unset, conninfo is NULL → db_init returns false with no
+    // TODO: user-visible error message. Print a helpful message explaining the required env var.
     const char *conninfo = getenv("DB_CONNECTION");
     if (!db_init(&g->db, conninfo)) {
+        printf("db_init failed\n");
         return false;
     }
 
@@ -29,11 +32,6 @@ bool game_init(GameState *g) {
     // Initialize card system
     card_action_init();
     card_atlas_init(&g->cardAtlas);
-
-    // test play every card in the deck
-    for (int i = 0; i < g->deck.count; i++) {
-        card_action_play(&g->deck.cards[i], NULL);
-    }
 
     // Initialize biome definitions (loads textures, builds tile defs)
     biome_init_all(g->biomeDefs);
@@ -56,6 +54,10 @@ static void game_test_play_knight(GameState *g, int playerIndex) {
         printf("[TEST] KNIGHT_001 not found in deck\n");
         return;
     }
+    // TODO: currentPlayerIndex is a global side-channel on GameState used to pass the acting player
+    // TODO: into card effect callbacks. This is not thread-safe and makes CardPlayFn signatures misleading.
+    // TODO: Fix: add int playerIndex directly to CardPlayFn:
+    // TODO:   typedef void (*CardPlayFn)(const Card*, GameState*, int playerIndex);
     g->currentPlayerIndex = playerIndex;
     card_action_play(card, g);
 }
@@ -69,6 +71,9 @@ static void game_handle_test_input(GameState *g) {
 }
 
 void game_update(GameState *g) {
+    // TODO: No delta-time cap — on frame stalls (debugger breakpoints, OS preemption)
+    // TODO: GetFrameTime() can return large values and teleport entities. Cap with:
+    // TODO:   float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
     float deltaTime = GetFrameTime();
 
     game_handle_test_input(g);
@@ -84,6 +89,9 @@ void game_update(GameState *g) {
 
 // Draw entities for a viewport. Owner's entities draw normally; opponent's
 // crossed entities appear at a mirrored position walking down.
+// TODO: Iterates all entities from both players per viewport — O(2 × totalEntities) draw calls per frame.
+// TODO: At MAX_ENTITIES=64 per player (128 entities × 2 passes = 256 iterations), this is fine now,
+// TODO: but consider a spatial cull if entity counts grow.
 static void game_draw_entities_for_viewport(GameState *g, const Player *viewportPlayer) {
     for (int pid = 0; pid < 2; pid++) {
         const Player *owner = &g->players[pid];
@@ -94,6 +102,9 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
 
             if (viewportPlayer == owner) {
                 // Draw in owner's viewport — scissor clips at the edge naturally
+                // TODO: entity_draw is still submitted when position.y < 0 (entity is off-screen in
+                // TODO: owner's space). The scissor clips it, but the draw call still reaches the GPU.
+                // TODO: Consider skipping draw when entity is clearly outside the owner's viewport bounds.
                 entity_draw(e);
             } else if (e->position.y < owner->playArea.y) {
                 // Entity has crossed the border — draw in opponent's viewport
@@ -105,6 +116,9 @@ static void game_draw_entities_for_viewport(GameState *g, const Player *viewport
                     opponent->playArea.y + depth
                 };
 
+                // TODO: Forcing DIR_DOWN here may interact with entity_update's own direction flip
+                // TODO: (which also flips on border crossing), potentially causing double-flip visual
+                // TODO: artifacts depending on camera rotation. Verify the mirrored-viewport result.
                 AnimState crossed = e->anim;
                 crossed.dir = DIR_DOWN;
                 sprite_draw(e->sprite, &crossed, mappedPos, e->spriteScale);
@@ -125,6 +139,7 @@ void game_render(GameState *g) {
              g->players[0].playArea.x + 40,
              g->players[0].playArea.y + 40,
              40, DARKGREEN);
+    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
     // viewport_draw_card_slots_debug(&g->players[0]);
     viewport_end();
 
@@ -136,8 +151,14 @@ void game_render(GameState *g) {
              g->players[1].playArea.x + 40,
              g->players[1].playArea.y + 40,
              40, MAROON);
+    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
     // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
+
+    // TODO: No visual divider line is drawn between Player 1 and Player 2 viewports. Add a separator.
+    // TODO: No in-game card UI — cards are loaded and used for spawning but never rendered to the screen.
+    // TODO: No game phase/state machine — the game boots directly into the play loop. Add a GamePhase
+    // TODO: enum and dispatch update/render through pregame → playing → postgame for NFC integration.
 
     EndDrawing();
 }

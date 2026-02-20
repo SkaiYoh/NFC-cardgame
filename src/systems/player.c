@@ -27,6 +27,9 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->biomeDef = biomeDef;
 
     // Copy biome tile definitions into player-local arrays
+    // TODO: biome_copy_tiledefs copies TileDef structs that contain Texture2D* pointers back into
+    // TODO: gs->biomeDefs[]. If biomeDefs are ever freed before players, these become dangling pointers.
+    // TODO: Ensure biome_free_all is always called after player_cleanup in game_cleanup.
     biome_copy_tiledefs(biomeDef, p->tileDefs);
     p->tileDefCount = biome_tile_count(biomeDef);
     biome_copy_detail_defs(biomeDef, p->detailDefs);
@@ -43,11 +46,17 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     p->camera.zoom = 1.0f;
 
     // Create tilemap with biome-aware distribution
+    // TODO: tilemap_create_biome calls srand(seed) internally, contaminating the global PRNG state.
+    // TODO: Any rand() calls after this will be in an unknown-seeded state. Use a per-player LCG
+    // TODO: struct instead of the global rand() to keep tilemap generation isolated.
     p->tilemap = tilemap_create_biome(playArea, tileSize, seed, biomeDef);
 
     // Initialize card slots
     player_init_card_slots(p);
 
+    // TODO: Energy values are hardcoded here; energy.c has stub function declarations for a proper
+    // TODO: energy system (energy_init, energy_consume, energy_can_afford) that are never called.
+    // TODO: Two initialization paths exist — consolidate into energy_init() once it is implemented.
     // Initialize energy (defaults, will be configurable in Phase 5)
     p->energy = 5.0f;
     p->maxEnergy = 10.0f;
@@ -55,6 +64,8 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
 
     // No entities yet
     p->entityCount = 0;
+    // TODO: p->base is always NULL — building_create_base() returns NULL and is never called here.
+    // TODO: Without a base entity, the win condition system cannot check for base destruction.
     p->base = NULL;
 
     printf("Player %d initialized\n", id);
@@ -69,6 +80,10 @@ void player_init_card_slots(Player *p) {
     // For player 1: near bottom of their area (but coords are same due to rotation)
     float spawnY = p->playArea.y + p->playArea.height * 0.8f;
 
+    // TODO: entity->lane is never set after a troop spawns. The slot index used for spawn position
+    // TODO: is not written back to Entity.lane, breaking any future lane-based targeting logic.
+    // TODO: Set e->lane = i inside spawn_troop_from_card when the slot is chosen.
+
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         p->slots[i].worldPos = (Vector2){
             p->playArea.x + (i + 0.5f) * laneWidth,
@@ -80,6 +95,7 @@ void player_init_card_slots(Player *p) {
     }
 }
 
+// Updates then sweeps dead entities via swap-with-last.
 void player_update_entities(Player *p, GameState *gs, float deltaTime) {
     // Update all entities
     for (int i = 0; i < p->entityCount; i++) {
@@ -98,6 +114,9 @@ void player_update_entities(Player *p, GameState *gs, float deltaTime) {
     }
 }
 
+// TODO: player_draw_entities is never called — entity drawing is handled by
+// TODO: game_draw_entities_for_viewport in game.c instead. This function is dead code.
+// TODO: Either remove it or integrate it into the rendering path.
 void player_draw_entities(const Player *p) {
     for (int i = 0; i < p->entityCount; i++) {
         entity_draw(p->entities[i]);
@@ -106,6 +125,8 @@ void player_draw_entities(const Player *p) {
 
 void player_update(Player *p, float deltaTime) {
     // Update energy regeneration
+    // TODO: Energy regenerates here but energy_consume() is never called on card play — cards are free.
+    // TODO: Wire energy_consume(player, card->cost) into spawn_troop_from_card once energy.c is done.
     if (p->energy < p->maxEnergy) {
         p->energy += p->energyRegenRate * deltaTime;
         if (p->energy > p->maxEnergy) {
@@ -114,6 +135,10 @@ void player_update(Player *p, float deltaTime) {
     }
 
     // Update card slot cooldowns
+    // TODO: Slot cooldown timer counts down correctly, but cooldownTimer is never set to a non-zero
+    // TODO: value anywhere — slots always have cooldownTimer == 0. Set it when a card is played.
+    // TODO: isOccupied is also never set to true — player_slot_is_available always returns true.
+    // TODO: The slot system is currently entirely cosmetic (no gating of card plays).
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         if (p->slots[i].cooldownTimer > 0.0f) {
             p->slots[i].cooldownTimer -= deltaTime;
@@ -144,6 +169,9 @@ void player_add_entity(Player *p, Entity *entity) {
     p->entities[p->entityCount++] = entity;
 }
 
+// TODO: player_remove_entity destroys the entity via entity_destroy. If the same entity is also
+// TODO: marked markedForRemoval = true and swept by player_update_entities, entity_destroy will be
+// TODO: called twice on the same pointer — a double-free. Do not call both paths for one entity.
 void player_remove_entity(Player *p, int entityID) {
     for (int i = 0; i < p->entityCount; i++) {
         if (p->entities[i]->id == entityID) {
@@ -219,6 +247,8 @@ Vector2 player_front_pos(Player *p) {
     };
 }
 
+// TODO: player_lane_pos is defined but never called anywhere in the main game. It will be needed
+// TODO: for lane-based troop spawning once entity->lane is properly set from slot index.
 Vector2 player_lane_pos(Player *p, int lane, float depth) {
     // 3 lanes (0=left, 1=center, 2=right), depth 0.0=base .. 1.0=front
     float laneWidth = p->playArea.width / 3.0f;

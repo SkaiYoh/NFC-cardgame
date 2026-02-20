@@ -70,6 +70,10 @@ TroopData troop_create_data_from_card(const Card *card) {
 
     cJSON *tgtType = cJSON_GetObjectItem(root, "targetType");
     if (tgtType && cJSON_IsString(tgtType)) {
+        // TODO: CRITICAL — data.targetType is assigned a pointer into the cJSON tree. cJSON_Delete
+        // TODO: immediately below frees the tree, making this pointer dangling. Any read of
+        // TODO: data.targetType after this function returns is undefined behavior.
+        // TODO: Fix: data.targetType = strdup(tgtType->valuestring); and free it in the caller.
         data.targetType = tgtType->valuestring;
     }
 
@@ -93,6 +97,9 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
 
     // Ownership
     e->ownerID = owner->id;
+    // TODO: e->lane is never set here. The slot index used by spawn_troop_from_card to choose a
+    // TODO: spawn position is not propagated to Entity.lane, breaking all lane-based targeting logic.
+    // TODO: Pass the chosen slot index into troop_spawn and assign e->lane = slotIndex.
 
     // Sprite
     e->sprite = sprite_atlas_get(atlas, data->spriteType);

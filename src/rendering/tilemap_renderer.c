@@ -27,6 +27,8 @@ void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]) {
     }
 }
 
+// TODO: tilemap_create (non-biome version) is dead code — all call sites use tilemap_create_biome.
+// TODO: Remove this function or repurpose it, to avoid confusion about which creation path is active.
 TileMap tilemap_create(Rectangle area, float tileSize, unsigned int seed) {
     TileMap map;
     map.cols = (int)(area.width  / tileSize) + 1;
@@ -70,6 +72,9 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
     }
     if (totalWeight <= 0) totalWeight = 1;
 
+    // TODO: srand(seed) contaminates the global PRNG state. Any rand() calls made after this
+    // TODO: (e.g. by other systems) will produce values seeded from here, breaking determinism.
+    // TODO: Use a per-player LCG struct instead of the global rand() to isolate tilemap generation.
     srand(seed);
     for (int r = 0; r < map.rows; r++) {
         for (int c = 0; c < map.cols; c++) {
@@ -155,6 +160,10 @@ TileMap tilemap_create_biome(Rectangle area, float tileSize, unsigned int seed,
 void tilemap_draw(TileMap *map, TileDef tileDefs[TILE_COUNT]) {
     for (int row = 0; row < map->rows; row++) {
         for (int col = 0; col < map->cols; col++) {
+            // TODO: No bounds check on the cell value before indexing tileDefs[].
+            // TODO: If map->cells[...] >= TILE_COUNT (32), this is an out-of-bounds array access.
+            // TODO: biome_compile_blocks can produce indices up to blockStart[n] + blockSize[n] - 1.
+            // TODO: Add: assert(map->cells[idx] < TILE_COUNT) or clamp to prevent memory corruption.
             TileDef *td = &tileDefs[map->cells[row * map->cols + col]];
             float tx = map->originX + col * map->tileSize;
             float ty = map->originY + row * map->tileSize;
@@ -180,6 +189,9 @@ void tilemap_draw_details(TileMap *map, TileDef *detailDefs) {
             TileDef *td = &detailDefs[idx];
             float dw = td->source.width  * scale;
             float dh = td->source.height * scale;
+            // TODO: Detail tiles can be larger than tileSize (e.g. a 40×21 pixel detail on a 32px tile).
+            // TODO: The centering offsets (tileSize - dw) * 0.5 can go negative, causing the detail
+            // TODO: sprite to visually bleed into adjacent tiles. Clamp or cap dw/dh to tileSize.
             float tx = map->originX + col * map->tileSize + (map->tileSize - dw) * 0.5f;
             float ty = map->originY + row * map->tileSize + (map->tileSize - dh) * 0.5f;
             DrawTexturePro(*td->texture, td->source,

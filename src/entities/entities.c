@@ -7,6 +7,9 @@
 #include <string.h>
 #include <stdio.h>
 
+// TODO: s_nextEntityID is a static global that grows monotonically and never rolls over.
+// TODO: At 60fps with many spawns this is practically fine, but it will overflow int after ~2 billion
+// TODO: entities. Consider resetting between matches or using a uint32_t with explicit wrap handling.
 static int s_nextEntityID = 1;
 
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
@@ -21,6 +24,8 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->state = ESTATE_IDLE;
     e->alive = true;
     e->markedForRemoval = false;
+    // TODO: spriteScale is hardcoded to 2.0f here; troop_spawn overrides it correctly, but other
+    // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
 
     anim_state_init(&e->anim, ANIM_IDLE, DIR_UP, 8.0f);
@@ -51,14 +56,21 @@ void entity_set_state(Entity *e, EntityState newState) {
             break;
     }
 
+    // TODO: oldState is discarded — there is no transition-from validation. Any state → any state
+    // TODO: is permitted (e.g. DEAD → WALKING). Add guard logic if illegal transitions must be blocked.
     (void)oldState;
 }
 
+// TODO: No combat system is wired into entity_update. Entities walk in a straight line and never
+// TODO: attack, take damage, or interact with enemy entities. Implement combat_find_target() and
+// TODO: combat_resolve() calls here to complete the core gameplay loop.
 void entity_update(Entity *e, GameState *gs, float deltaTime) {
     if (!e || !e->alive) return;
 
     switch (e->state) {
         case ESTATE_IDLE:
+            // TODO: ESTATE_IDLE has no combat or targeting behavior. Idle entities should scan for
+            // TODO: nearby enemies and transition to ESTATE_WALKING or trigger an attack when in range.
             // Just animate in place
             break;
 
@@ -69,22 +81,34 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             e->position.y -= e->moveSpeed * deltaTime;
 
             // Despawn when entity reaches the opponent's base depth
+            // TODO: despawnY = playArea.y - playArea.height * 0.9 can be deeply negative for large
+            // TODO: play areas. Entity can travel far off-screen before despawning. Tune this threshold
+            // TODO: or tie despawn to actually reaching / damaging the opponent's base building.
             float despawnY = owner->playArea.y - owner->playArea.height * 0.9f;
             if (e->position.y < despawnY) {
                 e->markedForRemoval = true;
             }
 
             // Flip direction when entity center crosses the border
+            // TODO: When position.y < owner->playArea.y (border), direction flips to DIR_DOWN.
+            // TODO: The opponent viewport also mirrors the entity with DIR_DOWN forced in game.c.
+            // TODO: This double-flip may cause incorrect sprite orientation — verify visually.
             float borderY = owner->playArea.y;
             e->anim.dir = (e->position.y > borderY) ? DIR_UP : DIR_DOWN;
             break;
         }
 
         case ESTATE_DEAD:
+            // TODO: ESTATE_DEAD immediately marks the entity for removal without letting ANIM_DEATH
+            // TODO: play out. entity_set_state sets ANIM_DEATH but the entity is removed next frame.
+            // TODO: Wait for the death animation to complete before setting markedForRemoval = true.
             e->markedForRemoval = true;
             break;
     }
 
+    // TODO: anim_state_update ticks unconditionally — dead entities keep animating until removed.
+    // TODO: This is harmless since removal happens next frame, but skipping the update for dead
+    // TODO: entities would be cleaner.
     anim_state_update(&e->anim, deltaTime);
 }
 
@@ -92,4 +116,3 @@ void entity_draw(const Entity *e) {
     if (!e || !e->alive || !e->sprite) return;
     sprite_draw(e->sprite, &e->anim, e->position, e->spriteScale);
 }
-

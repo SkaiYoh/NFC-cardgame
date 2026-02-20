@@ -10,9 +10,13 @@
 #include <stdio.h>
 #include <string.h>
 
+// TODO: MAX_HANDLERS is hardcoded to 32. If new card types are ever added beyond this limit,
+// TODO: card_action_register silently drops them. Consider a dynamic array or at least an assertion.
 #define MAX_HANDLERS 32
 
 typedef struct {
+    // TODO: handlers[i].type stores a raw string pointer — safe only if called with string literals.
+    // TODO: If ever called with a stack buffer or heap string, this becomes a dangling pointer.
     const char *type;
     CardPlayFn  play;
 } CardHandler;
@@ -25,6 +29,8 @@ void card_action_register(const char *type, CardPlayFn fn) {
         fprintf(stderr, "[card_action] handler registry full, cannot register '%s'\n", type);
         return;
     }
+    // TODO: No duplicate-type check — registering the same type twice silently adds a second entry.
+    // TODO: Only the first match in card_action_play will fire, making the second registration dead.
     handlers[handler_count].type = type;
     handlers[handler_count].play = fn;
     handler_count++;
@@ -46,12 +52,16 @@ bool card_action_play(const Card *card, GameState *state) {
 
 // Helper: spawn a troop from a card for the current player
 static void spawn_troop_from_card(const Card *card, GameState *state) {
+    // TODO: Energy cost (card->cost) is never checked or deducted before spawning. Cards are free.
+    // TODO: Call energy_can_afford() and energy_consume() here once energy.c is implemented.
     if (!state) {
         printf("[%s] %s (cost %d): no game state, skipping spawn\n",
                card->type, card->name, card->cost);
         return;
     }
 
+    // TODO: currentPlayerIndex is a global side-channel set externally before this call.
+    // TODO: This is not thread-safe. Fix: pass playerIndex explicitly through CardPlayFn signature.
     int pi = state->currentPlayerIndex;
     Player *player = &state->players[pi];
 
@@ -63,6 +73,9 @@ static void spawn_troop_from_card(const Card *card, GameState *state) {
             break;
         }
     }
+    // TODO: slot->isOccupied is never set to true after a troop spawns into a slot.
+    // TODO: This means player_slot_is_available always returns true and the slot system is cosmetic.
+    // TODO: Set slot->isOccupied = true for the chosen slot, and clear it when the troop despawns.
 
     TroopData data = troop_create_data_from_card(card);
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
@@ -71,6 +84,8 @@ static void spawn_troop_from_card(const Card *card, GameState *state) {
     }
 }
 
+// TODO: play_spell only prints to the console — it has no in-game effect.
+// TODO: Implement actual spell logic: apply damage to targeted entities, trigger AOE effects, etc.
 static void play_spell(const Card *card, GameState *state) {
     (void)state;
     printf("[SPELL] %s (cost %d): ", card->name, card->cost);
@@ -118,18 +133,26 @@ static void play_knight(const Card *card, GameState *state) {
     spawn_troop_from_card(card, state);
 }
 
+// TODO: play_healer has no unique healing behavior — it spawns a troop identically to play_knight.
+// TODO: Add healer-specific logic: passive HP regen aura, heal-on-attack, or targeted heal ability.
 static void play_healer(const Card *card, GameState *state) {
     spawn_troop_from_card(card, state);
 }
 
+// TODO: play_assassin has no unique stealth/burst behavior — it spawns identically to play_knight.
+// TODO: Add assassin-specific logic: target-priority override, crit chance, or spawn-behind-lines.
 static void play_assassin(const Card *card, GameState *state) {
     spawn_troop_from_card(card, state);
 }
 
+// TODO: play_brute has no unique tanking behavior — it spawns identically to play_knight.
+// TODO: Add brute-specific logic: taunt/aggro nearby enemies, damage reduction, or AoE cleave.
 static void play_brute(const Card *card, GameState *state) {
     spawn_troop_from_card(card, state);
 }
 
+// TODO: play_farmer has no unique behavior — it spawns identically to play_knight.
+// TODO: Add farmer-specific logic: resource generation, structure building, or passive energy bonus.
 static void play_farmer(const Card *card, GameState *state) {
     spawn_troop_from_card(card, state);
 }

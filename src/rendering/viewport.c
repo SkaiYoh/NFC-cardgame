@@ -24,6 +24,9 @@ void viewport_init_split_screen(GameState *gs) {
     };
 
     // Player 2: Right half of screen, rotated -90 degrees
+    // TODO: P1 playArea (x=0, w=1080) and P2 playArea (x=960, w=1080) overlap by 120px in world X.
+    // TODO: Entities in the overlap zone will appear in both viewports before scissoring kicks in.
+    // TODO: Document whether this shared center strip is intentional or needs geometry adjustment.
     Rectangle p2PlayArea = {
         .x = gs->halfWidth,
         .y = 0,
@@ -39,7 +42,9 @@ void viewport_init_split_screen(GameState *gs) {
 
     float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
 
-    // Initialize players with their biome definitions
+    // TODO: Seeds (42 and 99) and biome assignments (GRASS / UNDEAD) are hardcoded.
+    // TODO: Randomize seeds per match (e.g. from time or match ID) and allow biome selection
+    // TODO: during pregame so players can choose or be assigned different biomes.
     player_init(&gs->players[0], 0, p1PlayArea, p1ScreenArea, 90.0f,
                 BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 42);
     player_init(&gs->players[1], 1, p2PlayArea, p2ScreenArea, -90.0f,
