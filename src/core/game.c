@@ -10,6 +10,7 @@
 #include "../systems/player.h"
 #include "../entities/entities.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 
 bool game_init(GameState *g) {
@@ -25,6 +26,9 @@ bool game_init(GameState *g) {
         db_close(&g->db);
         return false;
     }
+
+    // Load NFC UID → card_id mappings (non-fatal if table is empty or missing)
+    cards_load_nfc_map(&g->deck, &g->db);
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "NFC Card Game");
     SetTargetFPS(60);
@@ -42,24 +46,50 @@ bool game_init(GameState *g) {
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
 
+    // Initialize NFC serial ports (optional — game works with keyboard input only if unset)
+    g->nfc.fds[0] = -1;
+    g->nfc.fds[1] = -1;
+    const char *single_port = getenv("NFC_PORT");
+    const char *port0       = getenv("NFC_PORT_P1");
+    const char *port1       = getenv("NFC_PORT_P2");
+
+    if (single_port) {
+        if (!nfc_init_single(&g->nfc, single_port)) {
+            printf("[NFC] Warning: failed to open test port — NFC disabled\n");
+        }
+    } else if (port0 && port1) {
+        if (!nfc_init(&g->nfc, port0, port1)) {
+            printf("[NFC] Warning: failed to open serial ports — NFC disabled\n");
+        }
+    } else {
+        printf("[NFC] No NFC port env vars set — NFC disabled\n");
+    }
+
     return true;
 }
 
 // Simulate a knight card play through the full production code path:
-// cards_find → currentPlayerIndex → card_action_play → play_knight
-//   → spawn_troop_from_card → troop_create_data_from_card → troop_spawn
+// cards_find → card_action_play → play_knight → spawn_troop_from_card → troop_spawn
 static void game_test_play_knight(GameState *g, int playerIndex) {
     Card *card = cards_find(&g->deck, "KNIGHT_001");
     if (!card) {
         printf("[TEST] KNIGHT_001 not found in deck\n");
         return;
     }
-    // TODO: currentPlayerIndex is a global side-channel on GameState used to pass the acting player
-    // TODO: into card effect callbacks. This is not thread-safe and makes CardPlayFn signatures misleading.
-    // TODO: Fix: add int playerIndex directly to CardPlayFn:
-    // TODO:   typedef void (*CardPlayFn)(const Card*, GameState*, int playerIndex);
-    g->currentPlayerIndex = playerIndex;
-    card_action_play(card, g);
+    card_action_play(card, g, playerIndex, 0);
+}
+
+static void game_handle_nfc_events(GameState *g) {
+    NFCEvent events[6];
+    int count = nfc_poll(&g->nfc, events, 6);
+    for (int i = 0; i < count; i++) {
+        const Card *card = cards_find_by_uid(&g->deck, events[i].uid);
+        if (!card) {
+            printf("[NFC] Unknown UID: %s\n", events[i].uid);
+            continue;
+        }
+        card_action_play(card, g, events[i].playerIndex, events[i].readerIndex);
+    }
 }
 
 static void game_handle_test_input(GameState *g) {
@@ -76,6 +106,7 @@ void game_update(GameState *g) {
     // TODO:   float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
     float deltaTime = GetFrameTime();
 
+    game_handle_nfc_events(g);
     game_handle_test_input(g);
 
     // Update both players
@@ -164,6 +195,8 @@ void game_render(GameState *g) {
 }
 
 void game_cleanup(GameState *g) {
+    nfc_shutdown(&g->nfc);
+
     // Cleanup players (frees tilemaps)
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
@@ -172,6 +205,7 @@ void game_cleanup(GameState *g) {
     card_atlas_free(&g->cardAtlas);
     biome_free_all(g->biomeDefs);
     CloseWindow();
+    cards_free_nfc_map(&g->deck);
     cards_free(&g->deck);
     db_close(&g->db);
 }

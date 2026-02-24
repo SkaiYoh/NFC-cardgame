@@ -36,12 +36,12 @@ void card_action_register(const char *type, CardPlayFn fn) {
     handler_count++;
 }
 
-bool card_action_play(const Card *card, GameState *state) {
+bool card_action_play(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     if (!card || !card->type) return false;
 
     for (int i = 0; i < handler_count; i++) {
         if (strcmp(handlers[i].type, card->type) == 0) {
-            handlers[i].play(card, state);
+            handlers[i].play(card, state, playerIndex, slotIndex);
             return true;
         }
     }
@@ -50,8 +50,8 @@ bool card_action_play(const Card *card, GameState *state) {
     return false;
 }
 
-// Helper: spawn a troop from a card for the current player
-static void spawn_troop_from_card(const Card *card, GameState *state) {
+// Helper: spawn a troop from a card for the given player into the given slot
+static void spawn_troop_from_card(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     // TODO: Energy cost (card->cost) is never checked or deducted before spawning. Cards are free.
     // TODO: Call energy_can_afford() and energy_consume() here once energy.c is implemented.
     if (!state) {
@@ -60,22 +60,16 @@ static void spawn_troop_from_card(const Card *card, GameState *state) {
         return;
     }
 
-    // TODO: currentPlayerIndex is a global side-channel set externally before this call.
-    // TODO: This is not thread-safe. Fix: pass playerIndex explicitly through CardPlayFn signature.
-    int pi = state->currentPlayerIndex;
-    Player *player = &state->players[pi];
+    Player *player = &state->players[playerIndex];
+    CardSlot *slot = player_get_slot(player, slotIndex);
 
-    // Find first available slot to spawn at
-    Vector2 spawnPos = player_center(player);
-    for (int i = 0; i < NUM_CARD_SLOTS; i++) {
-        if (player_slot_is_available(player, i)) {
-            spawnPos = player_slot_spawn_pos(player, i);
-            break;
-        }
+    if (!slot || slot->isOccupied || slot->cooldownTimer > 0.0f) {
+        printf("[%s] slot %d unavailable for player %d\n", card->type, slotIndex, playerIndex);
+        return;
     }
-    // TODO: slot->isOccupied is never set to true after a troop spawns into a slot.
-    // TODO: This means player_slot_is_available always returns true and the slot system is cosmetic.
-    // TODO: Set slot->isOccupied = true for the chosen slot, and clear it when the troop despawns.
+
+    Vector2 spawnPos = player_slot_spawn_pos(player, slotIndex);
+    slot->isOccupied = true;
 
     TroopData data = troop_create_data_from_card(card);
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
@@ -86,8 +80,10 @@ static void spawn_troop_from_card(const Card *card, GameState *state) {
 
 // TODO: play_spell only prints to the console — it has no in-game effect.
 // TODO: Implement actual spell logic: apply damage to targeted entities, trigger AOE effects, etc.
-static void play_spell(const Card *card, GameState *state) {
+static void play_spell(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     (void)state;
+    (void)playerIndex;
+    (void)slotIndex;
     printf("[SPELL] %s (cost %d): ", card->name, card->cost);
 
     if (!card->data) {
@@ -129,32 +125,32 @@ static void play_spell(const Card *card, GameState *state) {
     cJSON_Delete(root);
 }
 
-static void play_knight(const Card *card, GameState *state) {
-    spawn_troop_from_card(card, state);
+static void play_knight(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
 // TODO: play_healer has no unique healing behavior — it spawns a troop identically to play_knight.
 // TODO: Add healer-specific logic: passive HP regen aura, heal-on-attack, or targeted heal ability.
-static void play_healer(const Card *card, GameState *state) {
-    spawn_troop_from_card(card, state);
+static void play_healer(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
 // TODO: play_assassin has no unique stealth/burst behavior — it spawns identically to play_knight.
 // TODO: Add assassin-specific logic: target-priority override, crit chance, or spawn-behind-lines.
-static void play_assassin(const Card *card, GameState *state) {
-    spawn_troop_from_card(card, state);
+static void play_assassin(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
 // TODO: play_brute has no unique tanking behavior — it spawns identically to play_knight.
 // TODO: Add brute-specific logic: taunt/aggro nearby enemies, damage reduction, or AoE cleave.
-static void play_brute(const Card *card, GameState *state) {
-    spawn_troop_from_card(card, state);
+static void play_brute(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
 // TODO: play_farmer has no unique behavior — it spawns identically to play_knight.
 // TODO: Add farmer-specific logic: resource generation, structure building, or passive energy bonus.
-static void play_farmer(const Card *card, GameState *state) {
-    spawn_troop_from_card(card, state);
+static void play_farmer(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
 void card_action_init(void) {

@@ -13,6 +13,7 @@
 #include "../rendering/tilemap_renderer.h"
 #include "../rendering/sprite_renderer.h"
 #include "../rendering/biome.h"
+#include "../hardware/nfc_reader.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -119,8 +120,8 @@ struct GameState {
     // Screen layout
     int halfWidth;  // Half screen width for split screen
 
-    // Context for card plays (set before calling card_action_play)
-    int currentPlayerIndex;
+    // NFC hardware (two Arduinos, one per player)
+    NFCReader nfc;
 };
 
 #endif //NFC_CARDGAME_TYPES_H

@@ -23,8 +23,9 @@ cardgame: $(SOURCES)
 preview: tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c
 	$(CC) $(CFLAGS) tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
 
+# Single-Arduino test: NFC_PORT=/dev/ttyACM0 DB_CONNECTION="..." ./cardgame
 run: clean cardgame
-	DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" ./cardgame
+	NFC_PORT="/dev/ttyUSB0" DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" NFC_PORT_P1="/dev/ttyACM0" NFC_PORT_P2="/dev/ttyACM1" ./cardgame
 
 preview-run: preview
 	./card_preview
@@ -35,5 +36,11 @@ biome_preview: tools/biome_preview.c src/rendering/tilemap_renderer.c src/render
 biome-preview-run: biome_preview
 	./biome_preview
 
+card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c
+	$(CC) $(CFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c -o card_enroll $(MACFLAGS) -lpq -lm
+
+card-enroll-run: card_enroll
+	NFC_PORT="/dev/ttyUSB0" DB_CONNECTION="host=localhost port=5432 dbname=appdb user=postgres password=postgres" ./card_enroll
+
 clean:
-	rm -f cardgame card_preview biome_preview
+	rm -f cardgame card_preview biome_preview card_enroll
