@@ -3,6 +3,7 @@
 //
 
 #include "player.h"
+#include "energy.h"
 #include "../entities/entities.h"
 #include <string.h>
 #include <stdio.h>
@@ -54,13 +55,8 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
     // Initialize card slots
     player_init_card_slots(p);
 
-    // TODO: Energy values are hardcoded here; energy.c has stub function declarations for a proper
-    // TODO: energy system (energy_init, energy_consume, energy_can_afford) that are never called.
-    // TODO: Two initialization paths exist — consolidate into energy_init() once it is implemented.
-    // Initialize energy (defaults, will be configurable in Phase 5)
-    p->energy = 5.0f;
-    p->maxEnergy = 10.0f;
-    p->energyRegenRate = 1.0f;
+    // Initialize energy
+    energy_init(p, 10.0f, 1.0f);
 
     // No entities yet
     p->entityCount = 0;
@@ -90,7 +86,6 @@ void player_init_card_slots(Player *p) {
             spawnY
         };
         p->slots[i].activeCard = NULL;
-        p->slots[i].isOccupied = false;
         p->slots[i].cooldownTimer = 0.0f;
     }
 }
@@ -125,20 +120,11 @@ void player_draw_entities(const Player *p) {
 
 void player_update(Player *p, float deltaTime) {
     // Update energy regeneration
-    // TODO: Energy regenerates here but energy_consume() is never called on card play — cards are free.
-    // TODO: Wire energy_consume(player, card->cost) into spawn_troop_from_card once energy.c is done.
-    if (p->energy < p->maxEnergy) {
-        p->energy += p->energyRegenRate * deltaTime;
-        if (p->energy > p->maxEnergy) {
-            p->energy = p->maxEnergy;
-        }
-    }
+    energy_update(p, deltaTime);
 
     // Update card slot cooldowns
     // TODO: Slot cooldown timer counts down correctly, but cooldownTimer is never set to a non-zero
     // TODO: value anywhere — slots always have cooldownTimer == 0. Set it when a card is played.
-    // TODO: isOccupied is also never set to true — player_slot_is_available always returns true.
-    // TODO: The slot system is currently entirely cosmetic (no gating of card plays).
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         if (p->slots[i].cooldownTimer > 0.0f) {
             p->slots[i].cooldownTimer -= deltaTime;
@@ -204,8 +190,7 @@ bool player_slot_is_available(Player *p, int slotIndex) {
     if (slotIndex < 0 || slotIndex >= NUM_CARD_SLOTS) {
         return false;
     }
-    return !p->slots[slotIndex].isOccupied &&
-           p->slots[slotIndex].cooldownTimer <= 0.0f;
+    return p->slots[slotIndex].cooldownTimer <= 0.0f;
 }
 
 // --- Position helpers ---

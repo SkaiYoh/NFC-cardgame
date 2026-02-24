@@ -86,7 +86,7 @@ void viewport_draw_card_slots_debug(Player *p) {
     // Draw debug circles at card slot positions
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         CardSlot *slot = &p->slots[i];
-        Color slotColor = slot->isOccupied ? RED : GREEN;
+        Color slotColor = GREEN;
 
         // Draw slot indicator
         DrawCircleV(slot->worldPos, 20.0f, slotColor);

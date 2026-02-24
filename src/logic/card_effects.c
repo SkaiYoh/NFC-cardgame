@@ -6,6 +6,7 @@
 #include "../entities/troop.h"
 #include "../entities/entities.h"
 #include "../systems/player.h"
+#include "../systems/energy.h"
 #include "../../lib/cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -63,17 +64,23 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     Player *player = &state->players[playerIndex];
     CardSlot *slot = player_get_slot(player, slotIndex);
 
-    if (!slot || slot->isOccupied || slot->cooldownTimer > 0.0f) {
+    if (!slot || slot->cooldownTimer > 0.0f) {
         printf("[%s] slot %d unavailable for player %d\n", card->type, slotIndex, playerIndex);
         return;
     }
 
+    if (!energy_consume(player, card->cost)) {
+        printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
+               card->name, card->cost, player->energy);
+        return;
+    }
+
     Vector2 spawnPos = player_slot_spawn_pos(player, slotIndex);
-    slot->isOccupied = true;
 
     TroopData data = troop_create_data_from_card(card);
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
+        e->lane = slotIndex;
         player_add_entity(player, e);
     }
 }
@@ -81,9 +88,11 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
 // TODO: play_spell only prints to the console — it has no in-game effect.
 // TODO: Implement actual spell logic: apply damage to targeted entities, trigger AOE effects, etc.
 static void play_spell(const Card *card, GameState *state, int playerIndex, int slotIndex) {
-    (void)state;
-    (void)playerIndex;
     (void)slotIndex;
+    if (state && !energy_consume(&state->players[playerIndex], card->cost)) {
+        printf("[PLAY] Not enough energy for spell '%s' (need %d)\n", card->name, card->cost);
+        return;
+    }
     printf("[SPELL] %s (cost %d): ", card->name, card->cost);
 
     if (!card->data) {

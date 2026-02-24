@@ -8,6 +8,8 @@
 #include <stdbool.h>
 
 #define NFC_NUM_PLAYERS 2
+#define NFC_READERS_PER_PLAYER 3   // One TCA channel per card slot
+#define NFC_REMOVAL_TIMEOUT_FRAMES 30  // ~500ms at 60fps; must miss ~5 Arduino packets to clear
 
 // A single card-scan event produced by an Arduino.
 typedef struct {
@@ -18,7 +20,9 @@ typedef struct {
 
 // One serial file descriptor per Arduino (one per player).
 typedef struct {
-    int fds[NFC_NUM_PLAYERS];   // serial fd per Arduino (-1 if not open)
+    int  fds[NFC_NUM_PLAYERS];                                          // serial fd per Arduino (-1 if not open)
+    char lastUID[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER][32];          // debounce table
+    int  noPacketFrames[NFC_NUM_PLAYERS][NFC_READERS_PER_PLAYER];       // frames since last packet
 } NFCReader;
 
 // Opens serial ports for both Arduinos at 115200 baud, non-blocking.

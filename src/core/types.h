@@ -64,7 +64,6 @@ struct Entity {
 typedef struct {
     Vector2 worldPos;       // Spawn position in world coordinates
     Card *activeCard;       // Currently placed card (NULL if empty)
-    bool isOccupied;        // Whether a card is on this slot
     float cooldownTimer;    // Cooldown before slot can be used again
 } CardSlot;
 
