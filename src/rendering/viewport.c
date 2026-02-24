@@ -48,7 +48,7 @@ void viewport_init_split_screen(GameState *gs) {
     player_init(&gs->players[0], 0, p1PlayArea, p1ScreenArea, 90.0f,
                 BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 42);
     player_init(&gs->players[1], 1, p2PlayArea, p2ScreenArea, -90.0f,
-                BIOME_UNDEAD, &gs->biomeDefs[BIOME_UNDEAD], tileSize, 99);
+                BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 99);
 
     printf("Split-screen viewports initialized\n");
 }
@@ -86,7 +86,7 @@ void viewport_draw_card_slots_debug(Player *p) {
     // Draw debug circles at card slot positions
     for (int i = 0; i < NUM_CARD_SLOTS; i++) {
         CardSlot *slot = &p->slots[i];
-        Color slotColor = slot->isOccupied ? RED : GREEN;
+        Color slotColor = GREEN;
 
         // Draw slot indicator
         DrawCircleV(slot->worldPos, 20.0f, slotColor);

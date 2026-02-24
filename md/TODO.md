@@ -124,5 +124,3 @@ END-GAME STATE  [win_condition.c — stub]
 8. **Spell effects** — implement actual damage/buff logic in `play_spell()`
 9. **Pregame lobby** — scan-in phase before match begins
 10. **NFC hardware** — Arduino serial communication, card UID lookup
-
-Roughly **600–900 lines** of gameplay code remain to reach a fully playable prototype.

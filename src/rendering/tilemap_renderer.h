@@ -61,13 +61,7 @@ typedef struct {
     float originY;
 } TileMap;
 
-// TODO: Cross-module dependency — biome.h includes tilemap_renderer.h for TileDef and TileMap,
-// TODO: while tilemap_renderer.h forward-declares BiomeDef to break the inclusion cycle.
-// TODO: This currently works but is fragile: any new field on BiomeDef used inside
-// TODO: tilemap_renderer.c requires the full definition, which forces an additional include.
-// TODO: Consider moving shared types (TileDef, TileMap, BiomeDef) into a types.h or tile_types.h
-// TODO: header that both biome.h and tilemap_renderer.h can include without circular dependency.
-// Forward declaration for biome-aware creation
+// Forward declaration — full definition in biome.h
 typedef struct BiomeDef BiomeDef;
 
 void tilemap_init_defs(Texture2D *tex, TileDef tileDefs[TILE_COUNT]);

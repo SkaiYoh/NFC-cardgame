@@ -29,4 +29,10 @@
 #define DEFAULT_TILE_SIZE  32.0f
 #define DEFAULT_CARD_SCALE 2.5f
 
+// Energy bar HUD
+#define ENERGY_BAR_WIDTH    200
+#define ENERGY_BAR_HEIGHT    20
+#define ENERGY_BAR_MARGIN    16
+#define ENERGY_BAR_Y_OFFSET  40
+
 #endif //NFC_CARDGAME_CONFIG_H

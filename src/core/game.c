@@ -7,6 +7,7 @@
 #include "../logic/card_effects.h"
 #include "../rendering/viewport.h"
 #include "../rendering/sprite_renderer.h"
+#include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
 #include <stdlib.h>
@@ -185,6 +186,10 @@ void game_render(GameState *g) {
     // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
     // viewport_draw_card_slots_debug(&g->players[1]);
     viewport_end();
+
+    // HUD — screen space, drawn after all viewports
+    ui_draw_energy_bar(&g->players[0], 0,   SCREEN_WIDTH / 2);
+    ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
     // TODO: No visual divider line is drawn between Player 1 and Player 2 viewports. Add a separator.
     // TODO: No in-game card UI — cards are loaded and used for spawning but never rendered to the screen.
