@@ -2,7 +2,7 @@
 
 A two-player split-screen strategy game where physical NFC cards control the virtual board. Players place real cards on NFC readers connected via Arduino's to spawn troops, cast spells, and try to destroy their opponents base.
 
-Built in C with Raylib, PostgreSQL, and Arduino hardware.
+Built in C with Raylib, SQLite, and Arduino hardware.
 
 ## Features
 
@@ -11,22 +11,21 @@ Built in C with Raylib, PostgreSQL, and Arduino hardware.
 - **Tile-based biome rendering** — procedural tilemaps with multiple biome themes (plains, cursed lands, undead, etc.)
 - **Entity system** — troops, buildings, and projectiles with combat, pathfinding, and win conditions
 - **Energy system** — card plays cost energy that regenerates over time
-- **Card data from PostgreSQL** — card stats, sprites, and metadata stored in a database and loaded at runtime
+- **Card data from SQLite** — card stats, sprites, and metadata stored in a local `cardgame.db` file and loaded at runtime
 - **Standalone dev tools** — card preview, biome preview, and card enrollment utilities
 
 ## Requirements
 
 - GCC
 - [Raylib](https://www.raylib.com/)
-- PostgreSQL client library (`libpq`)
-- Docker & Docker Compose (for the database)
+- SQLite3 (`brew install sqlite`)
 - Arduino(s) with NFC readers (for hardware input)
 
 ## Quick Start
 
 ```bash
-# Start the database
-docker compose up -d
+# Initialize the database (first time only)
+make init-db
 
 # Build and run the game
 make run
@@ -34,17 +33,18 @@ make run
 
 ## Build Targets
 
-| Command                | Description                                  |
-|------------------------|----------------------------------------------|
-| `make cardgame`        | Build the main game binary                   |
-| `make run`             | Clean, build, and run with default DB config |
-| `make preview`         | Build the card preview tool                  |
-| `make preview-run`     | Build and run card preview                   |
-| `make biome_preview`   | Build the biome preview tool                 |
-| `make biome-preview-run` | Build and run biome preview                |
-| `make card_enroll`     | Build the card enrollment tool               |
-| `make card-enroll-run` | Build and run card enrollment                |
-| `make clean`           | Remove all built binaries                    |
+| Command                  | Description                                       |
+|--------------------------|---------------------------------------------------|
+| `make init-db`           | Create and seed `cardgame.db` (first time setup)  |
+| `make cardgame`          | Build the main game binary                        |
+| `make run`               | Clean, build, and run the game                    |
+| `make preview`           | Build the card preview tool                       |
+| `make preview-run`       | Build and run card preview                        |
+| `make biome_preview`     | Build the biome preview tool                      |
+| `make biome-preview-run` | Build and run biome preview                       |
+| `make card_enroll`       | Build the card enrollment tool                    |
+| `make card-enroll-run`   | Build and run card enrollment                     |
+| `make clean`             | Remove all built binaries                         |
 
 ## Tools
 
@@ -55,7 +55,7 @@ Standalone Raylib app for editing and previewing card visuals. No database requi
 Interactive tool for defining biome tile blocks and previewing tilemap rendering.
 
 ### Card Enroll (`tools/card_enroll.c`)
-Utility for writing card data to NFC tags and registering them in the database. Requires a connected Arduino and the PostgreSQL database.
+Utility for mapping physical NFC card UIDs to game cards in the database. Requires a connected Arduino and `cardgame.db`.
 
 ## Project Structure
 
@@ -71,7 +71,7 @@ src/
   assets/       Pixel art sprites and tilesets
 tools/          Standalone dev/utility programs
 lib/            Third-party libs (cJSON, Raylib headers)
-postgres/       Database setup scripts
+sqlite/         Database schema and seed data
 ```
 
 ## Card Flow
@@ -86,23 +86,30 @@ NFC read  ->  cards_find(card_id)  ->  g->currentPlayerIndex = playerIndex
                             ->  player_add_entity(player, e)
 ```
 
-## Docker Services
+## Database
 
-| Service  | Port  | Description          |
-|----------|-------|----------------------|
-| Postgres | 5432  | Game database        |
-| pgAdmin  | 5050  | Database admin UI    |
+The game uses a local SQLite file (`cardgame.db`) — no server required.
 
-Default credentials are in `docker-compose.yml`.
+| File                  | Purpose                          |
+|-----------------------|----------------------------------|
+| `sqlite/schema.sql`   | Table definitions                |
+| `sqlite/seed.sql`     | Base card data                   |
+| `cardgame.db`         | Runtime database (git-ignored)   |
+
+To reset the database: `rm cardgame.db && make init-db`
+
+To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) (`brew install --cask db-browser-for-sqlite`).
 
 ## Environment Variables
 
-| Variable         | Description                        | Example                                                          |
-|------------------|------------------------------------|------------------------------------------------------------------|
-| `DB_CONNECTION`  | PostgreSQL connection string       | `host=localhost port=5432 dbname=appdb user=postgres password=postgres` |
-| `NFC_PORT`       | Single-Arduino serial port         | `/dev/ttyUSB0`                                                   |
-| `NFC_PORT_P1`    | Player 1 Arduino serial port       | `/dev/ttyACM0`                                                   |
-| `NFC_PORT_P2`    | Player 2 Arduino serial port       | `/dev/ttyACM1`                                                   |
+| Variable    | Description                              | Default         |
+|-------------|------------------------------------------|-----------------|
+| `DB_PATH`   | Path to the SQLite database file         | `cardgame.db`   |
+| `NFC_PORT`  | Single-Arduino serial port (test mode)   | —               |
+| `NFC_PORT_P1` | Player 1 Arduino serial port           | —               |
+| `NFC_PORT_P2` | Player 2 Arduino serial port           | —               |
+
+On macOS, serial ports look like `/dev/cu.usbserial-XXXXXXXX`. Run `ls /dev/cu.*` to find yours.
 
 ## AI Disclosure
 
