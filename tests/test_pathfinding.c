@@ -404,8 +404,10 @@ void test_movement_step_advances_waypoint(void) {
     /* --- Sub-test 2: normal step moves toward target, does not advance --- */
     {
         Entity e = make_test_entity(1, &p);
-        e.waypointIndex = 1;
-        e.position = p.laneWaypoints[1][1];
+        e.waypointIndex = 2;
+        /* Position halfway between waypoint[1] and waypoint[2] so there's distance to cover */
+        e.position.x = (p.laneWaypoints[1][1].x + p.laneWaypoints[1][2].x) * 0.5f;
+        e.position.y = (p.laneWaypoints[1][1].y + p.laneWaypoints[1][2].y) * 0.5f;
 
         /* Set moveSpeed very small so we don't reach waypoint[2] */
         e.moveSpeed = 1.0f;
@@ -421,8 +423,8 @@ void test_movement_step_advances_waypoint(void) {
         );
         assert(movedDist > 0.0f);
 
-        /* waypointIndex should still be 1 (didn't reach waypoint[2] yet) */
-        assert(e.waypointIndex == 1);
+        /* waypointIndex should still be 2 (didn't reach waypoint[2] yet) */
+        assert(e.waypointIndex == 2);
     }
 }
 

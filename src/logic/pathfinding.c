@@ -5,6 +5,9 @@
 #include <math.h>
 #include <stdlib.h>
 
+// Forward declaration
+void pathfind_compute_direction(Entity *e, Vector2 diff);
+
 // Compute lateral bow offset for outer lanes using sinf.
 // depth: 0.0 = spawn end, 1.0 = enemy end.
 // Returns signed offset in world units (negative = left, positive = right).
