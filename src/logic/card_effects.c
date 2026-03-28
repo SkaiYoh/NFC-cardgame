@@ -81,6 +81,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
         e->lane = slotIndex;
+        e->waypointIndex = 1;  // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
         player_add_entity(player, e);
     }
 }

@@ -4,6 +4,7 @@
 
 #include "player.h"
 #include "energy.h"
+#include "../logic/pathfinding.h"
 #include "../entities/entities.h"
 #include <string.h>
 #include <stdio.h>
@@ -54,6 +55,9 @@ void player_init(Player *p, int id, Rectangle playArea, Rectangle screenArea,
 
     // Initialize card slots
     player_init_card_slots(p);
+
+    // Pre-compute lane waypoints (must be after player_init_card_slots)
+    lane_generate_waypoints(p);
 
     // Initialize energy
     energy_init(p, 10.0f, 1.0f);
