@@ -7,6 +7,8 @@
 #include "../entities/entities.h"
 #include "../systems/player.h"
 #include "../systems/energy.h"
+#include "../core/battlefield.h"
+#include "../core/config.h"
 #include "../../lib/cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -51,10 +53,9 @@ bool card_action_play(const Card *card, GameState *state, int playerIndex, int s
     return false;
 }
 
-// Helper: spawn a troop from a card for the given player into the given slot
+// Helper: spawn a troop from a card for the given player into the given slot.
+// Uses canonical Battlefield spawn positions (per D-05, D-06).
 static void spawn_troop_from_card(const Card *card, GameState *state, int playerIndex, int slotIndex) {
-    // TODO: Energy cost (card->cost) is never checked or deducted before spawning. Cards are free.
-    // TODO: Call energy_can_afford() and energy_consume() here once energy.c is implemented.
     if (!state) {
         printf("[%s] %s (cost %d): no game state, skipping spawn\n",
                card->type, card->name, card->cost);
@@ -75,14 +76,20 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         return;
     }
 
-    Vector2 spawnPos = player_slot_spawn_pos(player, slotIndex);
+    // Canonical spawn position from Battlefield (per D-05, D-06, D-08)
+    BattleSide side = bf_side_for_player(playerIndex);
+    int canonicalLane = bf_slot_to_lane(side, slotIndex);
+    CanonicalPos spawnCanonical = bf_spawn_pos(&state->battlefield, side, slotIndex);
+    Vector2 spawnPos = spawnCanonical.v;
 
     TroopData data = troop_create_data_from_card(card);
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
-        e->lane = slotIndex;
+        CanonicalPos spawnCheck = { e->position };
+        BF_ASSERT_IN_BOUNDS(spawnCheck, BOARD_WIDTH, BOARD_HEIGHT);
+        e->lane = canonicalLane;  // canonical lane index (per D-07)
         e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
-        player_add_entity(player, e);
+        bf_add_entity(&state->battlefield, e);
     }
 }
 

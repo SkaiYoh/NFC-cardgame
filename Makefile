@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -6,7 +6,7 @@ LDFLAGS = -lsqlite3 -lraylib -lm
 MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 
 # Source files
-SRC_CORE = src/core/game.c
+SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c
 SRC_DATA = src/data/db.c src/data/cards.c
 SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/biome.c src/rendering/ui.c
 SRC_ENTITIES = src/entities/entities.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
@@ -52,8 +52,23 @@ card-enroll-run: card_enroll
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
 	$(CC) $(CFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
 
-test: test_pathfinding
+test_combat: tests/test_combat.c src/logic/combat.c
+	$(CC) $(CFLAGS) tests/test_combat.c -o test_combat -lm
+
+test_battlefield_math: tests/test_battlefield_math.c src/core/battlefield_math.c
+	$(CC) $(CFLAGS) tests/test_battlefield_math.c -o test_battlefield_math -lm
+
+test_battlefield: tests/test_battlefield.c src/core/battlefield.c src/core/battlefield_math.c
+	$(CC) $(CFLAGS) tests/test_battlefield.c -o test_battlefield -lm
+
+test: test_pathfinding test_combat test_battlefield_math test_battlefield
 	./test_pathfinding
+	./test_combat
+	./test_battlefield_math
+	./test_battlefield
+
+sprite-frame-atlas:
+	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield

@@ -4,3 +4,7 @@ cardgame
 card_preview
 import.json
 biome_preview
+test_pathfinding
+test_battlefield_math
+test_battlefield
+test_combat

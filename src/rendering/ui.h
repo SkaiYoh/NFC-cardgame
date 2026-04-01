@@ -8,5 +8,7 @@
 #include "../core/types.h"
 
 void ui_draw_energy_bar(Player *p, int screenX, int viewportWidth);
+void ui_draw_viewport_label(const char *label, int screenX, bool seatOnRight,
+                            Color color);
 
 #endif //NFC_CARDGAME_UI_H

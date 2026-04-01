@@ -41,4 +41,13 @@
 #define LANE_JITTER_RADIUS   10.0f
 #define PI_F 3.14159265f
 
+// Entity / slot limits (shared by types.h and battlefield.h)
+#define NUM_CARD_SLOTS 3
+#define MAX_ENTITIES   64
+
+// Canonical board dimensions (per D-01)
+#define BOARD_WIDTH   1080
+#define BOARD_HEIGHT  1920
+#define SEAM_Y        960
+
 #endif //NFC_CARDGAME_CONFIG_H

@@ -14,6 +14,7 @@
 #include "../rendering/sprite_renderer.h"
 #include "../rendering/biome.h"
 #include "../hardware/nfc_reader.h"
+#include "battlefield.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -25,7 +26,14 @@ typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
-typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_DEAD } EntityState;
+typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+
+// Targeting preference for combat (used by Entity and TroopData)
+typedef enum {
+    TARGET_NEAREST,
+    TARGET_BUILDING,
+    TARGET_SPECIFIC_TYPE
+} TargetingMode;
 
 // Entity definition
 struct Entity {
@@ -43,6 +51,9 @@ struct Entity {
     int attack;
     float attackSpeed;
     float attackRange;
+    float attackCooldown;       // time remaining before next attack
+    TargetingMode targeting;    // targeting preference
+    const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
 
     // Animation
     AnimState anim;
@@ -59,10 +70,6 @@ struct Entity {
     bool markedForRemoval;
 };
 
-// Constants
-#define NUM_CARD_SLOTS 3
-#define MAX_ENTITIES 64
-
 // Card slot - represents a physical NFC reader position
 typedef struct {
     Vector2 worldPos; // Spawn position in world coordinates
@@ -70,40 +77,23 @@ typedef struct {
     float cooldownTimer; // Cooldown before slot can be used again
 } CardSlot;
 
-// Player state
+// Player state -- seat/view/input/resource owner (per D-12)
+// Battlefield owns all geometry, entities, and lane waypoints.
+// Player retains only identity, camera/viewport, card slots, and energy.
 struct Player {
-    int id; // 0 or 1
-    Rectangle playArea; // World space play area
-    Rectangle screenArea; // Screen space viewport
-    Camera2D camera; // Camera for this player's view
-    float cameraRotation; // 90 or -90 for split screen orientation
-
-    // Tilemap (per-player biome tile definitions)
-    TileMap tilemap;
-    BiomeType biome;
-    const BiomeDef *biomeDef; // pointer into GameState::biomeDefs[]
-    TileDef tileDefs[TILE_COUNT];
-    int tileDefCount;
-    TileDef detailDefs[MAX_DETAIL_DEFS];
-    int detailDefCount;
+    int id;                    // 0 or 1
+    BattleSide side;           // SIDE_BOTTOM or SIDE_TOP (per D-12)
+    Rectangle screenArea;      // Screen space viewport
+    Camera2D camera;           // Camera for this player's view
+    float cameraRotation;      // 90 or -90 for split screen orientation
 
     // Card slots (3 NFC readers per player)
     CardSlot slots[NUM_CARD_SLOTS];
 
-    // Entities (troops, buildings) - will be expanded in Phase 7
-    Entity *entities[MAX_ENTITIES];
-    int entityCount;
-
-    // Energy system - will be expanded in Phase 5
+    // Energy system
     float energy;
     float maxEnergy;
     float energyRegenRate;
-
-    // Base building reference (for win condition)
-    Entity *base;
-
-    // Pre-computed lane waypoints (generated once at init)
-    Vector2 laneWaypoints[3][LANE_WAYPOINT_COUNT];
 };
 
 // Game state
@@ -119,11 +109,19 @@ struct GameState {
     // Biome definitions (shared textures, per-biome tile mappings)
     BiomeDef biomeDefs[BIOME_COUNT];
 
+    // Canonical battlefield -- authoritative world model (per D-11)
+    Battlefield battlefield;
+
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen
+
+    // P2 viewport render target -- P2 uses rot=+90 (same as P1) for correct
+    // seam placement, then the texture is flipped vertically when composited
+    // to reverse the X orientation for across-the-table perspective.
+    RenderTexture2D p2RT;
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;

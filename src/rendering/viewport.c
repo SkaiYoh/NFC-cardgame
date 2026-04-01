@@ -3,54 +3,30 @@
 //
 
 #include "viewport.h"
+#include "../core/battlefield.h"
 #include "../systems/player.h"
 #include <stdio.h>
 
 void viewport_init_split_screen(GameState *gs) {
     gs->halfWidth = SCREEN_WIDTH / 2;
+    Battlefield *bf = &gs->battlefield;
 
-    // Player 1: Left half of screen, rotated 90 degrees
-    Rectangle p1PlayArea = {
-        .x = 0,
-        .y = 0,
-        .width = SCREEN_HEIGHT,
-        .height = gs->halfWidth
-    };
-    Rectangle p1ScreenArea = {
-        .x = 0,
-        .y = 0,
-        .width = gs->halfWidth,
-        .height = SCREEN_HEIGHT
-    };
+    Rectangle p1Screen = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
+    Rectangle p2Screen = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
 
-    // Player 2: Right half of screen, rotated -90 degrees
-    // TODO: P1 playArea (x=0, w=1080) and P2 playArea (x=960, w=1080) overlap by 120px in world X.
-    // TODO: Entities in the overlap zone will appear in both viewports before scissoring kicks in.
-    // TODO: Document whether this shared center strip is intentional or needs geometry adjustment.
-    Rectangle p2PlayArea = {
-        .x = gs->halfWidth,
-        .y = 0,
-        .width = SCREEN_HEIGHT,
-        .height = gs->halfWidth
-    };
-    Rectangle p2ScreenArea = {
-        .x = gs->halfWidth,
-        .y = 0,
-        .width = gs->halfWidth,
-        .height = SCREEN_HEIGHT
-    };
+    // Both cameras use rot=+90 so that the seam (y=960) maps to the inner
+    // screen edge (x=960) for both viewports.  P2's viewport is rendered to
+    // a RenderTexture and flipped vertically when composited, which reverses
+    // the world-X → screen-Y mapping to give P2 the opposite perspective
+    // (across-the-table).
+    //
+    // P1 (rot=+90): y=1920 (base) → x=0, y=960 (seam) → x=960
+    // P2 (rot=+90): y=0 (base) → x=1920, y=960 (seam) → x=960
+    //   → then vertical flip reverses Y so world-X is inverted for P2
+    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, 90.0f, bf);
+    player_init(&gs->players[1], 1, SIDE_TOP, p2Screen, 90.0f, bf);
 
-    float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
-
-    // TODO: Seeds (42 and 99) and biome assignments (GRASS / UNDEAD) are hardcoded.
-    // TODO: Randomize seeds per match (e.g. from time or match ID) and allow biome selection
-    // TODO: during pregame so players can choose or be assigned different biomes.
-    player_init(&gs->players[0], 0, p1PlayArea, p1ScreenArea, 90.0f,
-                BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 42);
-    player_init(&gs->players[1], 1, p2PlayArea, p2ScreenArea, -90.0f,
-                BIOME_GRASS, &gs->biomeDefs[BIOME_GRASS], tileSize, 99);
-
-    printf("Split-screen viewports initialized\n");
+    printf("Split-screen viewports initialized (canonical)\n");
 }
 
 void viewport_begin(Player *p) {
@@ -76,10 +52,12 @@ Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos) {
     return GetScreenToWorld2D(screenPos, p->camera);
 }
 
-void viewport_draw_tilemap(Player *p) {
-    tilemap_draw(&p->tilemap, p->tileDefs);
-    tilemap_draw_details(&p->tilemap, p->detailDefs);
-    tilemap_draw_biome_layers(&p->tilemap, p->biomeDef);
+void viewport_draw_battlefield_tilemap(const Battlefield *bf, BattleSide side) {
+    Territory *t = bf_territory_for_side((Battlefield *)bf, side);
+    float rotationDegrees = (side == SIDE_TOP) ? 180.0f : 0.0f;
+    tilemap_draw_oriented(&t->tilemap, t->tileDefs, rotationDegrees);
+    tilemap_draw_details_oriented(&t->tilemap, t->detailDefs, rotationDegrees);
+    tilemap_draw_biome_layers_oriented(&t->tilemap, t->biomeDef, rotationDegrees);
 }
 
 void viewport_draw_card_slots_debug(Player *p) {
@@ -100,7 +78,7 @@ void viewport_draw_card_slots_debug(Player *p) {
     }
 }
 
-void debug_draw_lane_paths_screen(const Player *p, Camera2D cam) {
+void debug_draw_lane_paths_screen(const Battlefield *bf, BattleSide side, Camera2D cam) {
     // Colors per lane: left=BLUE, center=GREEN, right=RED
     const Color laneColors[3] = {BLUE, GREEN, RED};
 
@@ -108,15 +86,17 @@ void debug_draw_lane_paths_screen(const Player *p, Camera2D cam) {
         Color c = laneColors[lane];
 
         for (int i = 0; i < LANE_WAYPOINT_COUNT; i++) {
-            // Convert world-space waypoint to screen-space
-            Vector2 sp = GetWorldToScreen2D(p->laneWaypoints[lane][i], cam);
+            // Get canonical waypoint and convert to screen-space
+            CanonicalPos wp = bf_waypoint(bf, side, lane, i);
+            Vector2 sp = GetWorldToScreen2D(wp.v, cam);
 
             // Draw waypoint dot in screen space
             DrawCircleV(sp, 4.0f, c);
 
             // Draw line segment to next waypoint in screen space
             if (i < LANE_WAYPOINT_COUNT - 1) {
-                Vector2 spNext = GetWorldToScreen2D(p->laneWaypoints[lane][i + 1], cam);
+                CanonicalPos wpNext = bf_waypoint(bf, side, lane, i + 1);
+                Vector2 spNext = GetWorldToScreen2D(wpNext.v, cam);
                 DrawLineV(sp, spNext, c);
             }
         }

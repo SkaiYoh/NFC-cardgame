@@ -4,10 +4,9 @@
 
 #include "game.h"
 #include "config.h"
+#include "battlefield.h"
 #include "../logic/card_effects.h"
-#include "../logic/pathfinding.h"
 #include "../rendering/viewport.h"
-#include "../rendering/sprite_renderer.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -17,6 +16,7 @@
 #include <time.h>
 
 static bool s_showLaneDebug = false;
+static bool s_showCombatDebug = false;
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
@@ -24,7 +24,7 @@ bool game_init(GameState *g) {
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
     if (!db_init(&g->db, db_path)) {
-        printf("db_init failed — ensure %s exists (run: make init-db)\n", db_path);
+        printf("db_init failed -- ensure %s exists (run: make init-db)\n", db_path);
         return false;
     }
 
@@ -33,7 +33,7 @@ bool game_init(GameState *g) {
         return false;
     }
 
-    // Load NFC UID → card_id mappings (non-fatal if table is empty or missing)
+    // Load NFC UID -> card_id mappings (non-fatal if table is empty or missing)
     cards_load_nfc_map(&g->deck, &g->db);
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "NFC Card Game");
@@ -46,13 +46,22 @@ bool game_init(GameState *g) {
     // Initialize biome definitions (loads textures, builds tile defs)
     biome_init_all(g->biomeDefs);
 
+    // Initialize canonical Battlefield (authoritative world model per D-11)
+    float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
+    bf_init(&g->battlefield, g->biomeDefs,
+            BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
+            tileSize, 42, 99);         // seeds match current hardcoded values
+
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
 
-    // Initialize NFC serial ports (optional — game works with keyboard input only if unset)
+    // P2 viewport render target (flipped vertically for across-the-table perspective)
+    g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
+
+    // Initialize NFC serial ports (optional -- game works with keyboard input only if unset)
     g->nfc.fds[0] = -1;
     g->nfc.fds[1] = -1;
     const char *single_port = getenv("NFC_PORT");
@@ -61,21 +70,21 @@ bool game_init(GameState *g) {
 
     if (single_port) {
         if (!nfc_init_single(&g->nfc, single_port)) {
-            printf("[NFC] Warning: failed to open test port — NFC disabled\n");
+            printf("[NFC] Warning: failed to open test port -- NFC disabled\n");
         }
     } else if (port0 && port1) {
         if (!nfc_init(&g->nfc, port0, port1)) {
-            printf("[NFC] Warning: failed to open serial ports — NFC disabled\n");
+            printf("[NFC] Warning: failed to open serial ports -- NFC disabled\n");
         }
     } else {
-        printf("[NFC] No NFC port env vars set — NFC disabled\n");
+        printf("[NFC] No NFC port env vars set -- NFC disabled\n");
     }
 
     return true;
 }
 
 // Simulate a knight card play through the full production code path:
-// cards_find → card_action_play → play_knight → spawn_troop_from_card → troop_spawn
+// cards_find -> card_action_play -> play_knight -> spawn_troop_from_card -> troop_spawn
 static void game_test_play_knight(GameState *g, int playerIndex, int slotIndex) {
     Card *card = cards_find(&g->deck, "KNIGHT_01");
     if (!card) {
@@ -99,8 +108,9 @@ static void game_handle_nfc_events(GameState *g) {
 }
 
 static void game_handle_test_input(GameState *g) {
-    // Toggle lane debug overlay
+    // Toggle debug overlays
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
+    if (IsKeyPressed(KEY_F2)) s_showCombatDebug = !s_showCombatDebug;
 
     // Player 1: key 1
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
@@ -119,113 +129,116 @@ void game_update(GameState *g) {
     game_handle_nfc_events(g);
     game_handle_test_input(g);
 
-    // Update both players
+    // Update both players (energy regen, slot cooldowns)
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
 
-    // Update entities for both players
-    player_update_entities(&g->players[0], g, deltaTime);
-    player_update_entities(&g->players[1], g, deltaTime);
-}
+    // Update all entities from Battlefield registry
+    Battlefield *bf = &g->battlefield;
+    for (int i = 0; i < bf->entityCount; i++) {
+        entity_update(bf->entities[i], g, deltaTime);
+    }
 
-// Draw entities for a viewport. Owner's entities draw normally; opponent's
-// crossed entities appear at a mirrored position with mirrored waypoint facing.
-// TODO: Iterates all entities from both players per viewport — O(2 × totalEntities) draw calls per frame.
-// TODO: At MAX_ENTITIES=64 per player (128 entities × 2 passes = 256 iterations), this is fine now,
-// TODO: but consider a spatial cull if entity counts grow.
-static Vector2 game_map_crossed_world_point(const Player *owner, const Player *opponent, Vector2 worldPos) {
-    float lateral = (worldPos.x - owner->playArea.x) / owner->playArea.width;
-    float mirroredLateral = 1.0f - lateral;
-    float depth = owner->playArea.y - worldPos.y;
-    return (Vector2){
-        opponent->playArea.x + mirroredLateral * opponent->playArea.width,
-        opponent->playArea.y + depth
-    };
-}
-
-static void game_apply_crossed_direction(const Entity *e, const Player *owner,
-                                         const Player *opponent, AnimState *crossed) {
-    if (e->lane < 0 || e->lane >= 3) return;
-    if (e->waypointIndex < 0 || e->waypointIndex >= LANE_WAYPOINT_COUNT) return;
-
-    Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
-    Vector2 target = owner->laneWaypoints[e->lane][e->waypointIndex];
-    Vector2 mappedTarget = game_map_crossed_world_point(owner, opponent, target);
-    Vector2 diff = {
-        mappedTarget.x - mappedPos.x,
-        mappedTarget.y - mappedPos.y
-    };
-
-    pathfind_apply_direction(crossed, diff);
-}
-
-static void game_draw_entities_for_viewport(GameState *g, const Player *viewportPlayer) {
-    for (int pid = 0; pid < 2; pid++) {
-        const Player *owner = &g->players[pid];
-        const Player *opponent = &g->players[1 - pid];
-
-        for (int i = 0; i < owner->entityCount; i++) {
-            const Entity *e = owner->entities[i];
-
-            if (viewportPlayer == owner) {
-                // Draw in owner's viewport — scissor clips at the edge naturally
-                // TODO: entity_draw is still submitted when position.y < 0 (entity is off-screen in
-                // TODO: owner's space). The scissor clips it, but the draw call still reaches the GPU.
-                // TODO: Consider skipping draw when entity is clearly outside the owner's viewport bounds.
-                entity_draw(e);
-            } else if (e->position.y < owner->playArea.y) {
-                // Entity has crossed the border — draw in opponent's viewport
-                Vector2 mappedPos = game_map_crossed_world_point(owner, opponent, e->position);
-                AnimState crossed = e->anim;
-                game_apply_crossed_direction(e, owner, opponent, &crossed);
-                sprite_draw(e->sprite, &crossed, mappedPos, e->spriteScale);
-            }
+    // Sweep dead/removed entities (iterate backward for safe removal)
+    for (int i = bf->entityCount - 1; i >= 0; i--) {
+        if (bf->entities[i]->markedForRemoval) {
+            Entity *dead = bf->entities[i];
+            bf->entities[i] = bf->entities[bf->entityCount - 1];
+            bf->entityCount--;
+            entity_destroy(dead);
         }
+    }
+}
+
+// Draw all Battlefield entities visible in the current viewport.
+// Entities are in canonical world space; the active Camera2D handles
+// projection. No ownership branching, no remap. (per D-19)
+static void game_draw_canonical_entities(const Battlefield *bf) {
+    for (int i = 0; i < bf->entityCount; i++) {
+        const Entity *e = bf->entities[i];
+        if (!e || !e->alive || !e->sprite) continue;
+        entity_draw(e);
+    }
+}
+
+// Second pass: attack range circles over all sprites.
+// Colors reflect raw EntityState — nothing more.
+static void game_draw_combat_debug(const Battlefield *bf) {
+    for (int i = 0; i < bf->entityCount; i++) {
+        const Entity *e = bf->entities[i];
+        if (!e || !e->alive) continue;
+
+        Color c;
+        switch (e->state) {
+            case ESTATE_ATTACKING: c = RED;   break;
+            case ESTATE_WALKING:   c = GREEN; break;
+            case ESTATE_IDLE:      c = GRAY;  break;
+            default:               continue;  // DEAD — skip
+        }
+
+        DrawCircleLines((int)e->position.x, (int)e->position.y,
+                        e->attackRange, c);
     }
 }
 
 void game_render(GameState *g) {
     BeginDrawing();
     ClearBackground(RAYWHITE);
+    Battlefield *bf = &g->battlefield;
 
-    // Render Player 1's viewport
+    // --- Player 1 viewport (SIDE_BOTTOM) — direct to screen ---
     viewport_begin(&g->players[0]);
-    viewport_draw_tilemap(&g->players[0]);
-    game_draw_entities_for_viewport(g, &g->players[0]);
+    viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
+    viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    game_draw_canonical_entities(bf);
+    if (s_showCombatDebug) game_draw_combat_debug(bf);
     DrawText("PLAYER 1",
-             g->players[0].playArea.x + 40,
-             g->players[0].playArea.y + 40,
+             (int)(bf->territories[SIDE_BOTTOM].bounds.x + 40),
+             (int)(bf->territories[SIDE_BOTTOM].bounds.y + 40),
              40, DARKGREEN);
-    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
-    // viewport_draw_card_slots_debug(&g->players[0]);
     viewport_end();
 
-    // Render Player 2's viewport
-    viewport_begin(&g->players[1]);
-    viewport_draw_tilemap(&g->players[1]);
-    game_draw_entities_for_viewport(g, &g->players[1]);
-    DrawText("PLAYER 2",
-             g->players[1].playArea.x + 40,
-             g->players[1].playArea.y + 40,
-             40, MAROON);
-    // TODO: viewport_draw_card_slots_debug is commented out — re-enable or replace with proper card slot UI.
-    // viewport_draw_card_slots_debug(&g->players[1]);
-    viewport_end();
+    // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
+    // P2 uses rot=+90 (same as P1) for correct seam placement.
+    // The RT is flipped vertically when composited to reverse the world-X
+    // orientation, giving P2 the opposite (across-the-table) perspective.
+    BeginTextureMode(g->p2RT);
+    ClearBackground(RAYWHITE);
+    // Render with P2's camera but into the RT (no scissor needed — RT is viewport-sized).
+    // Override camera offset to center of RT (480,540) instead of screen position (1440,540).
+    Camera2D p2CamRT = g->players[1].camera;
+    p2CamRT.offset = (Vector2){ g->halfWidth / 2.0f, SCREEN_HEIGHT / 2.0f };
+    BeginMode2D(p2CamRT);
+    viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
+    viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    game_draw_canonical_entities(bf);
+    if (s_showCombatDebug) game_draw_combat_debug(bf);
+    EndMode2D();
+    EndTextureMode();
 
-    // Debug lane overlay — screen space, both players' paths overlap
+    // Composite P2 RT to right half of screen, flipped vertically.
+    // Negative height flips Y (OpenGL convention), and we also flip the
+    // source rect height to flip the image vertically on screen, which
+    // reverses the world-X → screen-Y mapping for across-the-table.
+    DrawTexturePro(
+        g->p2RT.texture,
+        (Rectangle){ 0, 0, (float)g->halfWidth, -(float)SCREEN_HEIGHT },   // src: flip Y (OpenGL)
+        (Rectangle){ (float)g->halfWidth, 0, (float)g->halfWidth, (float)SCREEN_HEIGHT },  // dst: right half
+        (Vector2){ 0, 0 },
+        0.0f,
+        WHITE
+    );
+
+    // Debug lane overlay
     if (s_showLaneDebug) {
-        debug_draw_lane_paths_screen(&g->players[0], g->players[0].camera);
-        debug_draw_lane_paths_screen(&g->players[1], g->players[1].camera);
+        debug_draw_lane_paths_screen(bf, SIDE_BOTTOM, g->players[0].camera);
+        debug_draw_lane_paths_screen(bf, SIDE_TOP, g->players[1].camera);
     }
 
     // HUD — screen space, drawn after all viewports
+    ui_draw_viewport_label("PLAYER 2", SCREEN_WIDTH / 2, true, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
-
-    // TODO: No visual divider line is drawn between Player 1 and Player 2 viewports. Add a separator.
-    // TODO: No in-game card UI — cards are loaded and used for spawning but never rendered to the screen.
-    // TODO: No game phase/state machine — the game boots directly into the play loop. Add a GamePhase
-    // TODO: enum and dispatch update/render through pregame → playing → postgame for NFC integration.
 
     EndDrawing();
 }
@@ -233,9 +246,14 @@ void game_render(GameState *g) {
 void game_cleanup(GameState *g) {
     nfc_shutdown(&g->nfc);
 
-    // Cleanup players (frees tilemaps)
+    // Cleanup players (no resources to free -- Battlefield owns tilemaps and entities)
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
+
+    UnloadRenderTexture(g->p2RT);
+
+    // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
+    bf_cleanup(&g->battlefield);
 
     sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);
