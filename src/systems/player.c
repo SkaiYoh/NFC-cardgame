@@ -6,6 +6,7 @@
 #include "energy.h"
 #include "../logic/pathfinding.h"
 #include "../entities/entities.h"
+#include "../core/battlefield.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -101,6 +102,7 @@ void player_init_card_slots(Player *p) {
 }
 
 // Updates then sweeps dead entities via swap-with-last.
+// Removes from both Player (adapter) and Battlefield (authoritative) registries.
 void player_update_entities(Player *p, GameState *gs, float deltaTime) {
     // Update all entities
     for (int i = 0; i < p->entityCount; i++) {
@@ -111,7 +113,9 @@ void player_update_entities(Player *p, GameState *gs, float deltaTime) {
     for (int i = p->entityCount - 1; i >= 0; i--) {
         if (p->entities[i]->markedForRemoval) {
             Entity *dead = p->entities[i];
-            // Swap with last element
+            // Remove from Battlefield authoritative registry
+            bf_remove_entity(&gs->battlefield, dead->id);
+            // Swap with last element in Player adapter array
             p->entities[i] = p->entities[p->entityCount - 1];
             p->entityCount--;
             entity_destroy(dead);
@@ -168,6 +172,7 @@ void player_add_entity(Player *p, Entity *entity) {
 // TODO: player_remove_entity destroys the entity via entity_destroy. If the same entity is also
 // TODO: marked markedForRemoval = true and swept by player_update_entities, entity_destroy will be
 // TODO: called twice on the same pointer — a double-free. Do not call both paths for one entity.
+// NOTE: Does not remove from Battlefield -- caller must also call bf_remove_entity if needed.
 void player_remove_entity(Player *p, int entityID) {
     for (int i = 0; i < p->entityCount; i++) {
         if (p->entities[i]->id == entityID) {
