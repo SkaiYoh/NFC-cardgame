@@ -11,10 +11,10 @@
 typedef struct Battlefield Battlefield;
 
 // Initialize split-screen viewports for both players
-void viewport_init_split_screen(GameState * gs);
+void viewport_init_split_screen(GameState *gs);
 
 // Begin rendering for a player's viewport (sets scissor mode and camera)
-void viewport_begin(Player * p);
+void viewport_begin(Player *p);
 
 // End rendering for a player's viewport
 void viewport_end(void);
@@ -28,12 +28,8 @@ Vector2 viewport_screen_to_world(Player *p, Vector2 screenPos);
 // Draw tilemap for a battlefield territory
 void viewport_draw_battlefield_tilemap(const Battlefield *bf, BattleSide side);
 
-// Draw the tilemap for a player (uses player's per-biome tileDefs)
-// [ADAPTER] kept during transition; use viewport_draw_battlefield_tilemap instead
-void viewport_draw_tilemap(Player * p);
-
 // Draw debug info for card slots
-void viewport_draw_card_slots_debug(Player * p);
+void viewport_draw_card_slots_debug(Player *p);
 
 // Debug: draw lane waypoint paths in screen space from Battlefield data.
 // Call outside viewports.

@@ -8,6 +8,7 @@
 #include "../systems/player.h"
 #include "../systems/energy.h"
 #include "../core/battlefield.h"
+#include "../core/config.h"
 #include "../../lib/cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -84,9 +85,10 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     TroopData data = troop_create_data_from_card(card);
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
+        CanonicalPos spawnCheck = { e->position };
+        BF_ASSERT_IN_BOUNDS(spawnCheck, BOARD_WIDTH, BOARD_HEIGHT);
         e->lane = canonicalLane;  // canonical lane index (per D-07)
         e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
-        player_add_entity(player, e);
         bf_add_entity(&state->battlefield, e);
     }
 }

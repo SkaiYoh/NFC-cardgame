@@ -3,6 +3,7 @@
 //
 
 #include "combat.h"
+#include "../core/battlefield.h"
 #include "../core/battlefield_math.h"
 #include "../entities/entities.h"
 #include <math.h>
@@ -25,16 +26,16 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
 Entity *combat_find_target(Entity *attacker, GameState *gs) {
     if (!attacker || !gs) return NULL;
 
-    int enemyID = 1 - attacker->ownerID;
-    Player *enemy = &gs->players[enemyID];
+    Battlefield *bf = &gs->battlefield;
 
     Entity *bestTarget = NULL;
     float bestDist = FLT_MAX;
     CanonicalPos attackerPos = { attacker->position };
 
-    for (int i = 0; i < enemy->entityCount; i++) {
-        Entity *candidate = enemy->entities[i];
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *candidate = bf->entities[i];
         if (!candidate->alive || candidate->markedForRemoval) continue;
+        if (candidate->ownerID == attacker->ownerID) continue; // skip friendlies
 
         // Direct canonical distance -- no coordinate mapping needed
         CanonicalPos candidatePos = { candidate->position };
@@ -69,10 +70,7 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
         }
     }
 
-    // Fall back to enemy base if no entities found
-    if (!bestTarget && enemy->base && enemy->base->alive && !enemy->base->markedForRemoval) {
-        bestTarget = enemy->base;
-    }
+    // TODO: base fallback needs rework when bases are in Battlefield entity registry
 
     return bestTarget;
 }

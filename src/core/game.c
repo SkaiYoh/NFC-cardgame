@@ -23,7 +23,7 @@ bool game_init(GameState *g) {
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
     if (!db_init(&g->db, db_path)) {
-        printf("db_init failed — ensure %s exists (run: make init-db)\n", db_path);
+        printf("db_init failed -- ensure %s exists (run: make init-db)\n", db_path);
         return false;
     }
 
@@ -124,13 +124,25 @@ void game_update(GameState *g) {
     game_handle_nfc_events(g);
     game_handle_test_input(g);
 
-    // Update both players
+    // Update both players (energy regen, slot cooldowns)
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
 
-    // Update entities for both players
-    player_update_entities(&g->players[0], g, deltaTime);
-    player_update_entities(&g->players[1], g, deltaTime);
+    // Update all entities from Battlefield registry
+    Battlefield *bf = &g->battlefield;
+    for (int i = 0; i < bf->entityCount; i++) {
+        entity_update(bf->entities[i], g, deltaTime);
+    }
+
+    // Sweep dead/removed entities (iterate backward for safe removal)
+    for (int i = bf->entityCount - 1; i >= 0; i--) {
+        if (bf->entities[i]->markedForRemoval) {
+            Entity *dead = bf->entities[i];
+            bf->entities[i] = bf->entities[bf->entityCount - 1];
+            bf->entityCount--;
+            entity_destroy(dead);
+        }
+    }
 }
 
 // Draw all Battlefield entities visible in the current viewport.
@@ -188,7 +200,7 @@ void game_render(GameState *g) {
 void game_cleanup(GameState *g) {
     nfc_shutdown(&g->nfc);
 
-    // Cleanup players (frees tilemaps)
+    // Cleanup players (no resources to free -- Battlefield owns tilemaps and entities)
     player_cleanup(&g->players[0]);
     player_cleanup(&g->players[1]);
 

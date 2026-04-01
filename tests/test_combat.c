@@ -26,14 +26,13 @@
 #define NFC_CARDGAME_TYPES_H
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_ENTITIES_H
+#define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
-#define TILE_COUNT 32
-#define MAX_DETAIL_DEFS 64
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -68,6 +67,10 @@ typedef struct Entity Entity;
 typedef struct Player Player;
 typedef struct GameState GameState;
 
+/* ---- Battlefield math stubs (must precede Player for BattleSide field) ---- */
+typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
+typedef struct { Vector2 v; } CanonicalPos;
+
 struct Entity {
     int id;
     EntityType type;
@@ -92,41 +95,20 @@ struct Entity {
     bool markedForRemoval;
 };
 
-/* Player stub -- padded to match types.h layout */
-typedef struct { int width; int height; int tileSize; int *cells; int cellCount; void *texture; } TileMap_stub;
-typedef struct { Rectangle src; } TileDef_stub;
+/* Player stub -- lean struct matching Plan 11-05 types.h */
 typedef struct { float x; float y; float rotation; float zoom; } Camera2D_stub;
-
-/* BiomeType/BiomeDef stubs -- minimal to match field layout */
-typedef int BiomeType;
-typedef struct { int dummy; } BiomeDef_stub;
 
 struct Player {
     int id;
-    Rectangle playArea;
+    BattleSide side;
     Rectangle screenArea;
     Camera2D_stub camera;
     float cameraRotation;
-    TileMap_stub tilemap;
-    BiomeType biome;
-    const BiomeDef_stub *biomeDef;
-    TileDef_stub tileDefs[TILE_COUNT];
-    int tileDefCount;
-    TileDef_stub detailDefs[MAX_DETAIL_DEFS];
-    int detailDefCount;
     CardSlot slots[NUM_CARD_SLOTS];
-    Entity *entities[MAX_ENTITIES];
-    int entityCount;
     float energy;
     float maxEnergy;
     float energyRegenRate;
-    Entity *base;
-    Vector2 laneWaypoints[3][LANE_WAYPOINT_COUNT];
 };
-
-/* ---- Battlefield math stubs (canonical coordinate types) ---- */
-typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
-typedef struct { Vector2 v; } CanonicalPos;
 
 float bf_distance(CanonicalPos a, CanonicalPos b) {
     float dx = a.v.x - b.v.x;
@@ -134,20 +116,30 @@ float bf_distance(CanonicalPos a, CanonicalPos b) {
     return sqrtf(dx * dx + dy * dy);
 }
 
-/* GameState stub -- only players needed for combat */
+/* GameState stub -- only players and battlefield needed for combat */
 #define BIOME_COUNT 2
 typedef struct { int dummy; } SpriteAtlas_stub;
 typedef struct { int dummy; } DB_stub;
 typedef struct { int dummy; } Deck_stub;
 typedef struct { int dummy; } CardAtlas_stub;
+typedef struct { int dummy; } BiomeDef_stub;
 typedef struct { int fds[2]; } NFCReader_stub;
 
-/* Battlefield stub -- combat no longer accesses Battlefield directly but
- * GameState must have the right layout for the `#include "combat.c"` to work. */
-typedef struct {
+/* Battlefield stub -- combat now iterates bf->entities[] for targeting.
+ * Must have entities array and entityCount to match battlefield.h layout. */
+typedef struct { int dummy; } Territory_stub;
+
+typedef struct Battlefield {
     float boardWidth, boardHeight, seamY;
-    /* Remaining fields not accessed by combat -- only need to be present for layout */
-} Battlefield_stub;
+    Territory_stub territories[2];
+    /* Canonical lane waypoints -- not accessed by combat */
+    char _waypoints_pad[2 * 3 * LANE_WAYPOINT_COUNT * sizeof(CanonicalPos)];
+    /* Slot spawn anchors -- not accessed by combat */
+    char _spawn_pad[2 * NUM_CARD_SLOTS * sizeof(CanonicalPos)];
+    /* Entity registry -- used by combat_find_target */
+    Entity *entities[MAX_ENTITIES * 2];
+    int entityCount;
+} Battlefield;
 
 struct GameState {
     DB_stub db;
@@ -155,11 +147,9 @@ struct GameState {
     CardAtlas_stub cardAtlas;
     Player players[2];
     BiomeDef_stub biomeDefs[BIOME_COUNT];
-    Battlefield_stub battlefield;
+    Battlefield battlefield;
     SpriteAtlas_stub spriteAtlas;
     int halfWidth;
-    /* seamRT placeholder for RenderTexture2D (4 ints: id, texture.id, depth.id, format -- 16 bytes) */
-    char _seamRT_pad[16];
     NFCReader_stub nfc;
 };
 
@@ -213,19 +203,25 @@ static GameState make_game_state(void) {
     /* All entities now use canonical coordinates (0..1080 x, 0..1920 y).
      * P1 (SIDE_BOTTOM) territory: y=960..1920.
      * P2 (SIDE_TOP) territory: y=0..960.
-     * No more overlapping play areas. */
+     * Entities are in the Battlefield registry, not on Player. */
     gs.players[0].id = 0;
-    gs.players[0].playArea = (Rectangle){0, 960, 1080, 960};
-    gs.players[0].entityCount = 0;
-    gs.players[0].base = NULL;
+    gs.players[0].side = SIDE_BOTTOM;
 
     gs.players[1].id = 1;
-    gs.players[1].playArea = (Rectangle){0, 0, 1080, 960};
-    gs.players[1].entityCount = 0;
-    gs.players[1].base = NULL;
+    gs.players[1].side = SIDE_TOP;
+
+    gs.battlefield.boardWidth = 1080;
+    gs.battlefield.boardHeight = 1920;
+    gs.battlefield.seamY = 960;
+    gs.battlefield.entityCount = 0;
 
     gs.halfWidth = 960;
     return gs;
+}
+
+/* Helper: add entity to Battlefield registry for targeting */
+static void bf_test_add_entity(GameState *gs, Entity *e) {
+    gs->battlefield.entities[gs->battlefield.entityCount++] = e;
 }
 
 /* ---- Tests ---- */
@@ -286,9 +282,8 @@ static void test_find_target_nearest(void) {
     Entity far_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
     Entity near_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
 
-    gs.players[1].entities[0] = &far_e;
-    gs.players[1].entities[1] = &near_e;
-    gs.players[1].entityCount = 2;
+    bf_test_add_entity(&gs, &far_e);
+    bf_test_add_entity(&gs, &near_e);
 
     Entity *target = combat_find_target(&attacker, &gs);
     assert(target == &near_e);
@@ -303,9 +298,8 @@ static void test_find_target_skips_dead(void) {
 
     Entity alive_e = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
 
-    gs.players[1].entities[0] = &dead;
-    gs.players[1].entities[1] = &alive_e;
-    gs.players[1].entityCount = 2;
+    bf_test_add_entity(&gs, &dead);
+    bf_test_add_entity(&gs, &alive_e);
 
     Entity *target = combat_find_target(&attacker, &gs);
     assert(target == &alive_e);
@@ -320,9 +314,8 @@ static void test_find_target_skips_marked(void) {
 
     Entity valid = make_entity(1, ENTITY_TROOP, (Vector2){540, 300});
 
-    gs.players[1].entities[0] = &marked;
-    gs.players[1].entities[1] = &valid;
-    gs.players[1].entityCount = 2;
+    bf_test_add_entity(&gs, &marked);
+    bf_test_add_entity(&gs, &valid);
 
     Entity *target = combat_find_target(&attacker, &gs);
     assert(target == &valid);
@@ -337,9 +330,8 @@ static void test_find_target_building_priority(void) {
     Entity troop = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
     Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 300});
 
-    gs.players[1].entities[0] = &troop;
-    gs.players[1].entities[1] = &building;
-    gs.players[1].entityCount = 2;
+    bf_test_add_entity(&gs, &troop);
+    bf_test_add_entity(&gs, &building);
 
     Entity *target = combat_find_target(&attacker, &gs);
     assert(target == &building);
@@ -349,23 +341,22 @@ static void test_find_target_returns_null_no_enemies(void) {
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
-    gs.players[1].entityCount = 0;
-    gs.players[1].base = NULL;
-
+    /* No entities in Battlefield registry */
     Entity *target = combat_find_target(&attacker, &gs);
     assert(target == NULL);
 }
 
-static void test_find_target_falls_back_to_base(void) {
+static void test_find_target_skips_friendly(void) {
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
 
-    Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){540, 100});
-    gs.players[1].entityCount = 0;
-    gs.players[1].base = &base;
+    /* Only friendly entities in the registry -- should return NULL */
+    Entity friendly = make_entity(0, ENTITY_TROOP, (Vector2){540, 1200});
+
+    bf_test_add_entity(&gs, &friendly);
 
     Entity *target = combat_find_target(&attacker, &gs);
-    assert(target == &base);
+    assert(target == NULL);
 }
 
 static void test_resolve_deals_damage(void) {
@@ -499,7 +490,7 @@ int main(void) {
     RUN_TEST(test_find_target_skips_marked);
     RUN_TEST(test_find_target_building_priority);
     RUN_TEST(test_find_target_returns_null_no_enemies);
-    RUN_TEST(test_find_target_falls_back_to_base);
+    RUN_TEST(test_find_target_skips_friendly);
     RUN_TEST(test_resolve_deals_damage);
     RUN_TEST(test_resolve_respects_cooldown);
     RUN_TEST(test_resolve_kills_at_zero_hp);

@@ -11,33 +11,13 @@ void viewport_init_split_screen(GameState *gs) {
     gs->halfWidth = SCREEN_WIDTH / 2;
     Battlefield *bf = &gs->battlefield;
 
-    float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
+    Rectangle p1Screen = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
+    Rectangle p2Screen = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
 
-    // P1 (SIDE_BOTTOM): left half of screen
-    // Camera targets bottom territory center in canonical coords
-    Territory *bottomTerritory = bf_territory_for_side(bf, SIDE_BOTTOM);
-    Rectangle p1ScreenArea = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
+    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, 90.0f, bf);
+    player_init(&gs->players[1], 1, SIDE_TOP, p2Screen, -90.0f, bf);
 
-    // P2 (SIDE_TOP): right half of screen
-    // Camera targets top territory center in canonical coords
-    Territory *topTerritory = bf_territory_for_side(bf, SIDE_TOP);
-    Rectangle p2ScreenArea = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
-
-    // Player init still needed for camera, energy, card slots, etc.
-    // playArea is set to the canonical territory bounds for the adapter period.
-    // The camera target will be the center of the territory bounds.
-    player_init(&gs->players[0], 0,
-                bottomTerritory->bounds, p1ScreenArea,
-                90.0f,
-                bottomTerritory->biome, bottomTerritory->biomeDef,
-                tileSize, 42);
-    player_init(&gs->players[1], 1,
-                topTerritory->bounds, p2ScreenArea,
-                -90.0f,
-                topTerritory->biome, topTerritory->biomeDef,
-                tileSize, 99);
-
-    printf("Split-screen viewports initialized (canonical territories)\n");
+    printf("Split-screen viewports initialized (canonical)\n");
 }
 
 void viewport_begin(Player *p) {
@@ -68,13 +48,6 @@ void viewport_draw_battlefield_tilemap(const Battlefield *bf, BattleSide side) {
     tilemap_draw(&t->tilemap, t->tileDefs);
     tilemap_draw_details(&t->tilemap, t->detailDefs);
     tilemap_draw_biome_layers(&t->tilemap, t->biomeDef);
-}
-
-// [ADAPTER] kept during transition; use viewport_draw_battlefield_tilemap instead
-void viewport_draw_tilemap(Player *p) {
-    tilemap_draw(&p->tilemap, p->tileDefs);
-    tilemap_draw_details(&p->tilemap, p->detailDefs);
-    tilemap_draw_biome_layers(&p->tilemap, p->biomeDef);
 }
 
 void viewport_draw_card_slots_debug(Player *p) {

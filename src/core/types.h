@@ -78,42 +78,22 @@ typedef struct {
 } CardSlot;
 
 // Player state -- seat/view/input/resource owner (per D-12)
-// NOTE: Fields marked [ADAPTER] are kept in sync from Battlefield during
-// Plans 02-04 and will be removed in Plan 05. Battlefield is authoritative
-// for geometry; these are for backward compatibility with existing code.
+// Battlefield owns all geometry, entities, and lane waypoints.
+// Player retains only identity, camera/viewport, card slots, and energy.
 struct Player {
-    int id; // 0 or 1
-    Rectangle playArea; // [ADAPTER] World space play area
-    Rectangle screenArea; // Screen space viewport
-    Camera2D camera; // Camera for this player's view
-    float cameraRotation; // 90 or -90 for split screen orientation
-
-    // Tilemap (per-player biome tile definitions)
-    TileMap tilemap;
-    BiomeType biome;
-    const BiomeDef *biomeDef; // pointer into GameState::biomeDefs[]
-    TileDef tileDefs[TILE_COUNT];
-    int tileDefCount;
-    TileDef detailDefs[MAX_DETAIL_DEFS];
-    int detailDefCount;
+    int id;                    // 0 or 1
+    BattleSide side;           // SIDE_BOTTOM or SIDE_TOP (per D-12)
+    Rectangle screenArea;      // Screen space viewport
+    Camera2D camera;           // Camera for this player's view
+    float cameraRotation;      // 90 or -90 for split screen orientation
 
     // Card slots (3 NFC readers per player)
     CardSlot slots[NUM_CARD_SLOTS];
 
-    // Entities (troops, buildings) - will be expanded in Phase 7
-    Entity *entities[MAX_ENTITIES];
-    int entityCount;
-
-    // Energy system - will be expanded in Phase 5
+    // Energy system
     float energy;
     float maxEnergy;
     float energyRegenRate;
-
-    // Base building reference (for win condition)
-    Entity *base;
-
-    // Pre-computed lane waypoints (generated once at init)
-    Vector2 laneWaypoints[3][LANE_WAYPOINT_COUNT];
 };
 
 // Game state
