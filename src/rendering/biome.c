@@ -84,7 +84,6 @@ static void biome_define_undead(BiomeDef *b) {
     {
         int d = 0;
         b->detailDefCount = d;
-#undef R
     }
     b->detailDensity = 20;
 
@@ -103,7 +102,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->defSources[d++] = R(112, 96, 32, 32);
         l->defSources[d++] = R(144, 64, 64, 32);
         l->defCount = d;
-#undef R
         static const int cells_0[][3] = {
             {0, 3, 0},
             {0, 15, 0},
@@ -159,7 +157,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->defSources[d++] = R(160, 136, 16, 16);
         l->defSources[d++] = R(104, 128, 16, 16);
         l->defCount = d;
-#undef R
         static const int cells_1[][3] = {
             {2, 15, 0},
             {3, 8, 8},
@@ -200,7 +197,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->defSources[d++] = R(160, 32, 16, 16);
         l->defSources[d++] = R(176, 32, 16, 16);
         l->defCount = d;
-#undef R
         static const int cells_2[][3] = {
             {1, 3, 6},
             {1, 11, 6},
@@ -251,7 +247,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->defSources[d++] = R(448, 144, 8, 16);
         l->defSources[d++] = R(464, 128, 24, 16);
         l->defCount = d;
-#undef R
         static const int cells_3[][3] = {
             {0, 8, 5},
             {0, 16, 0},
@@ -311,7 +306,6 @@ static void biome_define_undead(BiomeDef *b) {
         l->defSources[d++] = R(384, 560, 16, 16);
         l->defSources[d++] = R(368, 560, 16, 16);
         l->defCount = d;
-#undef R
         static const int cells_4[][3] = {
             {0, 4, 5},
             {0, 5, 4},
