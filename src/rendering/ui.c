@@ -27,6 +27,24 @@ void ui_draw_energy_bar(Player *p, int screenX, int viewportWidth) {
     DrawText(label, x + (barW - textW) / 2, y + 3, 14, WHITE);
 }
 
+void ui_draw_viewport_label(const char *label, int screenX, bool seatOnRight,
+                            Color color) {
+    Font font = GetFontDefault();
+    const int fontSize = 40;
+    const float spacing = 2.0f;
+    const int padding = 40;
+
+    if (!seatOnRight) {
+        DrawText(label, screenX + padding, padding, fontSize, color);
+        return;
+    }
+
+    DrawTextPro(font, label,
+                (Vector2){ (float)(screenX + padding), (float)(SCREEN_HEIGHT - padding) },
+                (Vector2){ 0.0f, 0.0f },
+                270.0f, (float)fontSize, spacing, color);
+}
+
 //   TODO: ui_draw_card_hand()   — render the active card hand above each viewport
 //   TODO:  ui_draw_health()      — show base HP for each player
 //   TODO: ui_draw_game_over()   — display winner text when win_trigger() fires

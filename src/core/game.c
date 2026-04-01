@@ -213,10 +213,6 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
     if (s_showCombatDebug) game_draw_combat_debug(bf);
-    DrawText("PLAYER 2",
-             (int)(bf->territories[SIDE_TOP].bounds.x + 40),
-             (int)(bf->territories[SIDE_TOP].bounds.y + 40),
-             40, MAROON);
     EndMode2D();
     EndTextureMode();
 
@@ -240,6 +236,7 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
+    ui_draw_viewport_label("PLAYER 2", SCREEN_WIDTH / 2, true, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
