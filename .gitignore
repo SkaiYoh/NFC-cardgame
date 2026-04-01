@@ -1,6 +1,8 @@
-*.txt
 *.aseprite
+.idea/
 cardgame
 card_preview
 import.json
 biome_preview
+test_pathfinding
+test_battlefield_math
