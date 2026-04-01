@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # --- Source file groups ---
-set(SRC_CORE       src/core/game.c)
+set(SRC_CORE       src/core/game.c src/core/battlefield.c src/core/battlefield_math.c)
 set(SRC_DATA       src/data/db.c src/data/cards.c)
 set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/tilemap_renderer.c

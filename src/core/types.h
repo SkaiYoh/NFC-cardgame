@@ -69,10 +69,6 @@ struct Entity {
     bool markedForRemoval;
 };
 
-// Constants
-#define NUM_CARD_SLOTS 3
-#define MAX_ENTITIES 64
-
 // Card slot - represents a physical NFC reader position
 typedef struct {
     Vector2 worldPos; // Spawn position in world coordinates
