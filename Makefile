@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -58,10 +58,14 @@ test_combat: tests/test_combat.c src/logic/combat.c
 test_battlefield_math: tests/test_battlefield_math.c src/core/battlefield_math.c
 	$(CC) $(CFLAGS) tests/test_battlefield_math.c -o test_battlefield_math -lm
 
-test: test_pathfinding test_combat test_battlefield_math
+test_battlefield: tests/test_battlefield.c src/core/battlefield.c src/core/battlefield_math.c
+	$(CC) $(CFLAGS) tests/test_battlefield.c -o test_battlefield -lm
+
+test: test_pathfinding test_combat test_battlefield_math test_battlefield
 	./test_pathfinding
 	./test_combat
 	./test_battlefield_math
+	./test_battlefield
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield
