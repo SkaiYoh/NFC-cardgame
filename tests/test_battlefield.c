@@ -319,31 +319,23 @@ static void test_bf_lanes_coincide_at_seam(void) {
  * camera configurations used by the game.  This catches the P2 camera
  * orientation bug where the seam landed on the wrong edge. */
 static void test_bf_seam_screen_placement(void) {
-    // P1 camera: rot=-90, target=(540,1440), offset=(480,540)
-    Camera2D p1cam = {0};
-    p1cam.target = (Vector2){540.0f, 1440.0f};
-    p1cam.offset = (Vector2){480.0f, 540.0f};
-    p1cam.rotation = -90.0f;
-    p1cam.zoom = 1.0f;
-
+    // P1 camera: rot=+90, target=(540,1440), offset=(480,540)
     // P2 camera: rot=-90, target=(540,480), offset=(1440,540)
-    Camera2D p2cam = {0};
-    p2cam.target = (Vector2){540.0f, 480.0f};
-    p2cam.offset = (Vector2){1440.0f, 540.0f};
-    p2cam.rotation = -90.0f;
-    p2cam.zoom = 1.0f;
-
-    // Seam point at center of board
+    // Opposite rotations for across-the-table perspective.
     Vector2 seamPoint = {540.0f, 960.0f};
 
-    // GetWorldToScreen2D requires Raylib window — compute manually instead.
-    // For rot=-90: screen_x = offset_x - (wy - target_y)
-    float p1_sx = p1cam.offset.x - (seamPoint.y - p1cam.target.y);
-    float p2_sx = p2cam.offset.x - (seamPoint.y - p2cam.target.y);
+    // P1 (rot=+90): screen_x = offset_x + (wy - target_y)
+    float p1_sx = 480.0f + (seamPoint.y - 1440.0f);
+    // P2 (rot=-90): screen_x = offset_x - (wy - target_y)
+    float p2_sx = 1440.0f - (seamPoint.y - 480.0f);
 
-    // Both should map seam to screen x=960 (the inner split edge)
-    assert(approx_eq(p1_sx, 960.0f, 1.0f));
+    // P1 sees seam at x=0 (outer edge of P1 viewport)
+    assert(approx_eq(p1_sx, 0.0f, 1.0f));
+    // P2 sees seam at x=960 (inner edge of P2 viewport / center of screen)
     assert(approx_eq(p2_sx, 960.0f, 1.0f));
+
+    // Entity at y=960 is visible in BOTH viewports (at their respective edges)
+    // No gap: P1 scissor includes x=0, P2 scissor includes x=960
 
     printf("  PASS: test_bf_seam_screen_placement\n");
 }

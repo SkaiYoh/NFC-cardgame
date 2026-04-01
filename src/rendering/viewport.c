@@ -14,12 +14,19 @@ void viewport_init_split_screen(GameState *gs) {
     Rectangle p1Screen = { 0, 0, gs->halfWidth, SCREEN_HEIGHT };
     Rectangle p2Screen = { gs->halfWidth, 0, gs->halfWidth, SCREEN_HEIGHT };
 
-    // Both cameras use rot=-90 so that higher world Y maps to lower screen X.
-    // This places the seam (y=960) at the inner screen edge (x=960) for both.
-    // "Facing each other" is handled by sprite directions, not camera rotation.
-    // P1 target = center of bottom territory (540, 1440)
-    // P2 target = center of top territory (540, 480)
-    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, -90.0f, bf);
+    // Opposite rotations (+90/-90) give across-the-table perspective.
+    // Each camera targets the center of its territory so that 960 world units
+    // fill 960 screen pixels exactly.
+    //
+    // P1 (rot=+90): bottom territory y=960..1920 fills screen 0..960
+    //   y=1920 (base) → x=960 (center seam), y=960 (seam) → x=0 (outer)
+    // P2 (rot=-90): top territory y=0..960 fills screen 960..1920
+    //   y=0 (base) → x=1920 (outer), y=960 (seam) → x=960 (center seam)
+    //
+    // Entities at the seam (y≈960) are visible in BOTH viewports — each
+    // scissor clips its half. Per D-20, pixel-identical seam continuity
+    // is not required.
+    player_init(&gs->players[0], 0, SIDE_BOTTOM, p1Screen, 90.0f, bf);
     player_init(&gs->players[1], 1, SIDE_TOP, p2Screen, -90.0f, bf);
 
     printf("Split-screen viewports initialized (canonical)\n");
