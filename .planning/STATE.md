@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Replanned Phase 11 around full canonical Battlefield rewrite
-last_updated: "2026-04-01T16:56:03.061Z"
-last_activity: 2026-04-01 -- Phase 11 execution started
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-04-01T17:05:22.710Z"
+last_activity: 2026-04-01
 progress:
   total_phases: 11
   completed_phases: 1
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 11 (canonical-single-world-space-refactor) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 11
-Last activity: 2026-04-01 -- Phase 11 execution started
+Plan: 3 of 5
+Status: Ready to execute
+Last activity: 2026-04-01
 
 Progress: [██░░░░░░░░] 20%
 
@@ -56,6 +56,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 01 P00 | 4min | 2 tasks | 2 files |
 | Phase 01 P02 | 2min | 2 tasks | 4 files |
 | Phase 11 P01 | 3min | 2 tasks | 7 files |
+| Phase 11 P02 | 5min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Do not spend more work shipping a dual-space seam patch; Phase 11 deliverable is the full canonical Battlefield rewrite
 - [Phase 11]: Exact pixel continuity at screen x=960 is not a valid success criterion under +90/-90 opposite cameras; success criterion is correct independent views with no remap-driven disappearance
 - [Phase 11]: `seamRT`, crossed remap rendering, and duplicate cross-space math are transitional code and must be deleted before Phase 11 is complete
+- [Phase 11]: NUM_CARD_SLOTS/MAX_ENTITIES moved to config.h to break battlefield.h <-> types.h circular dependency
+- [Phase 11]: battlefield_math.c added to SRC_CORE since battlefield.c links against it at compile time
+- [Phase 11]: VECTOR2_DEFINED guard set explicitly in battlefield.h before battlefield_math.h include to prevent Raylib conflict
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:30:00Z
-Stopped at: Replanned Phase 11 around full canonical Battlefield rewrite
+Last session: 2026-04-01T17:05:22.709Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: .planning/phases/11-canonical-single-world-space-refactor-extract-battlefield-math-fix-seam-rendering-introduce-battlefield-model-migrate-simulation-and-rendering-to-canonical-coordinates/11-01-SUMMARY.md

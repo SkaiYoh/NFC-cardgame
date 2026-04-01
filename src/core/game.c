@@ -4,6 +4,7 @@
 
 #include "game.h"
 #include "config.h"
+#include "battlefield.h"
 #include "../logic/card_effects.h"
 #include "../logic/pathfinding.h"
 #include "../rendering/viewport.h"
@@ -45,6 +46,12 @@ bool game_init(GameState *g) {
 
     // Initialize biome definitions (loads textures, builds tile defs)
     biome_init_all(g->biomeDefs);
+
+    // Initialize canonical Battlefield (authoritative world model per D-11)
+    float tileSize = DEFAULT_TILE_SIZE * DEFAULT_TILE_SCALE;
+    bf_init(&g->battlefield, g->biomeDefs,
+            BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
+            tileSize, 42, 99);         // seeds match current hardcoded values
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
@@ -293,6 +300,10 @@ void game_cleanup(GameState *g) {
     player_cleanup(&g->players[1]);
 
     UnloadRenderTexture(g->seamRT);
+
+    // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
+    bf_cleanup(&g->battlefield);
+
     sprite_atlas_free(&g->spriteAtlas);
     card_atlas_free(&g->cardAtlas);
     biome_free_all(g->biomeDefs);

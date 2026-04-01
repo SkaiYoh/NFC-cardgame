@@ -14,6 +14,7 @@
 #include "../rendering/sprite_renderer.h"
 #include "../rendering/biome.h"
 #include "../hardware/nfc_reader.h"
+#include "battlefield.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -69,10 +70,6 @@ struct Entity {
     bool markedForRemoval;
 };
 
-// Constants
-#define NUM_CARD_SLOTS 3
-#define MAX_ENTITIES 64
-
 // Card slot - represents a physical NFC reader position
 typedef struct {
     Vector2 worldPos; // Spawn position in world coordinates
@@ -80,10 +77,13 @@ typedef struct {
     float cooldownTimer; // Cooldown before slot can be used again
 } CardSlot;
 
-// Player state
+// Player state -- seat/view/input/resource owner (per D-12)
+// NOTE: Fields marked [ADAPTER] are kept in sync from Battlefield during
+// Plans 02-04 and will be removed in Plan 05. Battlefield is authoritative
+// for geometry; these are for backward compatibility with existing code.
 struct Player {
     int id; // 0 or 1
-    Rectangle playArea; // World space play area
+    Rectangle playArea; // [ADAPTER] World space play area
     Rectangle screenArea; // Screen space viewport
     Camera2D camera; // Camera for this player's view
     float cameraRotation; // 90 or -90 for split screen orientation
@@ -128,6 +128,9 @@ struct GameState {
 
     // Biome definitions (shared textures, per-biome tile mappings)
     BiomeDef biomeDefs[BIOME_COUNT];
+
+    // Canonical battlefield -- authoritative world model (per D-11)
+    Battlefield battlefield;
 
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
