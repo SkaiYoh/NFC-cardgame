@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-04-01T17:17:33.797Z"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-04-01T17:25:23.171Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 7
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 11 (canonical-single-world-space-refactor) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-04-01
 
@@ -58,6 +58,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 11 P01 | 3min | 2 tasks | 7 files |
 | Phase 11 P02 | 5min | 2 tasks | 9 files |
 | Phase 11 P03 | 6min | 2 tasks | 9 files |
+| Phase 11 P04 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Pathfinding reads Battlefield canonical waypoints via bf_waypoint instead of Player.laneWaypoints
 - [Phase 11]: Combat uses bf_distance on canonical CanonicalPos -- map_to_opponent_space deleted
 - [Phase 11]: Dual-registry pattern: entities in both Battlefield (authoritative) and Player (adapter) during transition
+- [Phase 11]: Both viewports draw both territories' tilemaps for full canonical board visibility
+- [Phase 11]: game_draw_canonical_entities: no visibility culling at 128 max entities (brute-force draw via Camera2D clipping)
+- [Phase 11]: Removed pathfinding.h/sprite_renderer.h from game.c -- only needed by deleted seam functions
 
 ### Pending Todos
 
@@ -108,6 +112,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-01T17:17:33.796Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-04-01T17:25:23.169Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
