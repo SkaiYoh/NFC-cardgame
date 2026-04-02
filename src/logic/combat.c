@@ -5,6 +5,7 @@
 #include "combat.h"
 #include "../core/battlefield.h"
 #include "../core/battlefield_math.h"
+#include "../core/debug_events.h"
 #include "../entities/entities.h"
 #include <math.h>
 #include <float.h>
@@ -84,6 +85,17 @@ void entity_take_damage(Entity *entity, int damage) {
         entity->alive = false;
         entity_set_state(entity, ESTATE_DEAD);
     }
+}
+
+void combat_apply_hit(Entity *attacker, Entity *target) {
+    if (!attacker || !target) return;
+    if (!target->alive) return;
+
+    entity_take_damage(target, attacker->attack);
+    debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
+
+    printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
+           attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
 }
 
 void combat_resolve(Entity *attacker, Entity *target, float deltaTime) {
