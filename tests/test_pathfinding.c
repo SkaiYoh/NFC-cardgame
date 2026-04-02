@@ -51,11 +51,20 @@ typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef struct {
     AnimationType anim;
     SpriteDirection dir;
-    int frame;
-    float timer;
-    float fps;
+    float elapsed;
+    float cycleDuration;
+    float normalizedTime;
+    bool oneShot;
+    bool finished;
     bool flipH;
 } AnimState;
+
+typedef struct {
+    float prevNormalized;
+    float currNormalized;
+    bool finishedThisTick;
+    bool loopedThisTick;
+} AnimPlaybackEvent;
 
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; } AnimSheet;
 typedef struct { AnimSheet sheets[ANIM_COUNT]; } CharacterSprite;
@@ -74,14 +83,17 @@ struct Entity {
     float attackSpeed;
     float attackRange;
     float attackCooldown;
+    int attackTargetId;
     TargetingMode targeting;
     const char *targetType;
     AnimState anim;
     const CharacterSprite *sprite;
+    int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
     float spriteScale;
     int ownerID;
     int lane;
     int waypointIndex;
+    float hitFlashTimer;
     bool alive;
     bool markedForRemoval;
 };

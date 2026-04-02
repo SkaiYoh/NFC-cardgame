@@ -28,6 +28,7 @@
 #define NFC_CARDGAME_ENTITIES_H
 #define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
+#define NFC_CARDGAME_DEBUG_EVENTS_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
@@ -48,11 +49,20 @@ typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef struct {
     AnimationType anim;
     SpriteDirection dir;
-    int frame;
-    float timer;
-    float fps;
+    float elapsed;
+    float cycleDuration;
+    float normalizedTime;
+    bool oneShot;
+    bool finished;
     bool flipH;
 } AnimState;
+
+typedef struct {
+    float prevNormalized;
+    float currNormalized;
+    bool finishedThisTick;
+    bool loopedThisTick;
+} AnimPlaybackEvent;
 
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; } AnimSheet;
 typedef struct { AnimSheet sheets[ANIM_COUNT]; } CharacterSprite;
@@ -83,14 +93,17 @@ struct Entity {
     float attackSpeed;
     float attackRange;
     float attackCooldown;
+    int attackTargetId;
     TargetingMode targeting;
     const char *targetType;
     AnimState anim;
     const CharacterSprite *sprite;
+    int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
     float spriteScale;
     int ownerID;
     int lane;
     int waypointIndex;
+    float hitFlashTimer;
     bool alive;
     bool markedForRemoval;
 };
@@ -154,13 +167,21 @@ struct GameState {
 };
 
 /* ---- Stub functions required by combat.c ---- */
-void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps) {
+void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
+                     float cycleDuration, bool oneShot) {
     state->anim = anim;
     state->dir = dir;
-    state->frame = 0;
-    state->timer = 0.0f;
-    state->fps = fps;
+    state->elapsed = 0.0f;
+    state->cycleDuration = cycleDuration;
+    state->normalizedTime = 0.0f;
+    state->oneShot = oneShot;
+    state->finished = false;
     state->flipH = false;
+}
+
+enum { DEBUG_EVT_STATE_CHANGE = 0, DEBUG_EVT_HIT = 1, DEBUG_EVT_DEATH_FINISH = 2 };
+void debug_event_emit_xy(float x, float y, int type) {
+    (void)x; (void)y; (void)type;
 }
 
 void entity_set_state(Entity *e, EntityState newState) {
@@ -194,7 +215,7 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
     e.alive = true;
     e.markedForRemoval = false;
     e.attackCooldown = 0.0f;
-    anim_state_init(&e.anim, ANIM_WALK, DIR_DOWN, 10.0f);
+    anim_state_init(&e.anim, ANIM_WALK, DIR_DOWN, 0.8f, false);
     return e;
 }
 
@@ -478,6 +499,58 @@ static void test_canonical_distance_direct(void) {
     assert(combat_in_range(&a, &b, &gs) == true);
 }
 
+/* ---- combat_apply_hit tests ---- */
+
+static void test_apply_hit_deals_damage(void) {
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    attacker.attack = 25;
+
+    Entity target = make_entity(1, ENTITY_TROOP, (Vector2){0, 0});
+    target.hp = 100;
+    target.maxHP = 100;
+
+    combat_apply_hit(&attacker, &target);
+
+    assert(target.hp == 75);
+    assert(target.alive == true);
+}
+
+static void test_apply_hit_kills(void) {
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    attacker.attack = 150;
+
+    Entity target = make_entity(1, ENTITY_TROOP, (Vector2){0, 0});
+    target.hp = 100;
+    target.maxHP = 100;
+
+    combat_apply_hit(&attacker, &target);
+
+    assert(target.hp == 0);
+    assert(target.alive == false);
+    assert(target.state == ESTATE_DEAD);
+}
+
+static void test_apply_hit_skips_dead(void) {
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    attacker.attack = 25;
+
+    Entity target = make_entity(1, ENTITY_TROOP, (Vector2){0, 0});
+    target.hp = 0;
+    target.alive = false;
+
+    combat_apply_hit(&attacker, &target);
+
+    /* Dead target should not take further damage */
+    assert(target.hp == 0);
+}
+
+static void test_apply_hit_null_safety(void) {
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    /* Should not crash */
+    combat_apply_hit(NULL, &attacker);
+    combat_apply_hit(&attacker, NULL);
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running combat tests...\n");
@@ -500,6 +573,10 @@ int main(void) {
     RUN_TEST(test_take_damage_clamps_zero);
     RUN_TEST(test_take_damage_null_safety);
     RUN_TEST(test_canonical_distance_direct);
+    RUN_TEST(test_apply_hit_deals_damage);
+    RUN_TEST(test_apply_hit_kills);
+    RUN_TEST(test_apply_hit_skips_dead);
+    RUN_TEST(test_apply_hit_null_safety);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

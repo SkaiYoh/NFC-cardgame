@@ -14,8 +14,13 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs);
 // Find the best target for attacker among the enemy player's entities
 Entity *combat_find_target(Entity *attacker, GameState *gs);
 
-// Apply one attack from attacker to target (respects cooldown)
+// Apply one attack from attacker to target (respects cooldown).
+// Legacy: used before clip-driven attacks. Retained for non-clip entities.
 void combat_resolve(Entity *attacker, Entity *target, float deltaTime);
+
+// Apply one hit from attacker to target (no cooldown check, immediate damage).
+// Called by the animation hit-sync system when the attack clip crosses its hit marker.
+void combat_apply_hit(Entity *attacker, Entity *target);
 
 // Apply damage to an entity; transitions to ESTATE_DEAD if hp <= 0
 void entity_take_damage(Entity *entity, int damage);
