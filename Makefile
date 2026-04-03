@@ -2,6 +2,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
+CPPFLAGS = -Ithird_party/cjson
 LDFLAGS = -lsqlite3 -lraylib -lm
 MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 
@@ -13,15 +14,15 @@ SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entit
 SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
 SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/pathfinding.c src/logic/win_condition.c
 SRC_HARDWARE = src/hardware/nfc_reader.c src/hardware/arduino_protocol.c
-SRC_LIB = lib/cJSON.c
+SRC_LIB = third_party/cjson/cJSON.c
 
 SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS) $(SRC_LOGIC) $(SRC_HARDWARE) $(SRC_LIB)
 
 cardgame: $(SOURCES)
-	$(CC) $(CFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
 
-preview: tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c
-	$(CC) $(CFLAGS) tools/card_preview.c src/rendering/card_renderer.c lib/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
+preview: tools/card_preview.c src/rendering/card_renderer.c third_party/cjson/cJSON.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_preview.c src/rendering/card_renderer.c third_party/cjson/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
 
 # Initialize a fresh SQLite database from schema + seed data
 init-db:
@@ -37,35 +38,35 @@ preview-run: preview
 	./card_preview
 
 biome_preview: tools/biome_preview.c src/rendering/tilemap_renderer.c src/rendering/biome.c
-	$(CC) $(CFLAGS) tools/biome_preview.c src/rendering/tilemap_renderer.c src/rendering/biome.c -o biome_preview $(MACFLAGS) -lraylib -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tools/biome_preview.c src/rendering/tilemap_renderer.c src/rendering/biome.c -o biome_preview $(MACFLAGS) -lraylib -lm
 
 biome-preview-run: biome_preview
 	./biome_preview
 
-card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c
-	$(CC) $(CFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c lib/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
+card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c third_party/cjson/cJSON.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c third_party/cjson/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
 
 card-enroll-run: card_enroll
 	NFC_PORT="/dev/cu.usbserial-A5069RR4" ./card_enroll
 
 # Test targets
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
-	$(CC) $(CFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
 
 test_combat: tests/test_combat.c src/logic/combat.c
-	$(CC) $(CFLAGS) tests/test_combat.c -o test_combat -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_combat.c -o test_combat -lm
 
 test_battlefield_math: tests/test_battlefield_math.c src/core/battlefield_math.c
-	$(CC) $(CFLAGS) tests/test_battlefield_math.c -o test_battlefield_math -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_battlefield_math.c -o test_battlefield_math -lm
 
 test_battlefield: tests/test_battlefield.c src/core/battlefield.c src/core/battlefield_math.c
-	$(CC) $(CFLAGS) tests/test_battlefield.c -o test_battlefield -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_battlefield.c -o test_battlefield -lm
 
 test_animation: tests/test_animation.c src/entities/entity_animation.c
-	$(CC) $(CFLAGS) tests/test_animation.c -o test_animation -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_animation.c -o test_animation -lm
 
 test_debug_events: tests/test_debug_events.c src/core/debug_events.c
-	$(CC) $(CFLAGS) tests/test_debug_events.c -o test_debug_events -lm
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_debug_events.c -o test_debug_events -lm
 
 test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events
 	./test_pathfinding

@@ -17,10 +17,59 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 
 ## Requirements
 
-- GCC
+- A C compiler (`gcc` or `clang`)
+- CMake 3.20+
+- `pkg-config`
 - [Raylib](https://www.raylib.com/)
-- SQLite3 (`brew install sqlite`)
+- SQLite3
 - Arduino(s) with NFC readers (for hardware input)
+
+## Installing Raylib
+
+This repo expects Raylib to be installed system-wide. `cJSON` is already vendored in
+`third_party/cjson`, but `raylib.h` and `libraylib` must come from your machine.
+
+### macOS (Homebrew)
+
+Homebrew is the intended setup for macOS.
+
+```bash
+brew install cmake pkgconf raylib sqlite
+
+# Verify raylib is visible to the toolchain
+pkg-config --modversion raylib
+```
+
+If you need extra setup details, use the official Raylib macOS guide:
+https://github.com/raysan5/raylib/wiki/Working-on-macOS
+
+### Debian / Ubuntu
+
+Install the compiler toolchain, SQLite, and the libraries Raylib needs to build:
+
+```bash
+sudo apt update
+sudo apt install build-essential git cmake pkg-config libsqlite3-dev sqlite3 \
+  libasound2-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+  libglu1-mesa-dev libxcursor-dev libxinerama-dev libwayland-dev libxkbcommon-dev
+```
+
+Then install Raylib. If your distro already packages it, use that package. Otherwise build and
+install Raylib from source:
+
+```bash
+git clone https://github.com/raysan5/raylib.git /tmp/raylib
+cmake -S /tmp/raylib -B /tmp/raylib/build
+cmake --build /tmp/raylib/build -j
+sudo cmake --install /tmp/raylib/build
+sudo ldconfig
+
+# Verify raylib is visible to the toolchain
+pkg-config --modversion raylib
+```
+
+Official Raylib GNU/Linux guide:
+https://github.com/raysan5/raylib/wiki/Working-on-GNU-Linux
 
 ## Quick Start
 
@@ -29,7 +78,7 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 cmake -S . -B build
 
 # Build everything
-cmake --build build -j"$(nproc)"
+cmake --build build -j
 
 # Recreate the database only if cardgame.db is missing or you want a reset
 cmake --build build --target init-db
@@ -91,7 +140,7 @@ src/
   hardware/     NFC reader and Arduino serial protocol
   assets/       Pixel art sprites and tilesets
 tools/          Standalone dev/utility programs
-lib/            Third-party libs (cJSON, Raylib headers)
+third_party/    Vendored dependencies (currently cJSON)
 sqlite/         Database schema and seed data
 ```
 

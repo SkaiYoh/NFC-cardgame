@@ -8,7 +8,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_compile_options(-Wall -Wextra)
 
 # Include paths
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/third_party/cjson)
 
 # --- Libraries ---
 find_library(RAYLIB_LIB raylib)
@@ -46,7 +48,7 @@ set(SRC_LOGIC      src/logic/card_effects.c
                    src/logic/win_condition.c)
 set(SRC_HARDWARE   src/hardware/nfc_reader.c
                    src/hardware/arduino_protocol.c)
-set(SRC_LIB        lib/cJSON.c)
+set(SRC_LIB        third_party/cjson/cJSON.c)
 
 set(ALL_SOURCES
     ${SRC_CORE} ${SRC_DATA} ${SRC_RENDERING} ${SRC_ENTITIES}
@@ -60,7 +62,7 @@ target_link_libraries(cardgame ${SQLITE3_LIB} ${RAYLIB_LIB} ${MATH_LIB})
 add_executable(card_preview
     tools/card_preview.c
     src/rendering/card_renderer.c
-    lib/cJSON.c)
+    third_party/cjson/cJSON.c)
 target_link_libraries(card_preview ${RAYLIB_LIB} ${MATH_LIB})
 
 add_executable(biome_preview
@@ -75,7 +77,7 @@ add_executable(card_enroll
     src/data/cards.c
     src/hardware/nfc_reader.c
     src/hardware/arduino_protocol.c
-    lib/cJSON.c)
+    third_party/cjson/cJSON.c)
 target_link_libraries(card_enroll ${SQLITE3_LIB} ${MATH_LIB})
 
 # --- Tests ---

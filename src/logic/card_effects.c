@@ -9,7 +9,7 @@
 #include "../systems/energy.h"
 #include "../core/battlefield.h"
 #include "../core/config.h"
-#include "../../lib/cJSON.h"
+#include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
 

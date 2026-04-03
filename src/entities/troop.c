@@ -4,7 +4,7 @@
 
 #include "troop.h"
 #include "entities.h"
-#include "../../lib/cJSON.h"
+#include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
 
