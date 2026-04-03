@@ -5,7 +5,7 @@
 #ifndef NFC_CARDGAME_TILEMAP_RENDERER_H
 #define NFC_CARDGAME_TILEMAP_RENDERER_H
 
-#include "../../lib/raylib.h"
+#include <raylib.h>
 
 #define TILE_GRASS_0  0
 #define TILE_GRASS_1  1

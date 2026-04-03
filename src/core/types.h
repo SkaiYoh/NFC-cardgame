@@ -5,7 +5,7 @@
 #ifndef NFC_CARDGAME_TYPES_H
 #define NFC_CARDGAME_TYPES_H
 
-#include "../../lib/raylib.h"
+#include <raylib.h>
 #include "config.h"
 #include "../data/db.h"
 #include "../data/cards.h"

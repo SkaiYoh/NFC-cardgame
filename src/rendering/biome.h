@@ -6,7 +6,7 @@
 #define NFC_CARDGAME_BIOME_H
 
 #include "tilemap_renderer.h"
-#include "../../lib/raylib.h"
+#include <raylib.h>
 #include <stdbool.h>
 #include <string.h>
 

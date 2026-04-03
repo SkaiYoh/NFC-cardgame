@@ -5,7 +5,7 @@
 #ifndef NFC_CARDGAME_SPRITE_RENDERER_H
 #define NFC_CARDGAME_SPRITE_RENDERER_H
 
-#include "../../lib/raylib.h"
+#include <raylib.h>
 #include <stdbool.h>
 
 typedef enum {
