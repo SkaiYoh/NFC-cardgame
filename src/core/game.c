@@ -5,8 +5,10 @@
 #include "game.h"
 #include "config.h"
 #include "battlefield.h"
+#include "debug_events.h"
 #include "../logic/card_effects.h"
 #include "../rendering/viewport.h"
+#include "../rendering/debug_overlay.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
@@ -16,7 +18,7 @@
 #include <time.h>
 
 static bool s_showLaneDebug = false;
-static bool s_showCombatDebug = false;
+static DebugOverlayFlags s_debugFlags = {0};
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
@@ -36,8 +38,11 @@ bool game_init(GameState *g) {
     // Load NFC UID -> card_id mappings (non-fatal if table is empty or missing)
     cards_load_nfc_map(&g->deck, &g->db);
 
+    SetConfigFlags(FLAG_WINDOW_UNDECORATED);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "NFC Card Game");
+    SetWindowPosition(0, 0);
     SetTargetFPS(60);
+    HideCursor();
 
     // Initialize card system
     card_action_init();
@@ -110,7 +115,10 @@ static void game_handle_nfc_events(GameState *g) {
 static void game_handle_test_input(GameState *g) {
     // Toggle debug overlays
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
-    if (IsKeyPressed(KEY_F2)) s_showCombatDebug = !s_showCombatDebug;
+    if (IsKeyPressed(KEY_F2)) s_debugFlags.attackBars   = !s_debugFlags.attackBars;
+    if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
+    if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
+    if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
 
     // Player 1: key 1
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
@@ -148,6 +156,8 @@ void game_update(GameState *g) {
             entity_destroy(dead);
         }
     }
+
+    debug_events_tick(deltaTime);
 }
 
 // Draw all Battlefield entities visible in the current viewport.
@@ -156,30 +166,12 @@ void game_update(GameState *g) {
 static void game_draw_canonical_entities(const Battlefield *bf) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
-        if (!e || !e->alive || !e->sprite) continue;
+        if (!e || e->markedForRemoval || !e->sprite) continue;
         entity_draw(e);
     }
 }
 
-// Second pass: attack range circles over all sprites.
-// Colors reflect raw EntityState — nothing more.
-static void game_draw_combat_debug(const Battlefield *bf) {
-    for (int i = 0; i < bf->entityCount; i++) {
-        const Entity *e = bf->entities[i];
-        if (!e || !e->alive) continue;
-
-        Color c;
-        switch (e->state) {
-            case ESTATE_ATTACKING: c = RED;   break;
-            case ESTATE_WALKING:   c = GREEN; break;
-            case ESTATE_IDLE:      c = GRAY;  break;
-            default:               continue;  // DEAD — skip
-        }
-
-        DrawCircleLines((int)e->position.x, (int)e->position.y,
-                        e->attackRange, c);
-    }
-}
+// Debug overlay is now in src/rendering/debug_overlay.c
 
 void game_render(GameState *g) {
     BeginDrawing();
@@ -191,7 +183,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
-    if (s_showCombatDebug) game_draw_combat_debug(bf);
+    debug_overlay_draw(bf, g, s_debugFlags);
     DrawText("PLAYER 1",
              (int)(bf->territories[SIDE_BOTTOM].bounds.x + 40),
              (int)(bf->territories[SIDE_BOTTOM].bounds.y + 40),
@@ -212,7 +204,7 @@ void game_render(GameState *g) {
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
     game_draw_canonical_entities(bf);
-    if (s_showCombatDebug) game_draw_combat_debug(bf);
+    debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
     EndTextureMode();
 

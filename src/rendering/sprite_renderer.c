@@ -211,7 +211,9 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     if (!sheet) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
 
-    int frame = state->frame % sheet->frameCount;
+    int frame = (int)(state->normalizedTime * (float)sheet->frameCount);
+    if (frame >= sheet->frameCount) frame = sheet->frameCount - 1;
+    if (frame < 0) frame = 0;
     Rectangle bounds = {0.0f, 0.0f, (float) sheet->frameWidth, (float) sheet->frameHeight};
     if (sheet->visibleBounds) {
         bounds = sheet->visibleBounds[sheet_bounds_index(sheet, state->dir, frame)];
@@ -243,7 +245,9 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
     if (!sheet || sheet->texture.id == 0) return;
 
-    int col = state->frame % sheet->frameCount;
+    int col = (int)(state->normalizedTime * (float)sheet->frameCount);
+    if (col >= sheet->frameCount) col = sheet->frameCount - 1;
+    if (col < 0) col = 0;
     int row = state->dir;
 
     float fw = (float) sheet->frameWidth;
@@ -274,27 +278,53 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 }
 
 
-void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps) {
+void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
+                     float cycleDuration, bool oneShot) {
     state->anim = anim;
     state->dir = dir;
-    state->frame = 0;
-    state->timer = 0.0f;
-    state->fps = fps;
+    state->elapsed = 0.0f;
+    state->cycleDuration = cycleDuration;
+    state->normalizedTime = 0.0f;
+    state->oneShot = oneShot;
+    state->finished = false;
     state->flipH = false;
 }
 
-void anim_state_update(AnimState *state, float dt) {
-    const float frameDuration = 1.0f / state->fps;
-    state->timer += dt;
-    while (state->timer >= frameDuration) {
-        state->timer -= frameDuration;
-        // TODO: state->frame grows unboundedly and is never reset. At 60fps it overflows int after
-        // TODO: ~2.1 billion increments (~1 year of runtime). Wrap it here:
-        // TODO:   state->frame = (state->frame + 1) % sheet->frameCount;
-        // TODO: Currently wrapping happens in sprite_draw via modulo — safe but indirect.
-        state->frame++;
+AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {
+    AnimPlaybackEvent evt = {0};
+
+    if (state->cycleDuration <= 0.0f) {
+        // Degenerate clip: stay at frame 0, report finished immediately for one-shot
+        evt.finishedThisTick = state->oneShot && !state->finished;
+        state->finished = state->oneShot;
+        return evt;
     }
-    // Frame wrapping is handled in sprite_draw via modulo
+
+    evt.prevNormalized = state->normalizedTime;
+    state->elapsed += dt;
+
+    if (state->oneShot) {
+        if (state->elapsed >= state->cycleDuration) {
+            state->elapsed = state->cycleDuration;
+            state->normalizedTime = 1.0f;
+            if (!state->finished) {
+                evt.finishedThisTick = true;
+                state->finished = true;
+            }
+        } else {
+            state->normalizedTime = state->elapsed / state->cycleDuration;
+        }
+    } else {
+        // Looping: wrap elapsed and compute normalized [0, 1)
+        while (state->elapsed >= state->cycleDuration) {
+            state->elapsed -= state->cycleDuration;
+            evt.loopedThisTick = true;
+        }
+        state->normalizedTime = state->elapsed / state->cycleDuration;
+    }
+
+    evt.currNormalized = state->normalizedTime;
+    return evt;
 }
 
 const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type) {

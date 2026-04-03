@@ -60,11 +60,21 @@ typedef struct {
 typedef struct {
     AnimationType anim;
     SpriteDirection dir;
-    int frame;
-    float timer;
-    float fps;
+    float elapsed;        // seconds since clip start
+    float cycleDuration;  // total seconds for one full cycle
+    float normalizedTime; // elapsed / cycleDuration, clamped [0,1] for one-shot
+    bool oneShot;
+    bool finished;        // true when one-shot clip completes
     bool flipH;
 } AnimState;
+
+// Playback events returned by anim_state_update
+typedef struct {
+    float prevNormalized; // normalized time before this tick
+    float currNormalized; // normalized time after this tick
+    bool finishedThisTick;
+    bool loopedThisTick;
+} AnimPlaybackEvent;
 
 void sprite_atlas_init(SpriteAtlas *atlas);
 
@@ -78,9 +88,10 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
                  Vector2 pos, float scale);
 
-void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir, float fps);
+void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
+                     float cycleDuration, bool oneShot);
 
-void anim_state_update(AnimState *state, float dt);
+AnimPlaybackEvent anim_state_update(AnimState *state, float dt);
 
 // Sprite type registry
 const CharacterSprite *sprite_atlas_get(const SpriteAtlas *atlas, SpriteType type);

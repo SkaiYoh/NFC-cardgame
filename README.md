@@ -25,27 +25,47 @@ Built in C with Raylib, SQLite, and Arduino hardware.
 ## Quick Start
 
 ```bash
-# Initialize the database (first time only)
-make init-db
+# Configure the build
+cmake -S . -B build
 
-# Build and run the game
-make run
+# Build everything
+cmake --build build -j"$(nproc)"
+
+# Recreate the database only if cardgame.db is missing or you want a reset
+cmake --build build --target init-db
+
+# Run from the project root so relative asset paths resolve correctly
+./build/cardgame
+```
+
+## Raspberry Pi Log Watching
+
+If you need to launch the game from a terminal on the Pi but watch logs over SSH,
+start the game with line-buffered output redirected to a log file:
+
+```bash
+stdbuf -oL -eL ./build/cardgame > game.log 2>&1
+```
+
+Then, from an SSH session, follow the log:
+
+```bash
+tail -f ~/NFC-cardgame/game.log
 ```
 
 ## Build Targets
 
-| Command                  | Description                                       |
-|--------------------------|---------------------------------------------------|
-| `make init-db`           | Create and seed `cardgame.db` (first time setup)  |
-| `make cardgame`          | Build the main game binary                        |
-| `make run`               | Clean, build, and run the game                    |
-| `make preview`           | Build the card preview tool                       |
-| `make preview-run`       | Build and run card preview                        |
-| `make biome_preview`     | Build the biome preview tool                      |
-| `make biome-preview-run` | Build and run biome preview                       |
-| `make card_enroll`       | Build the card enrollment tool                    |
-| `make card-enroll-run`   | Build and run card enrollment                     |
-| `make clean`             | Remove all built binaries                         |
+| Command                                   | Description                                       |
+|-------------------------------------------|---------------------------------------------------|
+| `cmake -S . -B build`                     | Configure the project                             |
+| `cmake --build build -j"$(nproc)"`        | Build all targets                                 |
+| `cmake --build build --target cardgame`   | Build the main game binary                        |
+| `cmake --build build --target init-db`    | Recreate and seed `cardgame.db` if needed          |
+| `cmake --build build --target card_preview` | Build the card preview tool                     |
+| `cmake --build build --target biome_preview` | Build the biome preview tool                   |
+| `cmake --build build --target card_enroll`  | Build the card enrollment tool                  |
+| `ctest --test-dir build --output-on-failure` | Run the test suite                             |
+| `rm -rf build`                            | Remove the CMake build directory                  |
 
 ## Tools
 
@@ -106,9 +126,9 @@ The game uses a local SQLite file (`cardgame.db`) — no server required.
 |-----------------------|----------------------------------|
 | `sqlite/schema.sql`   | Table definitions                |
 | `sqlite/seed.sql`     | Base card data                   |
-| `cardgame.db`         | Runtime database (git-ignored)   |
+| `cardgame.db`         | Runtime database shipped in repo |
 
-To reset the database: `rm cardgame.db && make init-db`
+To reset the database: `rm cardgame.db && cmake --build build --target init-db`
 
 To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) (`brew install --cask db-browser-for-sqlite`).
 

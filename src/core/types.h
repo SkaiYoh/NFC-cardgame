@@ -52,18 +52,23 @@ struct Entity {
     float attackSpeed;
     float attackRange;
     float attackCooldown;       // time remaining before next attack
+    int attackTargetId;         // locked target for current swing, -1 if none
     TargetingMode targeting;    // targeting preference
     const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
 
     // Animation
     AnimState anim;
     const CharacterSprite *sprite;
+    SpriteType spriteType;
     float spriteScale;
 
     // Ownership
     int ownerID; // Player index (0 or 1)
     int lane; // Which lane (0-2)
     int waypointIndex; // Current target waypoint index along lane path
+
+    // Debug
+    float hitFlashTimer;        // countdown for hit-marker visual flash (debug overlay)
 
     // Flags
     bool alive;

@@ -99,6 +99,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->ownerID = owner->id;
 
     // Sprite
+    e->spriteType = data->spriteType;
     e->sprite = sprite_atlas_get(atlas, data->spriteType);
 
     // Start walking immediately
