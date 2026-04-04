@@ -84,7 +84,7 @@ void sprite_atlas_free(SpriteAtlas *atlas);
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
-                                Vector2 pos, float scale);
+                                Vector2 pos, float scale, float rotationDegrees);
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
                  Vector2 pos, float scale, float rotationDegrees);

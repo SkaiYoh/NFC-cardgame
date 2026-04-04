@@ -26,7 +26,8 @@ static void draw_attack_bar(const Entity *e) {
 
     // Anchor bar above the visible sprite top
     Rectangle vb = sprite_visible_bounds(e->sprite, &e->anim,
-                                         e->position, e->spriteScale);
+                                         e->position, e->spriteScale,
+                                         e->spriteRotationDegrees);
     float barX = e->position.x - BAR_WIDTH * 0.5f;
     float barY = (vb.height > 0.0f)
         ? vb.y - BAR_GAP - BAR_HEIGHT

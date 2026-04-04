@@ -441,6 +441,138 @@ static void test_attack_brute_hit_later_than_knight(void) {
     assert(brute->hitNormalized > knight->hitNormalized);
 }
 
+/* ==== Visible-bounds rotation tests ==== */
+
+// Helper: build a minimal 1-frame CharacterSprite with known visibleBounds.
+// frameWidth=64, frameHeight=64, 1 frame, DIR_COUNT rows.
+// visibleBounds for DIR_SIDE frame 0: off-center rect at (10, 8, 20, 40)
+// — intentionally asymmetric so rotation-center bugs are visible.
+static CharacterSprite make_test_sprite(void) {
+    CharacterSprite cs = {0};
+    SpriteSheet *sheet = &cs.anims[ANIM_IDLE];
+    sheet->frameWidth = 64;
+    sheet->frameHeight = 64;
+    sheet->frameCount = 1;
+    sheet->visibleBounds = calloc(1 * DIR_COUNT, sizeof(Rectangle));
+    for (int d = 0; d < DIR_COUNT; d++) {
+        sheet->visibleBounds[d] = (Rectangle){10.0f, 8.0f, 20.0f, 40.0f};
+    }
+    return cs;
+}
+
+static void free_test_sprite(CharacterSprite *cs) {
+    free(cs->anims[ANIM_IDLE].visibleBounds);
+    cs->anims[ANIM_IDLE].visibleBounds = NULL;
+}
+
+static bool rect_approx_eq(Rectangle a, Rectangle b, float eps) {
+    return approx_eq(a.x, b.x, eps) &&
+           approx_eq(a.y, b.y, eps) &&
+           approx_eq(a.width, b.width, eps) &&
+           approx_eq(a.height, b.height, eps);
+}
+
+static void test_bounds_unrotated_unflipped(void) {
+    CharacterSprite cs = make_test_sprite();
+    AnimState s;
+    anim_state_init(&s, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    s.flipH = false;
+
+    Vector2 pos = {100.0f, 100.0f};
+    float scale = 1.0f;
+    Rectangle vb = sprite_visible_bounds(&cs, &s, pos, scale, 0.0f);
+
+    // Frame top-left = pos - frame_size/2 = (68, 68)
+    // Visible rect at (10,8) size (20,40) → world (78, 76, 20, 40)
+    Rectangle expected = {78.0f, 76.0f, 20.0f, 40.0f};
+    assert(rect_approx_eq(vb, expected, 0.01f));
+    free_test_sprite(&cs);
+}
+
+static void test_bounds_unrotated_flipped(void) {
+    CharacterSprite cs = make_test_sprite();
+    AnimState s;
+    anim_state_init(&s, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    s.flipH = true;
+
+    Vector2 pos = {100.0f, 100.0f};
+    float scale = 1.0f;
+    Rectangle vb = sprite_visible_bounds(&cs, &s, pos, scale, 0.0f);
+
+    // flipH mirrors: vx = 64 - (10 + 20) = 34
+    // World: (68 + 34, 68 + 8, 20, 40) = (102, 76, 20, 40)
+    Rectangle expected = {102.0f, 76.0f, 20.0f, 40.0f};
+    assert(rect_approx_eq(vb, expected, 0.01f));
+    free_test_sprite(&cs);
+}
+
+static void test_bounds_180_rotation(void) {
+    CharacterSprite cs = make_test_sprite();
+    AnimState s;
+    anim_state_init(&s, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    s.flipH = false;
+
+    Vector2 pos = {100.0f, 100.0f};
+    float scale = 1.0f;
+    Rectangle vb = sprite_visible_bounds(&cs, &s, pos, scale, 180.0f);
+
+    // Corners relative to frame center (32, 32):
+    //   TL=(-22,-24), TR=(-2,-24), BR=(-2,16), BL=(-22,16)
+    // 180° rotation (negate both): (22,24), (2,24), (2,-16), (22,-16)
+    // World x: 100 + [2, 22] = [102, 122], width=20
+    // World y: 100 + [-16, 24] = [84, 124], height=40
+    Rectangle expected = {102.0f, 84.0f, 20.0f, 40.0f};
+    assert(rect_approx_eq(vb, expected, 0.1f));
+    free_test_sprite(&cs);
+}
+
+static void test_bounds_90_rotation(void) {
+    CharacterSprite cs = make_test_sprite();
+    AnimState s;
+    anim_state_init(&s, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    s.flipH = false;
+
+    Vector2 pos = {100.0f, 100.0f};
+    float scale = 1.0f;
+    Rectangle vb = sprite_visible_bounds(&cs, &s, pos, scale, 90.0f);
+
+    // Corners relative to center (32, 32):
+    //   TL=(-22,-24), TR=(-2,-24), BR=(-2,16), BL=(-22,16)
+    // 90° CW: (x,y) → (y, -x) via cos90=0, sin90=1
+    //   → (−24,22), (−24,2), (16,2), (16,−22)  [wait, let me recalculate]
+    //   rx = x*cos - y*sin = x*0 - y*1 = -y
+    //   ry = x*sin + y*cos = x*1 + y*0 = x
+    //   TL: (-22,-24)→(24,-22), TR: (-2,-24)→(24,-2),
+    //   BR: (-2,16)→(-16,-2), BL: (-22,16)→(-16,-22)
+    // World x: 100 + [-16, 24] = [84, 124], width=40
+    // World y: 100 + [-22, -2] = [78, 98], height=20
+    Rectangle expected = {84.0f, 78.0f, 40.0f, 20.0f};
+    assert(rect_approx_eq(vb, expected, 0.1f));
+    free_test_sprite(&cs);
+}
+
+static void test_bounds_flipped_plus_rotated(void) {
+    CharacterSprite cs = make_test_sprite();
+    AnimState s;
+    anim_state_init(&s, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    s.flipH = true;
+
+    Vector2 pos = {100.0f, 100.0f};
+    float scale = 1.0f;
+    Rectangle vb = sprite_visible_bounds(&cs, &s, pos, scale, 90.0f);
+
+    // FlipH first: vx = 64 - (10+20) = 34, so visible rect = (34,8,20,40)
+    // Corners relative to center (32,32):
+    //   TL=(2,-24), TR=(22,-24), BR=(22,16), BL=(2,16)
+    // 90° CW: rx=-y, ry=x
+    //   TL:(24,2), TR:(24,22), BR:(-16,22), BL:(-16,2)
+    // World x: 100 + [-16, 24] = [84, 124], width=40
+    // World y: 100 + [2, 22] = [102, 122], height=20
+    Rectangle expected = {84.0f, 102.0f, 40.0f, 20.0f};
+    assert(rect_approx_eq(vb, expected, 0.1f));
+    free_test_sprite(&cs);
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running animation tests...\n");
@@ -477,6 +609,13 @@ int main(void) {
     RUN_TEST(test_attack_chained_swings);
     RUN_TEST(test_attack_spec_all_types_have_hit_marker);
     RUN_TEST(test_attack_brute_hit_later_than_knight);
+
+    // Visible bounds rotation
+    RUN_TEST(test_bounds_unrotated_unflipped);
+    RUN_TEST(test_bounds_unrotated_flipped);
+    RUN_TEST(test_bounds_180_rotation);
+    RUN_TEST(test_bounds_90_rotation);
+    RUN_TEST(test_bounds_flipped_plus_rotated);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;
