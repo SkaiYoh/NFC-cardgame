@@ -6,6 +6,40 @@
 #include "../core/config.h"
 #include <stdio.h>
 
+static int ui_normalize_rotation(float rotation) {
+    int normalized = ((int) rotation) % 360;
+    if (normalized < 0) {
+        normalized += 360;
+    }
+    return normalized;
+}
+
+static Vector2 ui_rotated_text_bounds(Vector2 textSize, float rotation) {
+    switch (ui_normalize_rotation(rotation)) {
+        case 90:
+        case 270:
+            return (Vector2){ textSize.y, textSize.x };
+        default:
+            return textSize;
+    }
+}
+
+static Vector2 ui_text_position_from_bounds(Vector2 boundsTopLeft,
+                                            Vector2 textSize,
+                                            float rotation) {
+    switch (ui_normalize_rotation(rotation)) {
+        case 90:
+            return (Vector2){ boundsTopLeft.x + textSize.y, boundsTopLeft.y };
+        case 180:
+            return (Vector2){ boundsTopLeft.x + textSize.x,
+                              boundsTopLeft.y + textSize.y };
+        case 270:
+            return (Vector2){ boundsTopLeft.x, boundsTopLeft.y + textSize.x };
+        default:
+            return boundsTopLeft;
+    }
+}
+
 // Draws an energy bar in screen space for one player.
 // screenX: left edge of player's viewport (0 for P1, 960 for P2)
 // viewportWidth: 960
@@ -27,22 +61,36 @@ void ui_draw_energy_bar(Player *p, int screenX, int viewportWidth) {
     DrawText(label, x + (barW - textW) / 2, y + 3, 14, WHITE);
 }
 
-void ui_draw_viewport_label(const char *label, int screenX, bool seatOnRight,
-                            Color color) {
+void ui_draw_viewport_label(const char *label, Rectangle viewport,
+                            UICorner corner, float rotation, Color color) {
     Font font = GetFontDefault();
     const int fontSize = 40;
     const float spacing = 2.0f;
-    const int padding = 40;
+    const float padding = 40.0f;
+    Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
+    Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
+    Vector2 boundsTopLeft = { viewport.x + padding, viewport.y + padding };
 
-    if (!seatOnRight) {
-        DrawText(label, screenX + padding, padding, fontSize, color);
-        return;
+    switch (corner) {
+        case UI_CORNER_TOP_RIGHT:
+            boundsTopLeft.x = viewport.x + viewport.width - padding - boundsSize.x;
+            break;
+        case UI_CORNER_BOTTOM_LEFT:
+            boundsTopLeft.y = viewport.y + viewport.height - padding - boundsSize.y;
+            break;
+        case UI_CORNER_BOTTOM_RIGHT:
+            boundsTopLeft.x = viewport.x + viewport.width - padding - boundsSize.x;
+            boundsTopLeft.y = viewport.y + viewport.height - padding - boundsSize.y;
+            break;
+        case UI_CORNER_TOP_LEFT:
+        default:
+            break;
     }
 
     DrawTextPro(font, label,
-                (Vector2){ (float)(screenX + padding), (float)(SCREEN_HEIGHT - padding) },
+                ui_text_position_from_bounds(boundsTopLeft, textSize, rotation),
                 (Vector2){ 0.0f, 0.0f },
-                270.0f, (float)fontSize, spacing, color);
+                rotation, (float)fontSize, spacing, color);
 }
 
 void ui_draw_match_result(const Player *p, const char *text, float rotation,

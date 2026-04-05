@@ -261,8 +261,10 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
-    ui_draw_viewport_label("PLAYER 1", 0, false, DARKGREEN);
-    ui_draw_viewport_label("PLAYER 2", SCREEN_WIDTH / 2, true, MAROON);
+    ui_draw_viewport_label("PLAYER 1", g->players[0].screenArea,
+                           UI_CORNER_TOP_RIGHT, 90.0f, DARKGREEN);
+    ui_draw_viewport_label("PLAYER 2", g->players[1].screenArea,
+                           UI_CORNER_BOTTOM_LEFT, 270.0f, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 
