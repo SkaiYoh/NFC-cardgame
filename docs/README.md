@@ -1,17 +1,20 @@
 # Documentation Index
 
-These docs replace the deleted `.planning/` tree. They were checked against the current source tree and local command output on 2026-04-03.
+These docs replace the deleted `.planning/` tree. They were checked against the
+current source tree and local command output on 2026-04-04.
 
 ## Local Verification Completed
 
-- `make clean cardgame`
+- `make cardgame`
 - `make preview`
 - `make biome_preview`
 - `make card_enroll`
 - `make test`
 - `pkg-config --modversion raylib` -> `5.5.0`
+- `cmake --version` -> unavailable in this shell (`cmake: command not found`)
 - `sqlite3` queries against the checked-in `cardgame.db`
 - `sqlite3` queries against a fresh temporary database created from `sqlite/schema.sql` and `sqlite/seed.sql`
+- `sqlite3` queries against a seeded copy of the checked-in database to confirm card rows remain aligned when re-seeding
 
 ## Start Here
 

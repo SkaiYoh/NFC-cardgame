@@ -1,5 +1,7 @@
 # Data
 
+Verified from source and `sqlite3` queries on 2026-04-04.
+
 ## Storage Model
 
 - Primary runtime storage is a local SQLite file.
@@ -51,6 +53,9 @@ The in-memory model is:
 - `targeting`
 - `targetType`
 
+`targetType` is currently parsed and stored, but `combat_find_target()` still
+falls back to nearest-target behavior for `TARGET_SPECIFIC_TYPE`.
+
 ### Spell Metadata
 
 `play_spell()` reads these top-level keys:
@@ -96,21 +101,38 @@ It also currently contains two NFC mappings:
 
 ## Fresh Seeded Database
 
-A fresh database created from `sqlite/schema.sql` and `sqlite/seed.sql` currently contains:
+A fresh database created from `sqlite/schema.sql` and `sqlite/seed.sql`
+currently contains:
 
 - six cards
-- lowercase IDs (`assassin_01`, `brute_01`, ..., `knight_01`)
+- uppercase IDs (`ASSASSIN_01`, `BRUTE_01`, ..., `KNIGHT_01`)
 - zero rows in `nfc_tags`
 
-This is a real mismatch between checked-in runtime data and seed intent.
+## Re-Seeding The Checked-In Database
+
+A seeded copy of the checked-in `cardgame.db` currently ends up with:
+
+- six cards
+- the same uppercase runtime IDs
+- the original 2 NFC mappings still present
+
+This happens because:
+
+- `sqlite/schema.sql` uses `CREATE TABLE IF NOT EXISTS`
+- `sqlite/seed.sql` now upserts using the same uppercase `card_id` values as the checked-in database
+- `nfc_tags` is not seeded or cleared by the init target
 
 ## Access Patterns
 
 - `cards_load()` loads the whole `cards` table into memory at startup.
 - `cards_find()` is a linear scan by `card_id`.
 - `cards_load_nfc_map()` loads `nfc_tags` into memory after the deck loads.
-- `cards_find_by_uid()` first resolves `uid -> card_id`, then resolves `card_id -> Card`.
+- `cards_find_by_uid()` first resolves `uid -> card_id`, then resolves
+  `card_id -> Card`.
 
 ## Data Caveat
 
-Because `card_id` casing differs between the checked-in database and the seed SQL, `init-db` does not currently recreate the same runtime data shape that ships in the repo.
+Card ID casing is now aligned between the checked-in database and the seed SQL.
+The remaining shape difference is NFC mappings: a fresh seeded database starts
+with zero `nfc_tags` rows, while re-seeding an existing runtime DB preserves
+its existing mappings.

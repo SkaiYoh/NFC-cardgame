@@ -1,10 +1,11 @@
 # Testing
 
-Verified on 2026-04-03.
+Verified on 2026-04-04.
 
 ## What Exists
 
-The repo uses standalone assert-based test executables, not an external C test framework.
+The repo uses standalone assert-based test executables, not an external C test
+framework.
 
 Current test binaries:
 
@@ -14,30 +15,35 @@ Current test binaries:
 - `test_battlefield`
 - `test_animation`
 - `test_debug_events`
+- `test_win_condition`
 
 ## Local Result
 
-`make test` compiled and passed all six test executables successfully in this environment.
+`make test` compiled and passed all seven test executables successfully in this
+environment.
 
 ## Coverage Areas
 
 | Test Binary | Covers |
 |------------|--------|
 | `test_pathfinding` | canonical waypoint stepping, lane progression, movement direction, invalid lane handling |
-| `test_combat` | canonical range checks, target selection, damage application, kill/clamp behavior |
+| `test_combat` | canonical range checks, target selection, damage application, kill/clamp behavior, base-destruction latching |
 | `test_battlefield_math` | coordinate transforms, seam helpers, bounds, slot-to-lane mapping |
-| `test_battlefield` | territory setup, spawn anchors, waypoint generation, entity registry, side mapping |
+| `test_battlefield` | territory setup, spawn anchors, waypoint generation, entity registry, side mapping, base anchors |
 | `test_animation` | clip playback, hit-marker behavior, animation policy, cycle calculations |
 | `test_debug_events` | debug flash ring buffer behavior |
+| `test_win_condition` | winner latching, fallback draw logic, null-safety, and base-destruction ownership checks |
 
 ## Testing Pattern
 
-The tests intentionally compile production `.c` files directly with local stubs.
+The tests intentionally compile production `.c` files directly with local
+stubs.
 
 Common pattern:
 
 - predefine header guards to block heavy include chains
-- define lightweight local stubs for `Vector2`, `Player`, `Battlefield`, Raylib types, or other dependencies
+- define lightweight local stubs for `Vector2`, `Player`, `Battlefield`,
+  Raylib types, or other dependencies
 - include the production `.c` file directly
 - call the real implementation under test
 
@@ -48,13 +54,14 @@ This pattern is used heavily in:
 - `tests/test_battlefield_math.c`
 - `tests/test_battlefield.c`
 - `tests/test_animation.c`
+- `tests/test_win_condition.c`
 
 ## Build-System Exposure
 
 - `Makefile`
-  - builds and runs all six tests with `make test`
+  - builds and runs all seven tests with `make test`
 - `CMakeLists.txt`
-  - registers the same six tests with CTest
+  - registers the same seven tests with CTest
 
 ## What Is Not Covered By Automated Tests
 
@@ -63,10 +70,10 @@ This pattern is used heavily in:
 - SQLite data-layer behavior
 - card renderer output correctness
 - biome preview and card preview runtime behavior
-- win-condition flow
+- base spawning and match-result overlay inside the live Raylib window
 - pregame/match-state flow
 - spell effects
-- base creation and projectile behavior
+- projectile behavior
 
 ## CI Status
 
@@ -74,4 +81,6 @@ There is no CI workflow checked into the repository at the time of writing.
 
 ## Verification Caveat
 
-`cmake` was not installed in this shell environment, so the CTest path was inspected from `CMakeLists.txt` but not executed locally here. The `Makefile` path was executed and passed.
+`cmake` was not installed in this shell environment, so the CTest path was
+inspected from `CMakeLists.txt` but not executed locally here. The `Makefile`
+path was executed and passed.

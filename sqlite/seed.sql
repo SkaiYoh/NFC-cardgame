@@ -4,7 +4,7 @@
 INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 
 (
-  'knight_01',
+  'KNIGHT_01',
   'Knight',
   4,
   'knight',
@@ -47,7 +47,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'assassin_01',
+  'ASSASSIN_01',
   'Assassin',
   3,
   'assassin',
@@ -90,7 +90,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'brute_01',
+  'BRUTE_01',
   'Brute',
   6,
   'brute',
@@ -133,7 +133,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'farmer_01',
+  'FARMER_01',
   'Farmer',
   2,
   'farmer',
@@ -176,7 +176,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'healer_01',
+  'HEALER_01',
   'Healer',
   3,
   'healer',
@@ -219,7 +219,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'fireball_01',
+  'FIREBALL_01',
   'Fireball',
   4,
   'spell',

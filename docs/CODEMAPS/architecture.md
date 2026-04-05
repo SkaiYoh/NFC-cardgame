@@ -1,6 +1,6 @@
 # Architecture
 
-Verified from source on 2026-04-03.
+Verified from source on 2026-04-04.
 
 ## Runtime Model
 
@@ -16,16 +16,18 @@ Verified from source on 2026-04-03.
   - `SIDE_TOP` -> `{0, 0, 1080, 960}`
   - `SIDE_BOTTOM` -> `{0, 960, 1080, 960}`
 - Players are no longer world owners.
-  - `Player` stores identity, viewport/camera state, card slots, and energy.
-  - `Battlefield` stores canonical waypoints, spawn anchors, territory tilemaps, and the entity registry.
+  - `Player` stores identity, viewport/camera state, card slots, energy, and
+    a non-owning base pointer.
+  - `Battlefield` stores canonical waypoints, spawn anchors, territory
+    tilemaps, and the entity registry.
 
 ## Ownership
 
 | Owner | Owns Now | Does Not Own |
 |------|-----------|--------------|
-| `GameState` | root composition of DB, deck, players, battlefield, atlases, NFC state, `p2RT` | per-entity gameplay logic |
+| `GameState` | root composition of DB, deck, players, battlefield, atlases, NFC state, `p2RT`, and match-result state | per-entity gameplay logic |
 | `Battlefield` | world geometry, territories, tilemaps, canonical lane waypoints, spawn anchors, `entities[]` | player energy or slot state |
-| `Player` | `id`, `side`, `screenArea`, `camera`, `cameraRotation`, `slots[]`, `energy`, `maxEnergy`, `energyRegenRate` | entities, tilemaps, lane geometry |
+| `Player` | `id`, `side`, `screenArea`, `camera`, `cameraRotation`, `slots[]`, `energy`, `maxEnergy`, `energyRegenRate`, non-owning `base` | entities, tilemaps, lane geometry |
 | `Entity` | troop/building/projectile state | direct ownership of shared textures |
 | `BiomeDef` / `SpriteAtlas` / `CardAtlas` | shared loaded rendering assets | match-specific gameplay state |
 
@@ -37,7 +39,7 @@ game.c
   |- rendering/   viewports, tilemaps, sprites, UI, debug overlay
   |- entities/    per-entity state machine and draw
   |- systems/     player state and energy
-  |- logic/       card dispatch, pathfinding, combat
+  |- logic/       card dispatch, pathfinding, combat, win handling
   `- hardware/    serial NFC ingest
 ```
 
@@ -59,10 +61,13 @@ NFC packet or keyboard key
 
 ```text
 game_update()
+-> game_handle_debug_input()
+-> if gameOver: debug_events_tick() and return
 -> nfc_poll()
 -> keyboard debug input
 -> player_update() for both players
 -> entity_update() for every Battlefield entity
+-> win_check() fallback
 -> backward sweep of marked-for-removal entities
 -> debug_events_tick()
 ```
@@ -75,17 +80,25 @@ game_render()
 -> draw P2 viewport into RenderTexture2D
 -> composite P2 texture to right half of screen
 -> draw HUD in screen space
+-> draw match-result overlay if latched
 ```
 
 ## Architectural Facts That Matter
 
 - Canonical world-space refactor is already in place.
-  - `Entity.position` is now treated as canonical world space.
+  - `Entity.position` is treated as canonical world space.
   - pathfinding reads `Battlefield` waypoints directly.
   - combat uses direct canonical distance through `bf_distance()`.
-- Player 2 still uses a render texture, but the old seam-remap architecture is gone.
-  - `p2RT` is just the P2 viewport composite surface.
-  - there is no `seamRT` path anymore.
+- `game_init()` now spawns both player bases into `Battlefield.entities[]`.
+- `GameState` owns match result state directly through `gameOver` and
+  `winnerID`.
+- Win handling is active, not stubbed.
+  - lethal base hits latch the winner immediately
+  - `win_check()` is a fallback scan, not the primary path
+- Player 2 still uses a render texture, but the old seam-remap architecture is
+  gone.
+  - `p2RT` is just the P2 viewport composite surface
+  - there is no `seamRT` path anymore
 - The runtime currently initializes both territories with `BIOME_GRASS`.
   - four biome definitions exist
   - the game startup currently passes `BIOME_GRASS, BIOME_GRASS` to `bf_init()`
@@ -94,7 +107,6 @@ game_render()
 
 These modules are still architectural placeholders rather than active systems:
 
-- `src/entities/building.c`
 - `src/entities/projectile.c`
-- `src/logic/win_condition.c`
 - `src/systems/match.c`
+- `src/systems/spawn.c`

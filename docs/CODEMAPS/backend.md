@@ -4,14 +4,18 @@
 
 `game_update()` currently does exactly this:
 
-1. poll NFC hardware
-2. process keyboard debug input
-3. update both players' energy and slot cooldown timers
-4. update every entity in `Battlefield.entities[]`
-5. sweep `markedForRemoval` entities backward and free them
-6. tick the debug-event ring buffer
+1. process debug toggle input
+2. if `gameOver` is already latched, tick debug events and return early
+3. poll NFC hardware
+4. process keyboard debug spawn input
+5. update both players' energy and slot cooldown timers
+6. update every entity in `Battlefield.entities[]`
+7. run `win_check()` as a fallback scan
+8. sweep `markedForRemoval` entities backward, clearing stale player base pointers before free
+9. tick the debug-event ring buffer
 
-There is no match-phase gate around any of that yet. The game updates directly in play mode from launch.
+There is no match-phase gate around any of that yet. The game updates directly
+in play mode from launch.
 
 ## Input Paths
 
@@ -36,7 +40,7 @@ Important caveat:
 
 - the debug spawn path hardcodes `KNIGHT_01`
 - that matches the checked-in `cardgame.db`
-- it does not match a fresh database created from the current lowercase `seed.sql`
+- it now also matches a fresh database created from `sqlite/seed.sql`
 
 ## Card Dispatch
 
@@ -57,13 +61,14 @@ Important caveat:
   - lane assignment
   - `waypointIndex = 1`
   - `bf_add_entity()`
+- `play_spell()` consumes energy and logs parsed spell metadata only.
 
 ## Entity State Machine
 
 `Entity.state` has four live states:
 
 - `ESTATE_IDLE`
-  - currently does not scan for targets or re-enter motion on its own
+  - troops scan for nearby enemies and can transition into `ESTATE_ATTACKING`
 - `ESTATE_WALKING`
   - advances through canonical waypoints with `pathfind_step_entity()`
   - checks for nearby enemies and transitions into `ESTATE_ATTACKING`
@@ -79,24 +84,46 @@ Important caveat:
 ## Combat Model
 
 - Range checks use direct canonical distance with `bf_distance()`.
-- `combat_find_target()` iterates the Battlefield registry, skips friendlies, and can prioritize buildings when `targeting == TARGET_BUILDING`.
-- `combat_apply_hit()` is the active troop damage path used by `entity_update()`.
-- `combat_resolve()` still exists as a legacy cooldown-based helper, but the main troop loop does not use it.
+- `combat_find_target()` iterates the Battlefield registry, skips friendlies,
+  and can prioritize buildings when `targeting == TARGET_BUILDING`.
+- `TARGET_SPECIFIC_TYPE` currently falls back to nearest-target behavior
+  because the entity model has no type-name matcher yet.
+- `combat_apply_hit()` is the active troop damage path used by
+  `entity_update()`.
+- `combat_resolve()` still exists as a legacy cooldown-based helper, but the
+  main troop loop does not use it.
+- Base kills can latch the match result through either combat helper or
+  `building_take_damage()`.
+
+## Base And Win Systems
+
+- `game_init()` spawns one base per player using `bf_base_anchor()` and
+  `building_create_base()`.
+- Bases are stationary `ENTITY_BUILDING` instances with:
+  - `hp = 5000`
+  - no attack or movement
+  - player-owned base sprite selection and rotation
+- `win_trigger()` latches `gameOver` and `winnerID` once.
+- `win_latch_from_destroyed_base()` is the authoritative base-destruction
+  path.
+- `win_check()` is a defensive fallback that can also declare a draw if both
+  player bases are already dead.
 
 ## Player/Energy Systems
 
-- `player_init()` sets camera state from the canonical territory bounds and copies the three spawn anchors into `slots[]`.
+- `player_init()` sets camera state from the canonical territory bounds and
+  copies the three spawn anchors into `slots[]`.
 - `energy_init()` sets each player to:
-  - `maxEnergy = 10.0`
-  - `energy = 10.0`
-  - `energyRegenRate = 1.0`
+  - `maxEnergy = 100.0`
+  - `energy = 100.0`
+  - `energyRegenRate = 1.5`
 - `player_update()` only handles energy regen and slot cooldown countdown.
 
 ## Backend Gaps
 
 - `play_spell()` only logs its parsed spell data.
-- `building_create_base()` is still a stub, so there are no bases on the battlefield.
-- `win_condition.c` is unimplemented.
 - `match.c` is unimplemented.
 - `projectile.c` is unimplemented.
 - Slot cooldowns never activate because nothing sets `cooldownTimer > 0`.
+- `spawn.c` is still a placeholder; troop spawn orchestration lives in
+  `card_effects.c`.

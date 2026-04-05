@@ -5,8 +5,10 @@
 - The window is split into two `960 x 1080` halves.
 - Both players use `Camera2D` with `rotation = 90.0f`.
 - Player 1 renders directly to the left half.
-- Player 2 renders into `RenderTexture2D p2RT`, then that texture is composited into the right half.
-- The P2 composite uses a vertically flipped source rectangle to produce the across-the-table perspective.
+- Player 2 renders into `RenderTexture2D p2RT`, then that texture is
+  composited into the right half.
+- The P2 composite uses a vertically flipped source rectangle to produce the
+  across-the-table perspective.
 
 ## World Rendering Order
 
@@ -19,8 +21,10 @@ Inside each world-space view:
 
 After world-space drawing:
 
-5. draw viewport labels / HUD in screen space
-6. draw energy bars for both players
+5. composite P2's render texture to the right half of the screen
+6. draw viewport labels / HUD in screen space
+7. draw energy bars for both players
+8. draw the match-result overlay if `gameOver` is latched
 
 ## Tilemaps And Biomes
 
@@ -31,8 +35,10 @@ After world-space drawing:
   - swamp
 - `tilemap_create_biome()` builds per-territory grids from a `BiomeDef`.
 - Both territories are currently rendered from the Battlefield model.
-- The top territory is drawn with a `180` degree tile rotation so that terrain art reads correctly from the opposite seat.
-- Even though four biomes exist, `game_init()` currently initializes both territories as `BIOME_GRASS`.
+- The top territory is drawn with a `180` degree tile rotation so that terrain
+  art reads correctly from the opposite seat.
+- Even though four biomes exist, `game_init()` currently initializes both
+  territories as `BIOME_GRASS`.
 
 ## Sprite And Animation Rendering
 
@@ -47,7 +53,8 @@ After world-space drawing:
   - default cycle times
   - one-shot vs loop
   - attack hit markers
-- `sprite_draw()` chooses the frame from `normalizedTime` and the current facing direction.
+- `sprite_draw()` chooses the frame from `normalizedTime` and the current
+  facing direction.
 
 ## Card Rendering
 
@@ -55,14 +62,18 @@ After world-space drawing:
 - Card visuals are composed from 11 layers.
 - `card_visual_from_json()` reads a nested `visual` object from card JSON.
 - `card_draw_back()` supports the preview tool's back-side mode.
+- `card_renderer.c` is currently used by `card_preview`, not by the live match
+  UI.
 
 ## UI And Debug
 
 ### Player-Facing UI
 
 - `ui_draw_energy_bar()` draws one energy bar per player in screen space.
-- `ui_draw_viewport_label()` draws the P2 label in rotated screen space.
-- P1's `PLAYER 1` label is currently drawn in world space during the left-viewport pass.
+- `ui_draw_viewport_label()` draws both player labels in rotated screen space.
+- `ui_draw_match_result()` draws `VICTORY`, `DEFEAT`, or `DRAW` centered in
+  each player's viewport once the result is latched.
+- Base HP and in-game card/hand UI are still missing.
 
 ### Debug Overlay
 

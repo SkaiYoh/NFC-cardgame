@@ -55,4 +55,5 @@ The hardware layer depends on standard POSIX serial/file APIs:
 
 ## Verification Note
 
-The repo does not pin a `raylib` version in source. Local verification on 2026-04-03 used system `raylib` `5.5.0`.
+The repo does not pin a `raylib` version in source. Local verification on
+2026-04-04 used system `raylib` `5.5.0`.
