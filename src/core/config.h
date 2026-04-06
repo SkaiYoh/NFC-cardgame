@@ -41,6 +41,9 @@
 // Lane pathfinding
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
+#define LANE_OUTER_INSET_RATIO 0.25f
+#define LANE_BASE_APPROACH_START 0.72f
+#define LANE_BASE_APPROACH_GAP 16.0f
 #define LANE_JITTER_RADIUS   10.0f
 #define PI_F 3.14159265f
 

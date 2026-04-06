@@ -28,6 +28,9 @@
 #define BASE_SPAWN_GAP     32.0f
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
+#define LANE_OUTER_INSET_RATIO 0.25f
+#define LANE_BASE_APPROACH_START 0.72f
+#define LANE_BASE_APPROACH_GAP 16.0f
 #define PI_F               3.14159265f
 #define NUM_CARD_SLOTS     3
 #define MAX_ENTITIES       64
@@ -135,11 +138,13 @@ static Battlefield create_test_battlefield(void) {
  * and Y near SEAM_Y + 960 * 0.8 = 1728 */
 static void test_bf_spawn_anchors_bottom(void) {
     Battlefield bf = create_test_battlefield();
+    float laneWidth = (float)BOARD_WIDTH / 3.0f;
+    float outerInset = laneWidth * LANE_OUTER_INSET_RATIO;
 
     // Expected X for slots 0,1,2: center of each lane = (slot + 0.5) * (1080/3)
-    // slot 0: 180.0, slot 1: 540.0, slot 2: 900.0
+    // Outer lanes are nudged inward by a small canonical inset.
     // P1 is SIDE_BOTTOM (identity mapping, no lateral mirror)
-    float expectedX[3] = { 180.0f, 540.0f, 900.0f };
+    float expectedX[3] = { 180.0f + outerInset, 540.0f, 900.0f - outerInset };
     float expectedY = 960.0f + 960.0f * 0.8f;  // 1728.0
 
     for (int slot = 0; slot < 3; slot++) {
@@ -157,13 +162,12 @@ static void test_bf_spawn_anchors_bottom(void) {
  * and Y near the top territory spawn depth */
 static void test_bf_spawn_anchors_top(void) {
     Battlefield bf = create_test_battlefield();
+    float laneWidth = (float)BOARD_WIDTH / 3.0f;
+    float outerInset = laneWidth * LANE_OUTER_INSET_RATIO;
 
     // P2 slot-to-lane mapping (D-08): slot 0 -> lane 2, slot 1 -> lane 1, slot 2 -> lane 0
-    // In local space, slot X = (slot + 0.5) * (1080/3)
-    //   slot 0 local X = 180 -> canonical X = 1080 - 180 = 900
-    //   slot 1 local X = 540 -> canonical X = 1080 - 540 = 540
-    //   slot 2 local X = 900 -> canonical X = 1080 - 900 = 180
-    float expectedX[3] = { 900.0f, 540.0f, 180.0f };
+    // The canonical outer lanes are mirrored, then nudged inward toward center.
+    float expectedX[3] = { 900.0f - outerInset, 540.0f, 180.0f + outerInset };
 
     // P2 spawn Y: territory {0,0,1080,960}, spawn at 20% from top = 0 + 960 * 0.2 = 192
     float expectedY = 960.0f * 0.2f;  // 192.0
@@ -315,6 +319,31 @@ static void test_bf_lanes_coincide_at_seam(void) {
     printf("  PASS: test_bf_lanes_coincide_at_seam\n");
 }
 
+/* ---- Test: bf_outer_lanes_end_near_enemy_base ---- */
+/* Outer-lane endpoints should converge toward an attack point near the enemy
+ * base so melee units can find the base after finishing the path. */
+static void test_bf_outer_lanes_end_near_enemy_base(void) {
+    Battlefield bf = create_test_battlefield();
+    CanonicalPos topBase = bf_base_anchor(&bf, SIDE_TOP);
+    CanonicalPos bottomBase = bf_base_anchor(&bf, SIDE_BOTTOM);
+
+    for (int lane = 0; lane < 3; lane += 2) {
+        CanonicalPos bottomEnd = bf_waypoint(&bf, SIDE_BOTTOM, lane, LANE_WAYPOINT_COUNT - 1);
+        CanonicalPos topEnd = bf_waypoint(&bf, SIDE_TOP, lane, LANE_WAYPOINT_COUNT - 1);
+
+        assert(approx_eq(bottomEnd.v.x, topBase.v.x, 1.0f));
+        assert(approx_eq(topEnd.v.x, bottomBase.v.x, 1.0f));
+
+        assert(approx_eq(bottomEnd.v.y, topBase.v.y + LANE_BASE_APPROACH_GAP, 1.0f));
+        assert(approx_eq(topEnd.v.y, bottomBase.v.y - LANE_BASE_APPROACH_GAP, 1.0f));
+
+        assert(bf_distance(bottomEnd, topBase) < 32.0f);
+        assert(bf_distance(topEnd, bottomBase) < 32.0f);
+    }
+
+    printf("  PASS: test_bf_outer_lanes_end_near_enemy_base\n");
+}
+
 /* ---- Test: bf_seam_screen_placement ---- */
 /* Verify that the canonical seam (y=960) maps to screen x=960 for both
  * camera configurations used by the game.  This catches the P2 camera
@@ -397,10 +426,11 @@ int main(void) {
     test_bf_side_for_player();
     test_bf_territory_queries();
     test_bf_lanes_coincide_at_seam();
+    test_bf_outer_lanes_end_near_enemy_base();
     test_bf_seam_screen_placement();
     test_bf_base_anchor_bottom();
     test_bf_base_anchor_top();
     test_bf_base_anchor_gap();
-    printf("\nAll 12 tests passed!\n");
+    printf("\nAll 13 tests passed!\n");
     return 0;
 }
