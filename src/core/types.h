@@ -35,6 +35,18 @@ typedef enum {
     TARGET_SPECIFIC_TYPE
 } TargetingMode;
 
+// Unit role -- distinguishes combat troops from economic units
+typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
+
+// Farmer behavior phases
+typedef enum {
+    FARMER_SEEKING,
+    FARMER_WALKING_TO_ORE,
+    FARMER_MINING,
+    FARMER_RETURNING,
+    FARMER_DEPOSITING
+} FarmerState;
+
 // Entity definition
 struct Entity {
     int id;
@@ -61,6 +73,8 @@ struct Entity {
     const CharacterSprite *sprite;
     SpriteType spriteType;
     float spriteScale;
+    float spriteRotationDegrees;
+    BattleSide presentationSide;
 
     // Ownership
     int ownerID; // Player index (0 or 1)
@@ -69,6 +83,13 @@ struct Entity {
 
     // Debug
     float hitFlashTimer;        // countdown for hit-marker visual flash (debug overlay)
+
+    // Unit role (farmer vs combat)
+    UnitRole unitRole;
+    FarmerState farmerState;
+    int claimedOreNodeId;       // ore node ID this farmer is targeting, -1 if none
+    int carriedOreValue;        // ore value being carried back to base
+    float workTimer;            // elapsed time in current work cycle (mining/depositing)
 
     // Flags
     bool alive;
@@ -99,6 +120,13 @@ struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+
+    // Non-owning: Battlefield entity registry owns the base entity.
+    // NULL if destroyed or not yet spawned.
+    Entity *base;
+
+    // Ore scoring (incremented on deposit or carrying-farmer death)
+    int oreCollected;
 };
 
 // Game state
@@ -120,6 +148,9 @@ struct GameState {
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
 
+    // Ore node texture (shared by ore_renderer)
+    Texture2D oreTexture;
+
     // Screen layout
     int halfWidth; // Half screen width for split screen
 
@@ -130,6 +161,10 @@ struct GameState {
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
+
+    // Match result (latched on first lethal base hit, or defensive draw fallback)
+    bool gameOver;
+    int winnerID;   // -1 = unset or draw if gameOver=true, 0 = P1, 1 = P2
 };
 
 #endif //NFC_CARDGAME_TYPES_H

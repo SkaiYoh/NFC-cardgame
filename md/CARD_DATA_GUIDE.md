@@ -15,7 +15,7 @@ Cards are stored in the `cards` table with the following columns:
 | `cost` | INTEGER | Yes | Energy cost to play |
 | `type` | TEXT | Yes | Card type — determines which effect handler runs (see [Card Types](#card-types)) |
 | `rules_text` | TEXT | No | Flavor or rules text shown in the card description area |
-| `data` | TEXT | Yes | All visual styling and gameplay stats as JSON (see [Data JSON](#data-json)) |
+| `data` | TEXT | No | Visual styling and gameplay stats as JSON (see [Data JSON](#data-json)); runtime code falls back to defaults when it is absent |
 
 ---
 
@@ -25,14 +25,18 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 
 | Type | Behavior |
 |------|----------|
-| `knight` | Spawns a melee troop |
-| `healer` | Spawns a healer troop |
-| `assassin` | Spawns an assassin troop |
-| `brute` | Spawns a brute troop |
-| `farmer` | Spawns a farmer troop |
-| `spell` | Applies a spell effect (damage, element, targets) |
+| `knight` | Spawns a troop using the shared troop pipeline |
+| `healer` | Spawns a troop using the shared troop pipeline; no healer-specific ability yet |
+| `assassin` | Spawns a troop using the shared troop pipeline; no assassin-specific ability yet |
+| `brute` | Spawns a troop using the shared troop pipeline; gameplay difference currently comes from JSON stats and targeting |
+| `farmer` | Spawns a troop using the shared troop pipeline; no farmer-specific ability yet |
+| `spell` | Consumes energy and logs parsed spell metadata; no in-world effect yet |
 
-All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`) read their stats from the same troop fields in the JSON `data` column.
+All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`) read their
+stats from the same troop fields in the JSON `data` column.
+
+Lookups are case-sensitive: `cards_find()` uses `strcmp()` on `card_id`. Keep
+`cards.card_id` and `nfc_tags.card_id` casing consistent across your database.
 
 ---
 
@@ -136,13 +140,14 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `attackRange` | float | `40.0` | Melee range in pixels |
 | `moveSpeed` | float | `60.0` | Movement speed in pixels per second |
 | `targeting` | string | `"nearest"` | `"nearest"`, `"building"`, or `"specific"` |
-| `targetType` | string | `null` | Entity type string — only used when `targeting` is `"specific"` |
+| `targetType` | string | `null` | Parsed and stored when `targeting` is `"specific"`, but current combat code still falls back to nearest-target behavior |
 
 ---
 
 ## Gameplay Fields — Spell Cards
 
-Applies to `type: "spell"`. Note: spell logic is currently print-only (stubbed).
+Applies to `type: "spell"`. Note: spell logic currently consumes energy and
+prints parsed metadata only.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -157,7 +162,7 @@ Applies to `type: "spell"`. Note: spell logic is currently print-only (stubbed).
 ```sql
 INSERT INTO cards (card_id, name, cost, type, rules_text, data)
 VALUES (
-  'knight_01',
+  'KNIGHT_01',
   'Knight',
   4,
   'knight',

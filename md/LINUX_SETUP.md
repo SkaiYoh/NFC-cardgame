@@ -39,9 +39,11 @@ cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
 
-If `cardgame.db` is missing or you want a clean reset:
+If `cardgame.db` is missing, or you want a clean reset after deleting the old
+file first:
 
 ```bash
+rm -f cardgame.db
 cmake --build build --target init-db
 ```
 

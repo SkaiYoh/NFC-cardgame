@@ -8,6 +8,7 @@
 #include "../core/debug_events.h"
 #include "../logic/pathfinding.h"
 #include "../logic/combat.h"
+#include "../logic/farmer.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,23 +20,14 @@
 static int s_nextEntityID = 1;
 
 // Orient entity's animation facing toward a target position.
-static void entity_face_toward(Entity *e, Vector2 targetPos) {
+static void entity_face_toward(Entity *e, const Battlefield *bf, Vector2 targetPos) {
     float dx = targetPos.x - e->position.x;
     float dy = targetPos.y - e->position.y;
-    const float eps = 0.001f;
-
-    if (fabsf(dx) < eps && fabsf(dy) < eps) return;
-
-    if (fabsf(dx) >= eps) {
-        e->anim.dir = DIR_SIDE;
-        e->anim.flipH = (dx < 0);
-    } else if (dy < 0) {
-        e->anim.dir = DIR_UP;
-        e->anim.flipH = false;
-    } else {
-        e->anim.dir = DIR_DOWN;
-        e->anim.flipH = false;
-    }
+    Vector2 diff = { dx, dy };
+    pathfind_commit_presentation(e, bf);
+    pathfind_apply_direction_for_side(&e->anim, diff, e->presentationSide);
+    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir,
+                                                                 e->presentationSide);
 }
 
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
@@ -54,8 +46,17 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     // TODO: spriteScale is hardcoded to 2.0f here; troop_spawn overrides it correctly, but other
     // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
+    e->spriteRotationDegrees = 0.0f;
+    e->presentationSide = SIDE_BOTTOM;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
+
+    // Default to combat role; farmer overrides in troop_spawn
+    e->unitRole = UNIT_ROLE_COMBAT;
+    e->farmerState = FARMER_SEEKING;
+    e->claimedOreNodeId = -1;
+    e->carriedOreValue = 0;
+    e->workTimer = 0.0f;
 
     anim_state_init(&e->anim, ANIM_IDLE, DIR_UP, 0.5f, false);
 
@@ -126,11 +127,25 @@ void entity_restart_clip(Entity *e) {
 void entity_update(Entity *e, GameState *gs, float deltaTime) {
     if (!e || e->markedForRemoval) return;
 
+    // TODO: Farmer bypasses combat state machine. Add ESTATE_WORKING when
+    // farmer-specific animations are available.
+    if (e->unitRole == UNIT_ROLE_FARMER) {
+        farmer_update(e, gs, deltaTime);
+        return;
+    }
+
     switch (e->state) {
         case ESTATE_IDLE:
             if (!e->alive) break;
-            // TODO: ESTATE_IDLE has no combat or targeting behavior. Idle entities should scan for
-            // TODO: nearby enemies and transition to ESTATE_WALKING or trigger an attack when in range.
+            // Idle troops scan for nearby enemies (handles end-of-lane jitter edge case)
+            if (e->type == ENTITY_TROOP) {
+                Entity *target = combat_find_target(e, gs);
+                if (target && combat_in_range(e, target, gs)) {
+                    e->attackTargetId = target->id;
+                    entity_set_state(e, ESTATE_ATTACKING);
+                    entity_face_toward(e, &gs->battlefield, target->position);
+                }
+            }
             break;
 
         case ESTATE_WALKING: {
@@ -142,7 +157,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             if (target && combat_in_range(e, target, gs)) {
                 e->attackTargetId = target->id;
                 entity_set_state(e, ESTATE_ATTACKING);
-                entity_face_toward(e, target->position);
+                entity_face_toward(e, &gs->battlefield, target->position);
             }
             break;
         }
@@ -170,7 +185,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 e->hitFlashTimer = 0.15f;
                 // Re-validate target at hit moment
                 if (target->alive) {
-                    combat_apply_hit(e, target);
+                    combat_apply_hit(e, target, gs);
                 }
             }
 
@@ -185,7 +200,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 Entity *nextTarget = combat_find_target(e, gs);
                 if (nextTarget && combat_in_range(e, nextTarget, gs)) {
                     e->attackTargetId = nextTarget->id;
-                    entity_face_toward(e, nextTarget->position);
+                    entity_face_toward(e, &gs->battlefield, nextTarget->position);
                     entity_restart_clip(e);
                 } else {
                     e->attackTargetId = -1;
@@ -207,10 +222,14 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
         }
     }
 
-    anim_state_update(&e->anim, deltaTime);
+    AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+    if (e->state == ESTATE_WALKING && evt.loopedThisTick) {
+        pathfind_commit_presentation(e, &gs->battlefield);
+        pathfind_update_walk_facing(e, &gs->battlefield);
+    }
 }
 
 void entity_draw(const Entity *e) {
     if (!e || e->markedForRemoval || !e->sprite) return;
-    sprite_draw(e->sprite, &e->anim, e->position, e->spriteScale);
+    sprite_draw(e->sprite, &e->anim, e->position, e->spriteScale, e->spriteRotationDegrees);
 }

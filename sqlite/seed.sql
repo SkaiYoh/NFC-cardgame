@@ -4,7 +4,7 @@
 INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 
 (
-  'knight_01',
+  'KNIGHT_01',
   'Knight',
   4,
   'knight',
@@ -47,7 +47,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'assassin_01',
+  'ASSASSIN_01',
   'Assassin',
   3,
   'assassin',
@@ -90,7 +90,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'brute_01',
+  'BRUTE_01',
   'Brute',
   6,
   'brute',
@@ -133,11 +133,11 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'farmer_01',
+  'FARMER_01',
   'Farmer',
   2,
   'farmer',
-  'A determined peasant armed with little more than a pitchfork and stubbornness.',
+  'A hardworking farmer who gathers ore from the battlefield and returns it to base.',
   '{
     "visual": {
       "border_color":       "green",
@@ -166,17 +166,12 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
     },
     "hp":          90,
     "maxHP":       90,
-    "attack":      8,
-    "attackSpeed": 1.1,
-    "attackRange": 38.0,
-    "moveSpeed":   58.0,
-    "targeting":   "nearest",
-    "targetType":  null
+    "moveSpeed":   58.0
   }'
 ),
 
 (
-  'healer_01',
+  'HEALER_01',
   'Healer',
   3,
   'healer',
@@ -219,7 +214,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 ),
 
 (
-  'fireball_01',
+  'FIREBALL_01',
   'Fireball',
   4,
   'spell',

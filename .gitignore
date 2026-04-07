@@ -10,3 +10,5 @@ test_battlefield
 test_combat
 test_animation
 test_debug_events
+test_ore
+test_win_condition

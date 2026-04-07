@@ -13,6 +13,7 @@ void player_init(Player *p, int id, BattleSide side,
                  const Battlefield *bf) {
     memset(p, 0, sizeof(Player));
     p->id = id;
+    p->oreCollected = 0;
     p->side = side;
     p->screenArea = screenArea;
     p->cameraRotation = cameraRotation;
@@ -42,7 +43,7 @@ void player_init(Player *p, int id, BattleSide side,
     }
 
     // Initialize energy
-    energy_init(p, 10.0f, 1.0f);
+    energy_init(p, 100.0f, 1.5f);
 
     printf("Player %d (side %s) initialized\n", id,
            side == SIDE_BOTTOM ? "BOTTOM" : "TOP");

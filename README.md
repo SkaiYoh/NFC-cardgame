@@ -12,7 +12,8 @@ Primary development target: Linux. The setup and run instructions below assume a
 - **Split-screen two-player** — rotated viewports so players sit across from each other
 - **Canonical shared battlefield** — both players view the same `1080 x 1920` world with a seam at `y=960`
 - **Tile-based biome rendering** — procedural tilemaps with multiple biome themes (plains, cursed lands, undead, etc.)
-- **Entity system** — troops, buildings, and projectiles with combat, pathfinding, and win conditions
+- **Entity system** — troops and stationary bases with combat, pathfinding, death animations, and base-destruction win handling
+- **Match result overlay** — lethal base hits freeze gameplay and render `VICTORY`, `DEFEAT`, or `DRAW` for both players
 - **Energy system** — card plays cost energy that regenerates over time
 - **Card data from SQLite** — card stats, sprites, and metadata stored in a local `cardgame.db` file and loaded at runtime
 - **Standalone dev tools** — card preview, biome preview, and card enrollment utilities
@@ -77,12 +78,15 @@ cmake --build build -j"$(nproc)"
 # Run tests
 ctest --test-dir build --output-on-failure
 
-# Recreate the database only if cardgame.db is missing or you want a reset
+# Initialize the database if cardgame.db is missing, or delete it first for a true reset
 cmake --build build --target init-db
 
 # Run from the project root so relative asset paths resolve correctly
 ./build/cardgame
 ```
+
+If you prefer the `Makefile`, the equivalent local entrypoints are `make cardgame`,
+`make preview`, `make biome_preview`, `make card_enroll`, and `make test`.
 
 ## Raspberry Pi Log Watching
 
@@ -106,7 +110,7 @@ tail -f ~/NFC-cardgame/game.log
 | `cmake -S . -B build`                     | Configure the project                             |
 | `cmake --build build -j"$(nproc)"`        | Build all targets                                 |
 | `cmake --build build --target cardgame`   | Build the main game binary                        |
-| `cmake --build build --target init-db`    | Recreate and seed `cardgame.db` if needed          |
+| `cmake --build build --target init-db`    | Initialize and seed `cardgame.db` without clearing old rows |
 | `cmake --build build --target card_preview` | Build the card preview tool                     |
 | `cmake --build build --target biome_preview` | Build the biome preview tool                   |
 | `cmake --build build --target card_enroll`  | Build the card enrollment tool                  |
@@ -174,7 +178,17 @@ The game uses a local SQLite file (`cardgame.db`) — no server required.
 | `sqlite/seed.sql`     | Base card data                   |
 | `cardgame.db`         | Runtime database shipped in repo |
 
-To reset the database: `rm cardgame.db && cmake --build build --target init-db`
+The checked-in runtime database and `sqlite/seed.sql` now both use uppercase
+card IDs. The `init-db` target still does not clear existing rows first,
+though, so a true reset should remove `cardgame.db` before re-seeding if you
+want to drop old NFC mappings as well.
+
+To reset the database cleanly:
+
+```bash
+rm -f cardgame.db
+cmake --build build --target init-db
+```
 
 To browse the database, use [DB Browser for SQLite](https://sqlitebrowser.org/) and install `sqlitebrowser` from your distro repository.
 

@@ -6,6 +6,7 @@
 #include "sprite_renderer.h"
 #include "../core/debug_events.h"
 #include "../core/battlefield.h"
+#include "../core/config.h"
 #include "../entities/entity_animation.h"
 #include "../logic/combat.h"
 #include <math.h>
@@ -26,7 +27,8 @@ static void draw_attack_bar(const Entity *e) {
 
     // Anchor bar above the visible sprite top
     Rectangle vb = sprite_visible_bounds(e->sprite, &e->anim,
-                                         e->position, e->spriteScale);
+                                         e->position, e->spriteScale,
+                                         e->spriteRotationDegrees);
     float barX = e->position.x - BAR_WIDTH * 0.5f;
     float barY = (vb.height > 0.0f)
         ? vb.y - BAR_GAP - BAR_HEIGHT
@@ -147,6 +149,136 @@ static void draw_event_flashes(void) {
     }
 }
 
+// --- Ore placement diagnostics overlay (F7) ---
+
+static Color ore_reason_color(OreCellReason reason) {
+    switch (reason) {
+        case ORE_CELL_VALID:          return Fade(GREEN,    0.15f);
+        case ORE_CELL_EDGE_BLOCKED:   return Fade(DARKGRAY, 0.15f);
+        case ORE_CELL_LANE_BLOCKED:   return Fade(RED,      0.20f);
+        case ORE_CELL_BASE_BLOCKED:   return Fade(ORANGE,   0.20f);
+        case ORE_CELL_SPAWN_BLOCKED:  return Fade(YELLOW,   0.20f);
+        case ORE_CELL_NODE_BLOCKED:   return Fade(SKYBLUE,  0.20f);
+        default:                      return Fade(WHITE,    0.10f);
+    }
+}
+
+static void draw_ore_placement(const Battlefield *bf) {
+    float halfCell = ORE_GRID_CELL_SIZE_PX * 0.5f;
+
+    // --- Cell grid for both sides ---
+    for (int s = 0; s < 2; s++) {
+        BattleSide side = (BattleSide)s;
+        for (int r = 0; r < ORE_GRID_ROWS; r++) {
+            for (int c = 0; c < ORE_GRID_COLS; c++) {
+                OreCellDebugInfo info = ore_debug_classify_cell(bf, side, r, c);
+                Rectangle cell = {
+                    info.centerX - halfCell,
+                    info.centerY - halfCell,
+                    ORE_GRID_CELL_SIZE_PX,
+                    ORE_GRID_CELL_SIZE_PX
+                };
+
+                // Fill by classification reason
+                DrawRectangleRec(cell, ore_reason_color(info.reason));
+                // Faint cell outline
+                DrawRectangleLinesEx(cell, 1.0f, Fade(LIGHTGRAY, 0.3f));
+            }
+        }
+    }
+
+    // --- Shared clearance shapes ---
+
+    // Lane corridor lines (all 6 lanes), drawn once so both territories have
+    // consistent visual intensity.
+    for (int ls = 0; ls < 2; ls++) {
+        for (int lane = 0; lane < 3; lane++) {
+            for (int wp = 0; wp < LANE_WAYPOINT_COUNT - 1; wp++) {
+                CanonicalPos wpA = bf_waypoint(bf, (BattleSide)ls, lane, wp);
+                CanonicalPos wpB = bf_waypoint(bf, (BattleSide)ls, lane, wp + 1);
+                float thickness = ORE_LANE_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX * 2.0f;
+                DrawLineEx(wpA.v, wpB.v, thickness, Fade(RED, 0.10f));
+            }
+        }
+    }
+
+    // Side-specific base and spawn clearance guides.
+    for (int s = 0; s < 2; s++) {
+        BattleSide side = (BattleSide)s;
+        // Base anchor clearance circle
+        CanonicalPos baseAnchor = bf_base_anchor(bf, side);
+        float baseRadius = ORE_BASE_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX;
+        DrawCircleLinesV(baseAnchor.v, baseRadius, Fade(ORANGE, 0.4f));
+
+        // Spawn anchor clearance circles
+        for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
+            CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
+            float spawnRadius = ORE_SPAWN_CLEARANCE_CELLS * ORE_GRID_CELL_SIZE_PX;
+            DrawCircleLinesV(spawnAnchor.v, spawnRadius, Fade(YELLOW, 0.4f));
+        }
+    }
+}
+
+// --- Ore node overlay (F6) ---
+
+static void draw_ore_nodes(const Battlefield *bf) {
+    const OreField *field = &bf->oreField;
+    float halfCell = ORE_GRID_CELL_SIZE_PX * 0.5f;
+
+    for (int s = 0; s < 2; s++) {
+        for (int i = 0; i < ORE_MATCH_COUNT_PER_SIDE; i++) {
+            const OreNode *n = &field->nodes[s][i];
+            if (!n->active) continue;
+
+            Rectangle cell = {
+                n->worldPos.v.x - halfCell,
+                n->worldPos.v.y - halfCell,
+                ORE_GRID_CELL_SIZE_PX,
+                ORE_GRID_CELL_SIZE_PX
+            };
+
+            // Determine state color
+            Color outlineColor;
+            Color markerColor;
+            bool hasClaim = (n->claimedByEntityId >= 0);
+            bool claimantAlive = false;
+            Entity *claimant = NULL;
+
+            if (hasClaim) {
+                claimant = bf_find_entity((Battlefield *)bf, n->claimedByEntityId);
+                claimantAlive = (claimant != NULL && claimant->alive);
+                if (claimantAlive) {
+                    outlineColor = ORANGE;
+                    markerColor = YELLOW;
+                } else {
+                    outlineColor = RED;
+                    markerColor = RED;
+                }
+            } else {
+                outlineColor = GREEN;
+                markerColor = (Color){0, 220, 220, 200};
+            }
+
+            // Cell outline
+            DrawRectangleLinesEx(cell, 1.5f, Fade(outlineColor, 0.7f));
+
+            // Center marker
+            DrawCircleV(n->worldPos.v, 4.0f, Fade(markerColor, 0.8f));
+
+            // Claimed state ring
+            if (hasClaim) {
+                DrawCircleLinesV(n->worldPos.v, 7.0f, Fade(outlineColor, 0.8f));
+            }
+
+            // Claim line to owning entity
+            if (claimantAlive) {
+                DrawLineEx(n->worldPos.v, claimant->position, 1.0f,
+                           Fade(YELLOW, 0.4f));
+            }
+        }
+    }
+}
+
 // --- Public API ---
 
 void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
@@ -159,6 +291,8 @@ void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
         if (flags.targetLines)  draw_target_line(e, bf, gs);
     }
 
+    if (flags.orePlacement)  draw_ore_placement(bf);
+    if (flags.oreNodes)      draw_ore_nodes(bf);
     if (flags.eventFlashes)  draw_event_flashes();
     if (flags.rangeCirlces)  draw_range_circles(bf);
 }

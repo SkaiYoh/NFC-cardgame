@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_win_condition test_ore sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -7,12 +7,12 @@ LDFLAGS = -lsqlite3 -lraylib -lm
 MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 
 # Source files
-SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c
+SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/ore.c
 SRC_DATA = src/data/db.c src/data/cards.c
-SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c
+SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/ore_renderer.c
 SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
 SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
-SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/pathfinding.c src/logic/win_condition.c
+SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/farmer.c src/logic/pathfinding.c src/logic/win_condition.c
 SRC_HARDWARE = src/hardware/nfc_reader.c src/hardware/arduino_protocol.c
 SRC_LIB = third_party/cjson/cJSON.c
 
@@ -53,7 +53,7 @@ card-enroll-run: card_enroll
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_pathfinding.c -o test_pathfinding -lm
 
-test_combat: tests/test_combat.c src/logic/combat.c
+test_combat: tests/test_combat.c src/logic/combat.c src/entities/building.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_combat.c -o test_combat -lm
 
 test_battlefield_math: tests/test_battlefield_math.c src/core/battlefield_math.c
@@ -68,16 +68,24 @@ test_animation: tests/test_animation.c src/entities/entity_animation.c
 test_debug_events: tests/test_debug_events.c src/core/debug_events.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_debug_events.c -o test_debug_events -lm
 
-test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events
+test_win_condition: tests/test_win_condition.c src/logic/win_condition.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_win_condition.c -o test_win_condition -lm
+
+test_ore: tests/test_ore.c src/core/ore.c src/core/battlefield.c src/core/battlefield_math.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_ore.c -o test_ore -lm
+
+test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_win_condition test_ore
 	./test_pathfinding
 	./test_combat
 	./test_battlefield_math
 	./test_battlefield
 	./test_animation
 	./test_debug_events
+	./test_win_condition
+	./test_ore
 
 sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_win_condition test_ore

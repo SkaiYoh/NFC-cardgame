@@ -87,8 +87,11 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     if (e) {
         CanonicalPos spawnCheck = { e->position };
         BF_ASSERT_IN_BOUNDS(spawnCheck, BOARD_WIDTH, BOARD_HEIGHT);
-        e->lane = canonicalLane;  // canonical lane index (per D-07)
-        e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
+        // Farmers use direct movement, not lane pathing — skip lane assignment
+        if (e->unitRole != UNIT_ROLE_FARMER) {
+            e->lane = canonicalLane;  // canonical lane index (per D-07)
+            e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
+        }
         bf_add_entity(&state->battlefield, e);
     }
 }

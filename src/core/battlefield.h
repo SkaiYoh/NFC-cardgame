@@ -20,6 +20,7 @@
 #define VECTOR2_DEFINED
 #endif
 #include "battlefield_math.h"
+#include "ore.h"
 
 // Forward declarations
 typedef struct Entity Entity;
@@ -51,6 +52,9 @@ typedef struct Battlefield {
 
     // Canonical slot spawn anchors: slotSpawnAnchors[side][slot]
     CanonicalPos slotSpawnAnchors[2][NUM_CARD_SLOTS];
+
+    // Ore resource nodes (battlefield-owned, not Entity instances)
+    OreField oreField;
 
     // Authoritative entity registry (per D-11)
     Entity *entities[MAX_ENTITIES * 2];  // room for both sides
@@ -87,6 +91,10 @@ CanonicalPos bf_spawn_pos(const Battlefield *bf, BattleSide side, int slotIndex)
 
 // Get canonical waypoint for a given side, lane, and waypoint index
 CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int waypointIdx);
+
+// Get canonical home-base anchor for a given side.
+// Positioned behind the center-lane spawn point by BASE_SPAWN_GAP.
+CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side);
 
 // Map playerID (0 or 1) to BattleSide (per D-03, D-04: player 0 = SIDE_BOTTOM, player 1 = SIDE_TOP)
 BattleSide bf_side_for_player(int playerID);

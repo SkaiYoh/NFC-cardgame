@@ -46,6 +46,7 @@ typedef enum {
     SPRITE_TYPE_ASSASSIN,
     SPRITE_TYPE_BRUTE,
     SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_BASE,
     SPRITE_TYPE_COUNT
 } SpriteType;
 
@@ -83,10 +84,10 @@ void sprite_atlas_free(SpriteAtlas *atlas);
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
-                                Vector2 pos, float scale);
+                                Vector2 pos, float scale, float rotationDegrees);
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
-                 Vector2 pos, float scale);
+                 Vector2 pos, float scale, float rotationDegrees);
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot);

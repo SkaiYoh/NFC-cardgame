@@ -6,6 +6,7 @@
 #include "../core/config.h"
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 typedef struct {
     const char *path;
@@ -98,7 +99,7 @@ static SpriteSheet load_sheet(const char *path, int frameCount) {
 
     s.frameCount = frameCount;
     s.frameWidth = s.texture.width / frameCount;
-    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (DOWN, SIDE, UP).
+    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (SIDE, DOWN, UP).
     // TODO: If any sprite sheet has a different row layout this silently produces wrong frame heights.
     // TODO: Validate texture.height % DIR_COUNT == 0 and log a warning if not.
     s.frameHeight = s.texture.height / DIR_COUNT;
@@ -205,7 +206,7 @@ const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType ani
 }
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,
-                                Vector2 pos, float scale) {
+                                Vector2 pos, float scale, float rotationDegrees) {
     if (!state) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
 
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
@@ -222,24 +223,54 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
         return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
     }
 
-    float frameLeft = pos.x - (float) sheet->frameWidth * scale * 0.5f;
-    float frameTop = pos.y - (float) sheet->frameHeight * scale * 0.5f;
-    float visibleX = frameLeft + bounds.x * scale;
+    float fw = (float) sheet->frameWidth * scale;
+    float fh = (float) sheet->frameHeight * scale;
 
+    // Visible sub-rect in scaled frame-local coords (origin = frame top-left)
+    float vx = bounds.x * scale;
+    float vy = bounds.y * scale;
+    float vw = bounds.width * scale;
+    float vh = bounds.height * scale;
+
+    // Apply flipH: mirror visible rect within the full frame
     if (state->flipH) {
-        visibleX = frameLeft + ((float) sheet->frameWidth - (bounds.x + bounds.width)) * scale;
+        vx = fw - (vx + vw);
     }
 
-    return (Rectangle){
-        visibleX,
-        frameTop + bounds.y * scale,
-        bounds.width * scale,
-        bounds.height * scale
+    // Four corners relative to the frame center (same origin as DrawTexturePro)
+    float cx = fw * 0.5f;
+    float cy = fh * 0.5f;
+    float corners[4][2] = {
+        { vx - cx,      vy - cy },
+        { vx + vw - cx, vy - cy },
+        { vx + vw - cx, vy + vh - cy },
+        { vx - cx,      vy + vh - cy },
     };
+
+    // Rotate corners around the frame center
+    float rad = rotationDegrees * (3.14159265358979323846f / 180.0f);
+    float cosA = cosf(rad);
+    float sinA = sinf(rad);
+
+    float minX = 1e30f, minY = 1e30f;
+    float maxX = -1e30f, maxY = -1e30f;
+    for (int i = 0; i < 4; i++) {
+        float rx = corners[i][0] * cosA - corners[i][1] * sinA;
+        float ry = corners[i][0] * sinA + corners[i][1] * cosA;
+        // Translate back to world space
+        float wx = pos.x + rx;
+        float wy = pos.y + ry;
+        if (wx < minX) minX = wx;
+        if (wy < minY) minY = wy;
+        if (wx > maxX) maxX = wx;
+        if (wy > maxY) maxY = wy;
+    }
+
+    return (Rectangle){ minX, minY, maxX - minX, maxY - minY };
 }
 
 void sprite_draw(const CharacterSprite *cs, const AnimState *state,
-                 Vector2 pos, float scale) {
+                 Vector2 pos, float scale, float rotationDegrees) {
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     // TODO: When LoadTexture fails, texture.id == 0 and we silently return without drawing.
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
@@ -274,7 +305,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     // Center the sprite on the position
     Vector2 origin = {dw / 2.0f, dh / 2.0f};
 
-    DrawTexturePro(sheet->texture, src, dst, origin, 0.0f, WHITE);
+    DrawTexturePro(sheet->texture, src, dst, origin, rotationDegrees, WHITE);
 }
 
 

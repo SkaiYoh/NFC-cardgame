@@ -25,6 +25,40 @@ static float bow_offset(int lane, float t, float laneWidth) {
     return (lane == 0) ? -bow : bow;
 }
 
+// Pull the outer lanes slightly toward the center so they sit less tightly
+// against the board edges at both spawn and seam ends.
+static float outer_lane_inset(int lane, float laneWidth) {
+    if (lane == 1) return 0.0f;
+
+    float inset = laneWidth * LANE_OUTER_INSET_RATIO;
+    return (lane == 0) ? inset : -inset;
+}
+
+static float smoothstep01(float t) {
+    if (t <= 0.0f) return 0.0f;
+    if (t >= 1.0f) return 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float lane_spawn_y(const Territory *t, BattleSide side) {
+    if (side == SIDE_BOTTOM) {
+        return t->bounds.y + t->bounds.height * 0.8f;
+    }
+    return t->bounds.y + t->bounds.height * 0.2f;
+}
+
+static float base_anchor_y_from_territory(const Territory *t, BattleSide side) {
+    float spawnY = lane_spawn_y(t, side);
+    return spawnY + ((side == SIDE_TOP) ? -BASE_SPAWN_GAP : BASE_SPAWN_GAP);
+}
+
+static float outer_lane_base_approach(int lane, float t) {
+    if (lane == 1) return 0.0f;
+
+    float localT = (t - LANE_BASE_APPROACH_START) / (1.0f - LANE_BASE_APPROACH_START);
+    return smoothstep01(localT);
+}
+
 // Initialize a single territory
 static void territory_init(Territory *t, BattleSide side, Rectangle bounds,
                            BiomeType biome, const BiomeDef *biomeDef,
@@ -51,7 +85,13 @@ static void territory_init(Territory *t, BattleSide side, Rectangle bounds,
 // via bf_to_canonical (per D-06, D-18).
 static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
     Territory *t = &bf->territories[side];
+    BattleSide enemySide = (side == SIDE_BOTTOM) ? SIDE_TOP : SIDE_BOTTOM;
+    Territory *enemy = &bf->territories[enemySide];
     float laneWidth = t->bounds.width / 3.0f;
+    float enemyBaseX = bf->boardWidth * 0.5f;
+    float enemyBaseY = base_anchor_y_from_territory(enemy, enemySide);
+    float enemyApproachY = enemyBaseY + ((enemySide == SIDE_TOP) ? LANE_BASE_APPROACH_GAP
+                                                                 : -LANE_BASE_APPROACH_GAP);
 
     // Depth parameters matching pathfinding.c
     float spawnDepth = 0.125f;
@@ -85,7 +125,9 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
                 }
 
                 SideLocalPos local = { .v = { localX, localY }, .side = side };
-                bf->laneWaypoints[side][lane][wp] = bf_to_canonical(local, bf->boardWidth);
+                CanonicalPos canonical = bf_to_canonical(local, bf->boardWidth);
+                canonical.v.x += outer_lane_inset(lane, laneWidth);
+                bf->laneWaypoints[side][lane][wp] = canonical;
                 continue;
             }
 
@@ -116,8 +158,19 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
             SideLocalPos local = { .v = { localX, localY }, .side = side };
             CanonicalPos canonical = bf_to_canonical(local, bf->boardWidth);
 
+            canonical.v.x += outer_lane_inset(lane, laneWidth);
+
             // Apply bow offset in canonical space (sign is consistent for both sides)
             canonical.v.x += bow_offset(lane, t_param, laneWidth);
+
+            // Outer lanes taper toward the enemy base so units that finish there
+            // can immediately find and attack it instead of idling off to the side.
+            float baseApproach = outer_lane_base_approach(lane, t_param);
+            if (baseApproach > 0.0f) {
+                canonical.v.x += (enemyBaseX - canonical.v.x) * baseApproach;
+                canonical.v.y += (enemyApproachY - canonical.v.y) * baseApproach;
+            }
+
             bf->laneWaypoints[side][lane][wp] = canonical;
         }
     }
@@ -225,4 +278,16 @@ CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int w
         return fallback;
     }
     return bf->laneWaypoints[side][lane][waypointIdx];
+}
+
+CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side) {
+    // Center lane (lane 1), first waypoint = spawn position
+    CanonicalPos spawn = bf->laneWaypoints[side][1][0];
+    CanonicalPos base = spawn;
+    if (side == SIDE_TOP) {
+        base.v.y = spawn.v.y - BASE_SPAWN_GAP;
+    } else {
+        base.v.y = spawn.v.y + BASE_SPAWN_GAP;
+    }
+    return base;
 }

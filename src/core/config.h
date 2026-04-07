@@ -35,9 +35,15 @@
 #define ENERGY_BAR_MARGIN    16
 #define ENERGY_BAR_Y_OFFSET  40
 
+// Base geometry
+#define BASE_SPAWN_GAP 32.0f
+
 // Lane pathfinding
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
+#define LANE_OUTER_INSET_RATIO 0.25f
+#define LANE_BASE_APPROACH_START 0.72f
+#define LANE_BASE_APPROACH_GAP 16.0f
 #define LANE_JITTER_RADIUS   10.0f
 #define PI_F 3.14159265f
 
@@ -49,5 +55,22 @@
 #define BOARD_WIDTH   1080
 #define BOARD_HEIGHT  1920
 #define SEAM_Y        960
+
+// Ore resource nodes
+#define ORE_GRID_CELL_SIZE_PX        64.0f
+#define ORE_GRID_COLS                16
+#define ORE_GRID_ROWS                15
+#define ORE_EDGE_MARGIN_CELLS        1
+#define ORE_LANE_CLEARANCE_CELLS     1.0f
+#define ORE_BASE_CLEARANCE_CELLS     2.0f
+#define ORE_SPAWN_CLEARANCE_CELLS    1.5f
+#define ORE_NODE_CLEARANCE_CELLS     1.5f
+#define ORE_MATCH_COUNT_PER_SIDE     8
+
+// Farmer tuning
+#define FARMER_ORE_INTERACT_RADIUS   40.0f
+#define FARMER_BASE_DEPOSIT_RADIUS   60.0f
+#define FARMER_DEFAULT_ORE_VALUE     1
+#define FARMER_DEFAULT_ORE_DURABILITY 1
 
 #endif //NFC_CARDGAME_CONFIG_H

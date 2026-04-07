@@ -5,13 +5,18 @@
 #include "game.h"
 #include "config.h"
 #include "battlefield.h"
+#include "ore.h"
 #include "debug_events.h"
 #include "../logic/card_effects.h"
+#include "../logic/farmer.h"
+#include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
+#include "../rendering/ore_renderer.h"
 #include "../rendering/ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
+#include "../entities/building.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -22,6 +27,10 @@ static DebugOverlayFlags s_debugFlags = {0};
 
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
+    // Derive ore seed before bf_init: tilemap creation reseeds global rand(),
+    // so generating this afterward would lock ore placement to deterministic values.
+    uint32_t oreSeed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+    if (oreSeed == 0) oreSeed = 1;
 
     const char *db_path = getenv("DB_PATH");
     if (!db_path) db_path = "cardgame.db";
@@ -57,11 +66,32 @@ bool game_init(GameState *g) {
             BIOME_GRASS, BIOME_GRASS,  // bottom/top biome (matches current setup)
             tileSize, 42, 99);         // seeds match current hardcoded values
 
+    // Initialize ore resource nodes (dedicated RNG, after bf_init generates waypoints)
+    ore_init(&g->battlefield, oreSeed);
+
+    // Load ore texture
+    g->oreTexture = ore_renderer_load();
+
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
+
+    // Spawn home bases behind center-lane spawn points
+    for (int i = 0; i < 2; i++) {
+        BattleSide side = bf_side_for_player(i);
+        CanonicalPos anchor = bf_base_anchor(&g->battlefield, side);
+        Entity *base = building_create_base(&g->players[i], anchor.v, &g->spriteAtlas);
+        if (base) {
+            g->players[i].base = base;
+            bf_add_entity(&g->battlefield, base);
+        }
+    }
+
+    // Match result state
+    g->gameOver = false;
+    g->winnerID = -1;
 
     // P2 viewport render target (flipped vertically for across-the-table perspective)
     g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
@@ -112,30 +142,54 @@ static void game_handle_nfc_events(GameState *g) {
     }
 }
 
-static void game_handle_test_input(GameState *g) {
-    // Toggle debug overlays
+static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
     if (IsKeyPressed(KEY_F2)) s_debugFlags.attackBars   = !s_debugFlags.attackBars;
     if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
     if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
+    if (IsKeyPressed(KEY_F6)) s_debugFlags.oreNodes     = !s_debugFlags.oreNodes;
+    if (IsKeyPressed(KEY_F7)) s_debugFlags.orePlacement  = !s_debugFlags.orePlacement;
+}
 
-    // Player 1: key 1
+static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {
+    Card *card = cards_find(&g->deck, "FARMER_01");
+    if (!card) {
+        printf("[TEST] FARMER_01 not found in deck\n");
+        return;
+    }
+    card_action_play(card, g, playerIndex, slotIndex);
+}
+
+static void game_handle_spawn_input(GameState *g) {
+    // Player 1: key 1/2/3 = knight, F = farmer
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
     if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
     if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
+    if (IsKeyPressed(KEY_F)) game_test_play_farmer(g, 0, 0);
 
-    // Player 2: key Q
+    // Player 2: key Q/W/E = knight, R = farmer
     if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
     if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
     if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
+    if (IsKeyPressed(KEY_R)) game_test_play_farmer(g, 1, 0);
 }
 
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
 
+    // Debug toggles always active (even after gameOver)
+    game_handle_debug_input();
+
+    // Freeze gameplay once match result is latched
+    // (debug event timers still decay so hit flashes fade naturally)
+    if (g->gameOver) {
+        debug_events_tick(deltaTime);
+        return;
+    }
+
     game_handle_nfc_events(g);
-    game_handle_test_input(g);
+    game_handle_spawn_input(g);
 
     // Update both players (energy regen, slot cooldowns)
     player_update(&g->players[0], deltaTime);
@@ -145,12 +199,27 @@ void game_update(GameState *g) {
     Battlefield *bf = &g->battlefield;
     for (int i = 0; i < bf->entityCount; i++) {
         entity_update(bf->entities[i], g, deltaTime);
+        if (g->gameOver) break;  // Win latched mid-loop — stop processing
     }
 
-    // Sweep dead/removed entities (iterate backward for safe removal)
+    // Defensive fallback: catch base deaths from non-combat paths
+    win_check(g);
+
+    // Sweep dead/removed entities (runs once on the trigger frame, then frozen)
     for (int i = bf->entityCount - 1; i >= 0; i--) {
         if (bf->entities[i]->markedForRemoval) {
             Entity *dead = bf->entities[i];
+
+            // Farmer death fallback: release claims / award ore.
+            // farmer_on_death is idempotent — safe if already called from combat.
+            if (dead->unitRole == UNIT_ROLE_FARMER) {
+                farmer_on_death(dead, g);
+            }
+
+            // Clear stale base pointers before freeing memory
+            if (dead == g->players[0].base) g->players[0].base = NULL;
+            if (dead == g->players[1].base) g->players[1].base = NULL;
+
             bf->entities[i] = bf->entities[bf->entityCount - 1];
             bf->entityCount--;
             entity_destroy(dead);
@@ -182,12 +251,10 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
-    DrawText("PLAYER 1",
-             (int)(bf->territories[SIDE_BOTTOM].bounds.x + 40),
-             (int)(bf->territories[SIDE_BOTTOM].bounds.y + 40),
-             40, DARKGREEN);
     viewport_end();
 
     // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
@@ -203,6 +270,8 @@ void game_render(GameState *g) {
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
@@ -228,9 +297,26 @@ void game_render(GameState *g) {
     }
 
     // HUD — screen space, drawn after all viewports
-    ui_draw_viewport_label("PLAYER 2", SCREEN_WIDTH / 2, true, MAROON);
+    ui_draw_viewport_label("PLAYER 1", g->players[0].screenArea,
+                           UI_CORNER_TOP_RIGHT, 90.0f, DARKGREEN);
+    ui_draw_viewport_label("PLAYER 2", g->players[1].screenArea,
+                           UI_CORNER_BOTTOM_LEFT, 270.0f, MAROON);
+    ui_draw_ore_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
+    ui_draw_ore_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
+
+    // Match result overlay
+    if (g->gameOver) {
+        for (int i = 0; i < 2; i++) {
+            const bool drawnMatch = (g->winnerID < 0);
+            const bool playerWon = (g->winnerID == g->players[i].id);
+            const char *text = drawnMatch ? "DRAW" : (playerWon ? "VICTORY" : "DEFEAT");
+            Color color = drawnMatch ? LIGHTGRAY : (playerWon ? GOLD : RED);
+            float rotation = (i == 0) ? 90.0f : 270.0f;
+            ui_draw_match_result(&g->players[i], text, rotation, color);
+        }
+    }
 
     EndDrawing();
 }
@@ -243,6 +329,16 @@ void game_cleanup(GameState *g) {
     player_cleanup(&g->players[1]);
 
     UnloadRenderTexture(g->p2RT);
+
+    // Destroy all live entities before dropping the registry
+    for (int i = 0; i < g->battlefield.entityCount; i++) {
+        entity_destroy(g->battlefield.entities[i]);
+    }
+    g->players[0].base = NULL;
+    g->players[1].base = NULL;
+
+    // Unload ore texture
+    UnloadTexture(g->oreTexture);
 
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);
