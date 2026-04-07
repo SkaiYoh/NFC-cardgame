@@ -31,6 +31,35 @@ typedef struct {
     uint32_t rngState;                            // dedicated ore RNG (xorshift32)
 } OreField;
 
+// --- Debug cell classification ---
+// Priority order (first match wins): a cell that fails multiple rules
+// reports the highest-priority reason.
+//   1. edge blocked
+//   2. lane blocked
+//   3. base blocked
+//   4. spawn-anchor blocked
+//   5. node blocked
+//   6. valid
+typedef enum {
+    ORE_CELL_VALID,
+    ORE_CELL_EDGE_BLOCKED,
+    ORE_CELL_LANE_BLOCKED,
+    ORE_CELL_BASE_BLOCKED,
+    ORE_CELL_SPAWN_BLOCKED,
+    ORE_CELL_NODE_BLOCKED
+} OreCellReason;
+
+typedef struct {
+    int row, col;
+    float centerX, centerY;  // world-space cell center
+    OreCellReason reason;
+} OreCellDebugInfo;
+
+// Classify a single ore-grid cell under normal placement rules.
+// Returns the highest-priority reason the cell is blocked, or ORE_CELL_VALID.
+OreCellDebugInfo ore_debug_classify_cell(const Battlefield *bf,
+                                         BattleSide side, int row, int col);
+
 // --- Lifecycle ---
 
 // Initialize ore field and populate all nodes for both sides.

@@ -64,83 +64,76 @@ typedef struct {
 // Maximum possible candidates: ORE_GRID_ROWS * ORE_GRID_COLS = 240
 #define MAX_ORE_CANDIDATES (ORE_GRID_ROWS * ORE_GRID_COLS)
 
-// Build list of valid ore-grid cells for a side, excluding:
-//  - edge margin cells
-//  - cells near lane polylines (both sides' lanes)
-//  - cells near base anchor
-//  - cells near spawn anchors
-//  - cells near existing active ore nodes
-// Returns candidate count.
-static int ore_build_candidates(const Battlefield *bf, const OreField *field,
-                                BattleSide side, int bannedRow, int bannedCol,
-                                OreCandidate *out) {
-    int count = 0;
+// Classify a single ore-grid cell. Returns ORE_CELL_VALID if the cell passes
+// all placement rules, or the highest-priority blocking reason.
+// bannedRow/bannedCol: respawn-only exclusion (-1,-1 to skip).
+static OreCellReason ore_classify_cell_internal(const Battlefield *bf,
+                                                 const OreField *field,
+                                                 BattleSide side,
+                                                 int row, int col,
+                                                 int bannedRow, int bannedCol) {
+    // 1. Edge margin (highest priority)
+    if (row < ORE_EDGE_MARGIN_CELLS || row >= ORE_GRID_ROWS - ORE_EDGE_MARGIN_CELLS ||
+        col < ORE_EDGE_MARGIN_CELLS || col >= ORE_GRID_COLS - ORE_EDGE_MARGIN_CELLS) {
+        return ORE_CELL_EDGE_BLOCKED;
+    }
+
+    // Banned cell (respawn-only: treat as node-blocked)
+    if (row == bannedRow && col == bannedCol) return ORE_CELL_NODE_BLOCKED;
+
+    CanonicalPos cellPos = ore_cell_center(side, row, col);
     float laneClearPx  = ORE_LANE_CLEARANCE_CELLS  * ORE_GRID_CELL_SIZE_PX;
     float baseClearPx  = ORE_BASE_CLEARANCE_CELLS   * ORE_GRID_CELL_SIZE_PX;
     float spawnClearPx = ORE_SPAWN_CLEARANCE_CELLS  * ORE_GRID_CELL_SIZE_PX;
     float nodeClearPx  = ORE_NODE_CLEARANCE_CELLS   * ORE_GRID_CELL_SIZE_PX;
 
+    // 2. Lane clearance (check all 6 lanes: 3 per side)
+    for (int s = 0; s < 2; s++) {
+        for (int lane = 0; lane < 3; lane++) {
+            for (int wp = 0; wp < LANE_WAYPOINT_COUNT - 1; wp++) {
+                CanonicalPos wpA = bf_waypoint(bf, (BattleSide)s, lane, wp);
+                CanonicalPos wpB = bf_waypoint(bf, (BattleSide)s, lane, wp + 1);
+                if (point_to_segment_dist(cellPos.v, wpA.v, wpB.v) < laneClearPx) {
+                    return ORE_CELL_LANE_BLOCKED;
+                }
+            }
+        }
+    }
+
+    // 3. Base anchor clearance
     CanonicalPos baseAnchor = bf_base_anchor(bf, side);
+    if (bf_distance(cellPos, baseAnchor) < baseClearPx) return ORE_CELL_BASE_BLOCKED;
 
+    // 4. Spawn anchor clearance
+    for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
+        CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
+        if (bf_distance(cellPos, spawnAnchor) < spawnClearPx) return ORE_CELL_SPAWN_BLOCKED;
+    }
+
+    // 5. Inter-node clearance (existing active nodes on this side)
+    for (int i = 0; i < ORE_MATCH_COUNT_PER_SIDE; i++) {
+        const OreNode *existing = &field->nodes[side][i];
+        if (!existing->active) continue;
+        if (bf_distance(cellPos, existing->worldPos) < nodeClearPx) return ORE_CELL_NODE_BLOCKED;
+    }
+
+    return ORE_CELL_VALID;
+}
+
+// Build list of valid ore-grid cells for a side.
+// Returns candidate count.
+static int ore_build_candidates(const Battlefield *bf, const OreField *field,
+                                BattleSide side, int bannedRow, int bannedCol,
+                                OreCandidate *out) {
+    int count = 0;
     for (int r = 0; r < ORE_GRID_ROWS; r++) {
-        // Edge margin
-        if (r < ORE_EDGE_MARGIN_CELLS || r >= ORE_GRID_ROWS - ORE_EDGE_MARGIN_CELLS)
-            continue;
-
         for (int c = 0; c < ORE_GRID_COLS; c++) {
-            if (c < ORE_EDGE_MARGIN_CELLS || c >= ORE_GRID_COLS - ORE_EDGE_MARGIN_CELLS)
+            if (ore_classify_cell_internal(bf, field, side, r, c,
+                                           bannedRow, bannedCol) != ORE_CELL_VALID)
                 continue;
-
-            if (r == bannedRow && c == bannedCol) continue;
-
-            CanonicalPos cellPos = ore_cell_center(side, r, c);
-
-            // --- Lane clearance (check all 6 lanes: 3 per side) ---
-            bool tooCloseToLane = false;
-            for (int s = 0; s < 2 && !tooCloseToLane; s++) {
-                for (int lane = 0; lane < 3 && !tooCloseToLane; lane++) {
-                    for (int wp = 0; wp < LANE_WAYPOINT_COUNT - 1; wp++) {
-                        CanonicalPos wpA = bf_waypoint(bf, (BattleSide)s, lane, wp);
-                        CanonicalPos wpB = bf_waypoint(bf, (BattleSide)s, lane, wp + 1);
-                        float dist = point_to_segment_dist(cellPos.v, wpA.v, wpB.v);
-                        if (dist < laneClearPx) {
-                            tooCloseToLane = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (tooCloseToLane) continue;
-
-            // --- Base anchor clearance ---
-            if (bf_distance(cellPos, baseAnchor) < baseClearPx) continue;
-
-            // --- Spawn anchor clearance ---
-            bool tooCloseToSpawn = false;
-            for (int slot = 0; slot < NUM_CARD_SLOTS; slot++) {
-                CanonicalPos spawnAnchor = bf_spawn_pos(bf, side, slot);
-                if (bf_distance(cellPos, spawnAnchor) < spawnClearPx) {
-                    tooCloseToSpawn = true;
-                    break;
-                }
-            }
-            if (tooCloseToSpawn) continue;
-
-            // --- Inter-node clearance (existing active nodes on this side) ---
-            bool tooCloseToNode = false;
-            for (int i = 0; i < ORE_MATCH_COUNT_PER_SIDE; i++) {
-                const OreNode *existing = &field->nodes[side][i];
-                if (!existing->active) continue;
-                if (bf_distance(cellPos, existing->worldPos) < nodeClearPx) {
-                    tooCloseToNode = true;
-                    break;
-                }
-            }
-            if (tooCloseToNode) continue;
-
             out[count].row = r;
             out[count].col = c;
-            out[count].pos = cellPos;
+            out[count].pos = ore_cell_center(side, r, c);
             count++;
         }
     }
@@ -263,6 +256,19 @@ void ore_release_claims_for_entity(Battlefield *bf, int entityId) {
             }
         }
     }
+}
+
+OreCellDebugInfo ore_debug_classify_cell(const Battlefield *bf,
+                                         BattleSide side, int row, int col) {
+    CanonicalPos center = ore_cell_center(side, row, col);
+    OreCellDebugInfo info;
+    info.row = row;
+    info.col = col;
+    info.centerX = center.v.x;
+    info.centerY = center.v.y;
+    info.reason = ore_classify_cell_internal(bf, &bf->oreField, side,
+                                              row, col, -1, -1);
+    return info;
 }
 
 bool ore_deplete_and_respawn(Battlefield *bf, int nodeId) {

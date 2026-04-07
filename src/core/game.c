@@ -147,6 +147,8 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
     if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
+    if (IsKeyPressed(KEY_F6)) s_debugFlags.oreNodes     = !s_debugFlags.oreNodes;
+    if (IsKeyPressed(KEY_F7)) s_debugFlags.orePlacement  = !s_debugFlags.orePlacement;
 }
 
 static void game_handle_spawn_input(GameState *g) {

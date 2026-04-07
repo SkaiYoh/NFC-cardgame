@@ -166,6 +166,18 @@ static bool approx_eq(float a, float b, float eps) {
     return fabsf(a - b) < eps;
 }
 
+static CanonicalPos test_ore_cell_center(BattleSide side, int row, int col) {
+    float gridOriginX = (BOARD_WIDTH - ORE_GRID_COLS * ORE_GRID_CELL_SIZE_PX) * 0.5f;
+    float territoryOriginY = (side == SIDE_BOTTOM) ? (float)SEAM_Y : 0.0f;
+    CanonicalPos pos = {
+        .v = {
+            gridOriginX + (col + 0.5f) * ORE_GRID_CELL_SIZE_PX,
+            territoryOriginY + (row + 0.5f) * ORE_GRID_CELL_SIZE_PX
+        }
+    };
+    return pos;
+}
+
 /* ---- Tests ---- */
 
 static void test_init_bottom_count(void) {
@@ -602,6 +614,135 @@ static void test_point_to_segment_zero_length(void) {
     printf("  PASS: test_point_to_segment_zero_length\n");
 }
 
+/* ---- Classification tests (Phase 2) ---- */
+
+static void test_classify_edge_cell_blocked(void) {
+    Battlefield bf = create_test_bf();
+    // Corner cell (0,0) must be edge-blocked
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 0, 0);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    // Top-row cell
+    info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 0, 8);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    // Left-edge cell
+    info = ore_debug_classify_cell(&bf, SIDE_TOP, 7, 0);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    // Bottom-row cell (row 14 in 15-row grid)
+    info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, ORE_GRID_ROWS - 1, 8);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    // Right-edge cell
+    info = ore_debug_classify_cell(&bf, SIDE_TOP, 7, ORE_GRID_COLS - 1);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    printf("  PASS: test_classify_edge_cell_blocked\n");
+}
+
+static void test_classify_node_occupied_cell(void) {
+    Battlefield bf = create_test_bf();
+    // Pick a live node and classify its cell — should be node-blocked
+    OreNode *n = &bf.oreField.nodes[SIDE_BOTTOM][0];
+    assert(n->active);
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM,
+                                                     n->gridRow, n->gridCol);
+    assert(info.reason == ORE_CELL_NODE_BLOCKED);
+    printf("  PASS: test_classify_node_occupied_cell\n");
+}
+
+static void test_classify_lane_blocked_cell(void) {
+    Battlefield bf = create_test_bf();
+    // The center-lane spawn anchor for SIDE_BOTTOM lies exactly on the lane
+    // polyline and is in an interior cell: row 12, col 8 on the fixed ore grid.
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 12, 8);
+    assert(info.reason == ORE_CELL_LANE_BLOCKED);
+    printf("  PASS: test_classify_lane_blocked_cell\n");
+}
+
+static void test_classify_valid_cell(void) {
+    Battlefield bf = create_test_bf();
+    // Iterate the grid and confirm at least one cell classifies as valid.
+    // (Spawning 8 nodes succeeded, so valid cells exist.)
+    bool foundValid = false;
+    for (int r = 0; r < ORE_GRID_ROWS && !foundValid; r++) {
+        for (int c = 0; c < ORE_GRID_COLS && !foundValid; c++) {
+            OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, r, c);
+            if (info.reason == ORE_CELL_VALID) foundValid = true;
+        }
+    }
+    assert(foundValid);
+    printf("  PASS: test_classify_valid_cell\n");
+}
+
+static void test_classify_cell_center_geometry(void) {
+    // Verify that OreCellDebugInfo center coords match expected grid geometry.
+    Battlefield bf = create_test_bf();
+    float gridOriginX = (BOARD_WIDTH - ORE_GRID_COLS * ORE_GRID_CELL_SIZE_PX) * 0.5f;
+    float territoryOriginY = (float)SEAM_Y; // SIDE_BOTTOM
+
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 1, 1);
+    float expectedX = gridOriginX + (1 + 0.5f) * ORE_GRID_CELL_SIZE_PX;
+    float expectedY = territoryOriginY + (1 + 0.5f) * ORE_GRID_CELL_SIZE_PX;
+    assert(approx_eq(info.centerX, expectedX, 0.01f));
+    assert(approx_eq(info.centerY, expectedY, 0.01f));
+    assert(info.row == 1);
+    assert(info.col == 1);
+
+    // Also check SIDE_TOP
+    info = ore_debug_classify_cell(&bf, SIDE_TOP, 3, 5);
+    expectedX = gridOriginX + (5 + 0.5f) * ORE_GRID_CELL_SIZE_PX;
+    expectedY = 0.0f + (3 + 0.5f) * ORE_GRID_CELL_SIZE_PX;
+    assert(approx_eq(info.centerX, expectedX, 0.01f));
+    assert(approx_eq(info.centerY, expectedY, 0.01f));
+    printf("  PASS: test_classify_cell_center_geometry\n");
+}
+
+static void test_classify_priority_edge_over_node(void) {
+    Battlefield bf = create_test_bf();
+    OreNode *n = &bf.oreField.nodes[SIDE_BOTTOM][0];
+
+    n->gridRow = 0;
+    n->gridCol = 8;
+    n->worldPos = test_ore_cell_center(SIDE_BOTTOM, 0, 8);
+    n->active = true;
+
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 0, 8);
+    assert(info.reason == ORE_CELL_EDGE_BLOCKED);
+    printf("  PASS: test_classify_priority_edge_over_node\n");
+}
+
+static void test_classify_priority_lane_over_spawn(void) {
+    Battlefield bf = create_test_bf();
+    // Same center-lane spawn cell as the lane-block test: this cell is also
+    // within spawn-anchor clearance, but lane must win by documented priority.
+    OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, 12, 8);
+    assert(info.reason == ORE_CELL_LANE_BLOCKED);
+    printf("  PASS: test_classify_priority_lane_over_spawn\n");
+}
+
+static void test_classify_priority_base_over_node(void) {
+    Battlefield bf = create_test_bf();
+    bool found = false;
+
+    for (int r = 1; r < ORE_GRID_ROWS - 1 && !found; r++) {
+        for (int c = 1; c < ORE_GRID_COLS - 1 && !found; c++) {
+            OreCellDebugInfo info = ore_debug_classify_cell(&bf, SIDE_BOTTOM, r, c);
+            if (info.reason != ORE_CELL_BASE_BLOCKED) continue;
+
+            OreNode *n = &bf.oreField.nodes[SIDE_BOTTOM][0];
+            n->gridRow = r;
+            n->gridCol = c;
+            n->worldPos.v.x = info.centerX;
+            n->worldPos.v.y = info.centerY;
+            n->active = true;
+
+            OreCellDebugInfo withNode = ore_debug_classify_cell(&bf, SIDE_BOTTOM, r, c);
+            assert(withNode.reason == ORE_CELL_BASE_BLOCKED);
+            found = true;
+        }
+    }
+
+    assert(found);
+    printf("  PASS: test_classify_priority_base_over_node\n");
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("Running ore tests...\n");
@@ -651,6 +792,16 @@ int main(void) {
     test_point_to_segment_closest_to_b();
     test_point_to_segment_zero_length();
 
-    printf("\nAll 29 tests passed!\n");
+    /* Cell classification (debug overlay support) */
+    test_classify_edge_cell_blocked();
+    test_classify_node_occupied_cell();
+    test_classify_lane_blocked_cell();
+    test_classify_valid_cell();
+    test_classify_cell_center_geometry();
+    test_classify_priority_edge_over_node();
+    test_classify_priority_lane_over_spawn();
+    test_classify_priority_base_over_node();
+
+    printf("\nAll 37 tests passed!\n");
     return 0;
 }
