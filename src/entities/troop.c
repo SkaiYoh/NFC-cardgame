@@ -4,6 +4,7 @@
 
 #include "troop.h"
 #include "entities.h"
+#include "../logic/pathfinding.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -104,6 +105,23 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
 
     // Start walking immediately
     entity_set_state(e, ESTATE_WALKING);
+    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, owner->side);
+
+    // Farmer role: override combat stats from code, not card JSON
+    if (data->spriteType == SPRITE_TYPE_FARMER) {
+        e->unitRole = UNIT_ROLE_FARMER;
+        e->attack = 0;
+        e->attackSpeed = 0.0f;
+        e->attackRange = 0.0f;
+        e->farmerState = FARMER_SEEKING;
+        e->claimedOreNodeId = -1;
+        e->carriedOreValue = 0;
+        e->workTimer = 0.0f;
+        e->lane = -1;
+        e->waypointIndex = -1;
+        entity_set_state(e, ESTATE_IDLE); // seek on first update, not walk-in-place
+        e->spriteRotationDegrees = (owner->side == SIDE_TOP) ? 180.0f : 0.0f;
+    }
 
     printf("[TROOP] Spawned '%s' (id=%d) for player %d at (%.0f, %.0f)\n",
            data->name, e->id, owner->id, position.x, position.y);

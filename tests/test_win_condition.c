@@ -31,6 +31,8 @@ typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } Enti
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
+typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
+typedef enum { FARMER_SEEKING, FARMER_WALKING_TO_ORE, FARMER_MINING, FARMER_RETURNING, FARMER_DEPOSITING } FarmerState;
 
 typedef struct {
     AnimationType anim;
@@ -82,6 +84,11 @@ struct Entity {
     int lane;
     int waypointIndex;
     float hitFlashTimer;
+    UnitRole unitRole;
+    FarmerState farmerState;
+    int claimedOreNodeId;
+    int carriedOreValue;
+    float workTimer;
     bool alive;
     bool markedForRemoval;
 };
@@ -99,6 +106,7 @@ struct Player {
     float maxEnergy;
     float energyRegenRate;
     Entity *base;
+    int oreCollected;
 };
 
 /* Minimal GameState stub -- only players needed for win condition */

@@ -45,6 +45,7 @@ set(SRC_SYSTEMS    src/systems/player.c
                    src/systems/match.c)
 set(SRC_LOGIC      src/logic/card_effects.c
                    src/logic/combat.c
+                   src/logic/farmer.c
                    src/logic/pathfinding.c
                    src/logic/win_condition.c)
 set(SRC_HARDWARE   src/hardware/nfc_reader.c

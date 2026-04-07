@@ -48,6 +48,10 @@
 #define ORE_NODE_CLEARANCE_CELLS     1.5f
 #define ORE_MATCH_COUNT_PER_SIDE     8
 
+/* Farmer ore defaults (must match src/core/config.h) */
+#define FARMER_DEFAULT_ORE_VALUE     1
+#define FARMER_DEFAULT_ORE_DURABILITY 1
+
 /* ---- Minimal type stubs ---- */
 #define VECTOR2_DEFINED
 typedef struct { float x; float y; } Vector2;

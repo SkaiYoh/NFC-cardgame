@@ -164,6 +164,10 @@ static void ore_spawn_side(Battlefield *bf, BattleSide side) {
         node->worldPos        = chosen->pos;
         node->active          = true;
         node->claimedByEntityId = -1;
+        node->oreType         = 0;
+        node->value           = FARMER_DEFAULT_ORE_VALUE;
+        node->durability      = FARMER_DEFAULT_ORE_DURABILITY;
+        node->maxDurability   = FARMER_DEFAULT_ORE_DURABILITY;
     }
 }
 
@@ -184,6 +188,10 @@ void ore_init(Battlefield *bf, uint32_t seed) {
             field->nodes[s][i].slotIndex = i;
             field->nodes[s][i].active = false;
             field->nodes[s][i].claimedByEntityId = -1;
+            field->nodes[s][i].oreType = 0;
+            field->nodes[s][i].value = FARMER_DEFAULT_ORE_VALUE;
+            field->nodes[s][i].durability = FARMER_DEFAULT_ORE_DURABILITY;
+            field->nodes[s][i].maxDurability = FARMER_DEFAULT_ORE_DURABILITY;
         }
     }
 
@@ -306,8 +314,12 @@ bool ore_deplete_and_respawn(Battlefield *bf, int nodeId) {
     node->gridRow  = chosen->row;
     node->gridCol  = chosen->col;
     node->worldPos = chosen->pos;
-    node->active   = true;
+    node->active          = true;
     node->claimedByEntityId = -1;
+    node->oreType         = 0;
+    node->value           = FARMER_DEFAULT_ORE_VALUE;
+    node->durability      = FARMER_DEFAULT_ORE_DURABILITY;
+    node->maxDurability   = FARMER_DEFAULT_ORE_DURABILITY;
 
     return true;
 }

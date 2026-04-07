@@ -24,6 +24,13 @@ typedef struct {
     CanonicalPos worldPos;         // center of the ore-grid cell
     bool         active;
     int          claimedByEntityId; // -1 if unclaimed
+
+    // TODO: All ore nodes use a single default template (type=0, value=1,
+    // durability=1). Add ore type variety and per-type tuning later.
+    int          oreType;       // 0 = default
+    int          value;         // ore value awarded on pickup
+    int          durability;    // work cycles remaining before depletion
+    int          maxDurability; // initial durability (for UI/progress bars)
 } OreNode;
 
 typedef struct {

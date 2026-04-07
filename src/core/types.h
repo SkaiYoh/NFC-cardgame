@@ -35,6 +35,18 @@ typedef enum {
     TARGET_SPECIFIC_TYPE
 } TargetingMode;
 
+// Unit role -- distinguishes combat troops from economic units
+typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
+
+// Farmer behavior phases
+typedef enum {
+    FARMER_SEEKING,
+    FARMER_WALKING_TO_ORE,
+    FARMER_MINING,
+    FARMER_RETURNING,
+    FARMER_DEPOSITING
+} FarmerState;
+
 // Entity definition
 struct Entity {
     int id;
@@ -71,6 +83,13 @@ struct Entity {
     // Debug
     float hitFlashTimer;        // countdown for hit-marker visual flash (debug overlay)
 
+    // Unit role (farmer vs combat)
+    UnitRole unitRole;
+    FarmerState farmerState;
+    int claimedOreNodeId;       // ore node ID this farmer is targeting, -1 if none
+    int carriedOreValue;        // ore value being carried back to base
+    float workTimer;            // elapsed time in current work cycle (mining/depositing)
+
     // Flags
     bool alive;
     bool markedForRemoval;
@@ -104,6 +123,9 @@ struct Player {
     // Non-owning: Battlefield entity registry owns the base entity.
     // NULL if destroyed or not yet spawned.
     Entity *base;
+
+    // Ore scoring (incremented on deposit or carrying-farmer death)
+    int oreCollected;
 };
 
 // Game state

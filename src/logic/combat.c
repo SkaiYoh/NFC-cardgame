@@ -3,6 +3,7 @@
 //
 
 #include "combat.h"
+#include "farmer.h"
 #include "win_condition.h"
 #include "../core/battlefield.h"
 #include "../core/battlefield_math.h"
@@ -90,6 +91,14 @@ bool entity_take_damage(Entity *entity, int damage) {
     return false;
 }
 
+// Handle post-kill consequences for any entity type.
+// Currently handles farmer ore transfer; extend for future unit roles.
+static void combat_on_kill(Entity *victim, GameState *gs) {
+    if (victim->unitRole == UNIT_ROLE_FARMER) {
+        farmer_on_death(victim, gs);
+    }
+}
+
 void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     if (!attacker || !target || !gs) return;
     if (!target->alive) return;
@@ -100,8 +109,11 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
            attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
 
-    if (killed && target->type == ENTITY_BUILDING) {
-        win_latch_from_destroyed_base(gs, target);
+    if (killed) {
+        combat_on_kill(target, gs);
+        if (target->type == ENTITY_BUILDING) {
+            win_latch_from_destroyed_base(gs, target);
+        }
     }
 }
 
@@ -126,7 +138,10 @@ void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float delta
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
            attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
 
-    if (killed && target->type == ENTITY_BUILDING) {
-        win_latch_from_destroyed_base(gs, target);
+    if (killed) {
+        combat_on_kill(target, gs);
+        if (target->type == ENTITY_BUILDING) {
+            win_latch_from_destroyed_base(gs, target);
+        }
     }
 }

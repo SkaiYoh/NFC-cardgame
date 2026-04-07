@@ -8,6 +8,7 @@
 #include "../core/debug_events.h"
 #include "../logic/pathfinding.h"
 #include "../logic/combat.h"
+#include "../logic/farmer.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,20 +23,10 @@ static int s_nextEntityID = 1;
 static void entity_face_toward(Entity *e, Vector2 targetPos) {
     float dx = targetPos.x - e->position.x;
     float dy = targetPos.y - e->position.y;
-    const float eps = 0.001f;
-
-    if (fabsf(dx) < eps && fabsf(dy) < eps) return;
-
-    if (fabsf(dx) >= eps) {
-        e->anim.dir = DIR_SIDE;
-        e->anim.flipH = (dx < 0);
-    } else if (dy < 0) {
-        e->anim.dir = DIR_UP;
-        e->anim.flipH = false;
-    } else {
-        e->anim.dir = DIR_DOWN;
-        e->anim.flipH = false;
-    }
+    Vector2 diff = { dx, dy };
+    BattleSide side = bf_side_for_player(e->ownerID);
+    pathfind_apply_direction_for_side(&e->anim, diff, side);
+    e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, side);
 }
 
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
@@ -57,6 +48,13 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->spriteRotationDegrees = 0.0f;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
+
+    // Default to combat role; farmer overrides in troop_spawn
+    e->unitRole = UNIT_ROLE_COMBAT;
+    e->farmerState = FARMER_SEEKING;
+    e->claimedOreNodeId = -1;
+    e->carriedOreValue = 0;
+    e->workTimer = 0.0f;
 
     anim_state_init(&e->anim, ANIM_IDLE, DIR_UP, 0.5f, false);
 
@@ -126,6 +124,13 @@ void entity_restart_clip(Entity *e) {
 
 void entity_update(Entity *e, GameState *gs, float deltaTime) {
     if (!e || e->markedForRemoval) return;
+
+    // TODO: Farmer bypasses combat state machine. Add ESTATE_WORKING when
+    // farmer-specific animations are available.
+    if (e->unitRole == UNIT_ROLE_FARMER) {
+        farmer_update(e, gs, deltaTime);
+        return;
+    }
 
     switch (e->state) {
         case ESTATE_IDLE:

@@ -141,6 +141,8 @@ void entity_set_state(Entity *e, EntityState newState) {
 /* ---- Forward declarations for functions in pathfinding.c ---- */
 bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime);
 void pathfind_apply_direction(AnimState *anim, Vector2 diff);
+void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side);
+float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side);
 
 /* ---- Include production code under test ---- */
 #include "../src/logic/pathfinding.c"
@@ -300,6 +302,57 @@ static void test_sprite_direction(void) {
     assert(anim.flipH == true);
 }
 
+/* ---- CORE-01g: Perspective-aware vertical direction by owner side ---- */
+static void test_sprite_direction_for_side(void) {
+    AnimState anim;
+    memset(&anim, 0, sizeof(AnimState));
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){100, 0}, SIDE_BOTTOM);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == false);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){-100, 0}, SIDE_BOTTOM);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == true);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){0, -100}, SIDE_BOTTOM);
+    assert(anim.dir == DIR_UP);
+    assert(anim.flipH == false);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){0, 100}, SIDE_BOTTOM);
+    assert(anim.dir == DIR_DOWN);
+    assert(anim.flipH == false);
+
+    // Top-side units walking down the canonical board are moving away from their
+    // home camera, so they should use the back-facing row.
+    pathfind_apply_direction_for_side(&anim, (Vector2){0, 100}, SIDE_TOP);
+    assert(anim.dir == DIR_UP);
+    assert(anim.flipH == false);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){0, -100}, SIDE_TOP);
+    assert(anim.dir == DIR_DOWN);
+    assert(anim.flipH == false);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){100, 0}, SIDE_TOP);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == true);
+
+    pathfind_apply_direction_for_side(&anim, (Vector2){-100, 0}, SIDE_TOP);
+    assert(anim.dir == DIR_SIDE);
+    assert(anim.flipH == false);
+}
+
+/* ---- CORE-01h: All top-side sprites rotate 180 degrees ---- */
+static void test_sprite_rotation_for_side(void) {
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_SIDE, SIDE_BOTTOM), 0.0f, 0.001f));
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_UP, SIDE_BOTTOM), 0.0f, 0.001f));
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_DOWN, SIDE_BOTTOM), 0.0f, 0.001f));
+
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_SIDE, SIDE_TOP), 180.0f, 0.001f));
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_UP, SIDE_TOP), 180.0f, 0.001f));
+    assert(approx_eq(pathfind_sprite_rotation_for_side(DIR_DOWN, SIDE_TOP), 180.0f, 0.001f));
+}
+
 /* ---- CORE-01 bonus: Invalid lane produces IDLE ---- */
 static void test_invalid_lane_idles(void) {
     Battlefield bf = make_test_battlefield();
@@ -326,7 +379,9 @@ int main(void) {
     test_movement_step_advances_waypoint();       printf("  PASS: test_movement_step_advances_waypoint\n");
     test_idle_at_last_waypoint();                 printf("  PASS: test_idle_at_last_waypoint\n");
     test_sprite_direction();                      printf("  PASS: test_sprite_direction\n");
+    test_sprite_direction_for_side();             printf("  PASS: test_sprite_direction_for_side\n");
+    test_sprite_rotation_for_side();              printf("  PASS: test_sprite_rotation_for_side\n");
     test_invalid_lane_idles();                    printf("  PASS: test_invalid_lane_idles\n");
-    printf("\nAll 6 tests passed!\n");
+    printf("\nAll 8 tests passed!\n");
     return 0;
 }

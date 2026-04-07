@@ -8,6 +8,7 @@
 #include "ore.h"
 #include "debug_events.h"
 #include "../logic/card_effects.h"
+#include "../logic/farmer.h"
 #include "../logic/win_condition.h"
 #include "../rendering/viewport.h"
 #include "../rendering/debug_overlay.h"
@@ -151,16 +152,27 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F7)) s_debugFlags.orePlacement  = !s_debugFlags.orePlacement;
 }
 
+static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {
+    Card *card = cards_find(&g->deck, "FARMER_01");
+    if (!card) {
+        printf("[TEST] FARMER_01 not found in deck\n");
+        return;
+    }
+    card_action_play(card, g, playerIndex, slotIndex);
+}
+
 static void game_handle_spawn_input(GameState *g) {
-    // Player 1: key 1
+    // Player 1: key 1/2/3 = knight, F = farmer
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
     if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
     if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
+    if (IsKeyPressed(KEY_F)) game_test_play_farmer(g, 0, 0);
 
-    // Player 2: key Q
+    // Player 2: key Q/W/E = knight, R = farmer
     if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
     if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
     if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
+    if (IsKeyPressed(KEY_R)) game_test_play_farmer(g, 1, 0);
 }
 
 void game_update(GameState *g) {
@@ -197,6 +209,12 @@ void game_update(GameState *g) {
     for (int i = bf->entityCount - 1; i >= 0; i--) {
         if (bf->entities[i]->markedForRemoval) {
             Entity *dead = bf->entities[i];
+
+            // Farmer death fallback: release claims / award ore.
+            // farmer_on_death is idempotent — safe if already called from combat.
+            if (dead->unitRole == UNIT_ROLE_FARMER) {
+                farmer_on_death(dead, g);
+            }
 
             // Clear stale base pointers before freeing memory
             if (dead == g->players[0].base) g->players[0].base = NULL;
@@ -283,6 +301,8 @@ void game_render(GameState *g) {
                            UI_CORNER_TOP_RIGHT, 90.0f, DARKGREEN);
     ui_draw_viewport_label("PLAYER 2", g->players[1].screenArea,
                            UI_CORNER_BOTTOM_LEFT, 270.0f, MAROON);
+    ui_draw_ore_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
+    ui_draw_ore_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
     ui_draw_energy_bar(&g->players[0], 0, SCREEN_WIDTH / 2);
     ui_draw_energy_bar(&g->players[1], 960, SCREEN_WIDTH / 2);
 

@@ -93,6 +93,51 @@ void ui_draw_viewport_label(const char *label, Rectangle viewport,
                 rotation, (float)fontSize, spacing, color);
 }
 
+void ui_draw_ore_counter(const Player *p, Rectangle viewport,
+                         float rotation, Color color) {
+    Font font = GetFontDefault();
+    const int fontSize = 24;
+    const float spacing = 1.0f;
+    const float padding = 40.0f;
+
+    // Measure the player label above so we can position below it
+    const int labelFontSize = 40;
+    const float labelSpacing = 2.0f;
+    const char *playerLabel = (p->id == 0) ? "PLAYER 1" : "PLAYER 2";
+    Vector2 labelTextSize = MeasureTextEx(font, playerLabel, (float)labelFontSize, labelSpacing);
+    Vector2 labelBoundsSize = ui_rotated_text_bounds(labelTextSize, rotation);
+
+    char label[32];
+    snprintf(label, sizeof(label), "ORE: %d", p->oreCollected);
+
+    Vector2 textSize = MeasureTextEx(font, label, (float)fontSize, spacing);
+    Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
+
+    // Position below the player label in the same corner.
+    // For rotated text, "below" is along the screen y-axis.
+    const float gap = 8.0f;
+    Vector2 boundsTopLeft;
+    int rot = ui_normalize_rotation(rotation);
+    if (rot == 90) {
+        // P1: top-right corner — label starts at y=padding, ore goes below it
+        boundsTopLeft = (Vector2){
+            viewport.x + viewport.width - padding - boundsSize.x,
+            viewport.y + padding + labelBoundsSize.y + gap
+        };
+    } else {
+        // P2: bottom-left corner — label ends at y=height-padding, ore goes above it
+        boundsTopLeft = (Vector2){
+            viewport.x + padding,
+            viewport.y + viewport.height - padding - labelBoundsSize.y - gap - boundsSize.y
+        };
+    }
+
+    DrawTextPro(font, label,
+                ui_text_position_from_bounds(boundsTopLeft, textSize, rotation),
+                (Vector2){ 0.0f, 0.0f },
+                rotation, (float)fontSize, spacing, color);
+}
+
 void ui_draw_match_result(const Player *p, const char *text, float rotation,
                           Color color) {
     Font font = GetFontDefault();

@@ -137,7 +137,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
   'Farmer',
   2,
   'farmer',
-  'A determined peasant armed with little more than a pitchfork and stubbornness.',
+  'A hardworking farmer who gathers ore from the battlefield and returns it to base.',
   '{
     "visual": {
       "border_color":       "green",
@@ -166,12 +166,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
     },
     "hp":          90,
     "maxHP":       90,
-    "attack":      8,
-    "attackSpeed": 1.1,
-    "attackRange": 38.0,
-    "moveSpeed":   58.0,
-    "targeting":   "nearest",
-    "targetType":  null
+    "moveSpeed":   58.0
   }'
 ),
 

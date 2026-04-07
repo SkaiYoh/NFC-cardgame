@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <float.h>
@@ -30,11 +31,13 @@
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
 #define NFC_CARDGAME_DEBUG_EVENTS_H
 #define NFC_CARDGAME_WIN_CONDTION_H
+#define NFC_CARDGAME_FARMER_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
 #define NUM_CARD_SLOTS 3
 #define MAX_ENTITIES 64
+#define ORE_MATCH_COUNT_PER_SIDE 8
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -46,6 +49,8 @@ typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } Enti
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
+typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
+typedef enum { FARMER_SEEKING, FARMER_WALKING_TO_ORE, FARMER_MINING, FARMER_RETURNING, FARMER_DEPOSITING } FarmerState;
 typedef enum {
     SPRITE_TYPE_KNIGHT,
     SPRITE_TYPE_HEALER,
@@ -115,6 +120,11 @@ struct Entity {
     int lane;
     int waypointIndex;
     float hitFlashTimer;
+    UnitRole unitRole;
+    FarmerState farmerState;
+    int claimedOreNodeId;
+    int carriedOreValue;
+    float workTimer;
     bool alive;
     bool markedForRemoval;
 };
@@ -133,6 +143,7 @@ struct Player {
     float maxEnergy;
     float energyRegenRate;
     void *base; // Entity *base (void * to avoid pulling in full Entity for stub)
+    int oreCollected;
 };
 
 float bf_distance(CanonicalPos a, CanonicalPos b) {
@@ -154,6 +165,26 @@ typedef struct { int fds[2]; } NFCReader_stub;
  * Must have entities array and entityCount to match battlefield.h layout. */
 typedef struct { int dummy; } Territory_stub;
 
+/* OreNode/OreField stubs -- must match ore.h struct sizes for correct layout */
+typedef struct {
+    int id;
+    BattleSide side;
+    int slotIndex;
+    int gridRow, gridCol;
+    CanonicalPos worldPos;
+    bool active;
+    int claimedByEntityId;
+    int oreType;
+    int value;
+    int durability;
+    int maxDurability;
+} OreNode_stub;
+
+typedef struct {
+    OreNode_stub nodes[2][ORE_MATCH_COUNT_PER_SIDE];
+    uint32_t rngState;
+} OreField_stub;
+
 typedef struct Battlefield {
     float boardWidth, boardHeight, seamY;
     Territory_stub territories[2];
@@ -161,6 +192,8 @@ typedef struct Battlefield {
     char _waypoints_pad[2 * 3 * LANE_WAYPOINT_COUNT * sizeof(CanonicalPos)];
     /* Slot spawn anchors -- not accessed by combat */
     char _spawn_pad[2 * NUM_CARD_SLOTS * sizeof(CanonicalPos)];
+    /* Ore field -- not accessed by combat but must be present for layout */
+    OreField_stub oreField;
     /* Entity registry -- used by combat_find_target */
     Entity *entities[MAX_ENTITIES * 2];
     int entityCount;
@@ -218,6 +251,11 @@ void win_latch_from_destroyed_base(GameState *gs, const Entity *destroyedBase) {
             return;
         }
     }
+}
+
+/* farmer_on_death stub -- combat.c now calls this on farmer kills */
+void farmer_on_death(Entity *farmer, GameState *gs) {
+    (void)farmer; (void)gs;
 }
 
 /* ---- Include combat.c directly ---- */

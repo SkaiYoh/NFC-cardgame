@@ -45,10 +45,11 @@ bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
             e->position.x += jx;
             e->position.y += jy;
             // Face toward the enemy when idling at the end of the path.
-            // SIDE_BOTTOM walks toward decreasing y (enemy above) → DIR_UP
-            // SIDE_TOP walks toward increasing y (enemy below) → DIR_DOWN
-            e->anim.dir = (side == SIDE_BOTTOM) ? DIR_UP : DIR_DOWN;
+            // From either owner's perspective, reaching the enemy side means
+            // the unit is facing away from its home camera.
+            e->anim.dir = DIR_UP;
             e->anim.flipH = false;
+            e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, side);
             entity_set_state(e, ESTATE_IDLE);
             return false;
         }
@@ -66,7 +67,8 @@ bool pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
         Vector2 diff = {target.x - e->position.x, target.y - e->position.y};
         float ddist = sqrtf(diff.x * diff.x + diff.y * diff.y);
         if (ddist > 1.0f) {
-            pathfind_apply_direction(&e->anim, diff);
+            pathfind_apply_direction_for_side(&e->anim, diff, side);
+            e->spriteRotationDegrees = pathfind_sprite_rotation_for_side(e->anim.dir, side);
         }
     }
 
@@ -88,4 +90,33 @@ void pathfind_apply_direction(AnimState *anim, Vector2 diff) {
         anim->dir = DIR_DOWN;
         anim->flipH = false;
     }
+}
+
+void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side) {
+    const float eps = 0.001f;
+
+    if (fabsf(diff.x) < eps && fabsf(diff.y) < eps) return;
+
+    if (fabsf(diff.x) >= eps) {
+        anim->dir = DIR_SIDE;
+        // Top-side units are rendered with a 180-degree sprite rotation, so
+        // their horizontal flip must be inverted to preserve left/right facing.
+        anim->flipH = (side == SIDE_TOP) ? (diff.x > 0) : (diff.x < 0);
+        return;
+    }
+
+    // Vertical facing is owner-perspective aware:
+    // SIDE_BOTTOM: moving up the canonical board means away from camera.
+    // SIDE_TOP: moving down the canonical board means away from camera.
+    bool movingAway = (side == SIDE_BOTTOM) ? (diff.y < 0.0f) : (diff.y > 0.0f);
+    anim->dir = movingAway ? DIR_UP : DIR_DOWN;
+    anim->flipH = false;
+}
+
+float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side) {
+    (void)dir;
+    if (side == SIDE_TOP) {
+        return 180.0f;
+    }
+    return 0.0f;
 }

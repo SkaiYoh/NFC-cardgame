@@ -1,6 +1,8 @@
 //
 // Ore node renderer implementation.
 //
+// TODO: Single ore texture for all types. Add type-based texture selection
+// when ore variety is implemented (keyed on OreNode.oreType).
 
 #include "ore_renderer.h"
 #include "../core/config.h"
