@@ -63,6 +63,7 @@ target_link_libraries(cardgame ${SQLITE3_LIB} ${RAYLIB_LIB} ${MATH_LIB})
 # --- Tools ---
 add_executable(card_preview
     tools/card_preview.c
+    tools/card_psd_export.c
     src/rendering/card_renderer.c
     third_party/cjson/cJSON.c)
 target_link_libraries(card_preview ${RAYLIB_LIB} ${MATH_LIB})

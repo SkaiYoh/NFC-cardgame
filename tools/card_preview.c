@@ -1,7 +1,9 @@
 #include "../src/rendering/card_renderer.h"
+#include "card_psd_export.h"
 #include <raylib.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Read entire file into a malloc'd string. Returns NULL on failure. */
 static char *read_file(const char *path) {
@@ -38,27 +40,66 @@ static int wrap(int val, int max) {
     return ((val % max) + max) % max;
 }
 
+static bool export_psd_with_status(const CardAtlas *atlas, const CardVisual *vis, const char *path,
+                                   char *statusMsg, size_t statusMsgSize, float *statusTimer) {
+    bool ok = card_export_psd(atlas, vis, path);
+    if (ok) {
+        snprintf(statusMsg, statusMsgSize, "PSD export saved to %s", path);
+        printf("Saved layered PSD to %s\n", path);
+    } else {
+        snprintf(statusMsg, statusMsgSize, "PSD export failed for %s", path);
+        fprintf(stderr, "Failed to export layered PSD to %s\n", path);
+    }
+    *statusTimer = 3.0f;
+    return ok;
+}
+
 int main(int argc, char *argv[]) {
     const int winW = 620;
     const int winH = 750;
+    const char *template_path = NULL;
+    const char *psd_export_path = "card_preview_export.psd";
+    bool export_only = false;
 
-    InitWindow(winW, winH, "Card Preview Tool");
-    SetTargetFPS(60);
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--export-psd") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Missing path after --export-psd\n");
+                return 1;
+            }
+            psd_export_path = argv[++i];
+        } else if (strcmp(argv[i], "--export-only") == 0) {
+            export_only = true;
+        } else if (!template_path) {
+            template_path = argv[i];
+        } else {
+            fprintf(stderr, "Unexpected argument: %s\n", argv[i]);
+            return 1;
+        }
+    }
 
     CardAtlas atlas;
-    card_atlas_init(&atlas);
+    if (export_only) {
+        card_atlas_init_layout(&atlas);
+    } else {
+        InitWindow(winW, winH, "Card Preview Tool");
+        SetTargetFPS(60);
+        card_atlas_init(&atlas);
+    }
 
     CardVisual vis = card_visual_default();
+    char statusMsg[256] = "";
+    float statusTimer = 0.0f;
 
     /* Load template from CLI argument: ./card_preview template.json */
-    if (argc > 1) {
-        char *json = read_file(argv[1]);
+    if (template_path) {
+        char *json = read_file(template_path);
         if (json) {
             vis = card_visual_from_json(json);
-            printf("Loaded template from %s\n", argv[1]);
+            printf("Loaded template from %s\n", template_path);
             free(json);
         } else {
-            fprintf(stderr, "Could not read file: %s\n", argv[1]);
+            fprintf(stderr, "Could not read file: %s\n", template_path);
         }
     }
     float scale = 4.0f;
@@ -66,8 +107,16 @@ int main(int argc, char *argv[]) {
     bool show_back = false;
     CardColor back_color = CLR_BROWN;
 
+    if (export_only) {
+        bool ok = export_psd_with_status(&atlas, &vis, psd_export_path,
+                                         statusMsg, sizeof(statusMsg), &statusTimer);
+        card_atlas_free(&atlas);
+        return ok ? 0 : 1;
+    }
+
     while (!WindowShouldClose()) {
         /* ── input ─────────────────────────────────────────────── */
+        bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 
         /* Select active layer with number keys 1-9, 0 */
         for (int k = 0; k < LAYER_COUNT && k < 10; k++) {
@@ -143,10 +192,21 @@ int main(int argc, char *argv[]) {
         if (scale > 10.0f) scale = 10.0f;
 
         /* Export JSON */
-        if (IsKeyPressed(KEY_E)) {
+        if (!ctrl && IsKeyPressed(KEY_E)) {
             printf("\n── Card Visual JSON ──\n");
             card_visual_print_json(&vis);
             printf("──────────────────────\n\n");
+        }
+
+        /* Export layered PSD */
+        if (ctrl && IsKeyPressed(KEY_E)) {
+            if (show_back) {
+                snprintf(statusMsg, sizeof(statusMsg), "Layered PSD export is only available for the front card view");
+                statusTimer = 3.0f;
+            } else {
+                export_psd_with_status(&atlas, &vis, psd_export_path,
+                                       statusMsg, sizeof(statusMsg), &statusTimer);
+            }
         }
 
         /* Import from file (I key) — reads import.json from current directory */
@@ -176,6 +236,8 @@ int main(int argc, char *argv[]) {
             show_back = !show_back;
         }
 
+        if (statusTimer > 0.0f) statusTimer -= GetFrameTime();
+
         /* ── draw ──────────────────────────────────────────────── */
 
         BeginDrawing();
@@ -202,7 +264,7 @@ int main(int argc, char *argv[]) {
         hudY += 14;
         DrawText("Shift+Left/Right: Shift X | Shift+Up/Down on Container: Variant", 20, hudY, 10, GRAY);
         hudY += 14;
-        DrawText("Space: Toggle | +/-: Zoom | B: Back | E: Export | I: Import | R: Reset", 20, hudY, 10, GRAY);
+        DrawText("Space: Toggle | +/-: Zoom | B: Back | E: JSON | Ctrl+E: PSD | I: Import | R: Reset", 20, hudY, 10, GRAY);
         hudY += 22;
 
         if (show_back) {
@@ -291,6 +353,12 @@ int main(int argc, char *argv[]) {
         char scaleTxt[32];
         snprintf(scaleTxt, sizeof(scaleTxt), "Scale: %.1fx", scale);
         DrawText(scaleTxt, winW - 120, hudY, 14, LIGHTGRAY);
+
+        if (statusTimer > 0.0f) {
+            Color statusColor = (strstr(statusMsg, "failed") || strstr(statusMsg, "only available"))
+                                ? ORANGE : GREEN;
+            DrawText(statusMsg, 20, hudY + 24, 12, statusColor);
+        }
 
         EndDrawing();
     }

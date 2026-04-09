@@ -21,8 +21,8 @@ SOURCES = $(SRC_CORE) $(SRC_DATA) $(SRC_RENDERING) $(SRC_ENTITIES) $(SRC_SYSTEMS
 cardgame: $(SOURCES)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(SOURCES) -o cardgame $(MACFLAGS) $(LDFLAGS)
 
-preview: tools/card_preview.c src/rendering/card_renderer.c third_party/cjson/cJSON.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_preview.c src/rendering/card_renderer.c third_party/cjson/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
+preview: tools/card_preview.c tools/card_psd_export.c src/rendering/card_renderer.c third_party/cjson/cJSON.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_preview.c tools/card_psd_export.c src/rendering/card_renderer.c third_party/cjson/cJSON.c -o card_preview $(MACFLAGS) -lraylib -lm
 
 # Initialize a fresh SQLite database from schema + seed data
 init-db:

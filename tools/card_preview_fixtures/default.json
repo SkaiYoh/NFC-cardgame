@@ -1,0 +1,27 @@
+{
+  "visual": {
+    "border_color": "brown",
+    "show_border": true,
+    "bg_style": "paper",
+    "show_bg": true,
+    "banner_color": "brown",
+    "show_banner": true,
+    "corner_color": "brown",
+    "show_corner": true,
+    "container_color": "brown",
+    "container_variant": 1,
+    "show_container": false,
+    "description_style": "paper",
+    "show_description": true,
+    "innercorner_style": "brown",
+    "show_innercorner": true,
+    "gem_color": "green",
+    "show_gem": true,
+    "socket_color": "brown",
+    "show_socket": true,
+    "energy_top_color": "red",
+    "show_energy_top": false,
+    "energy_bot_color": "red",
+    "show_energy_bot": false
+  }
+}
