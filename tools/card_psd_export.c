@@ -23,6 +23,9 @@ typedef struct {
 } PSDLayer;
 
 static const uint16_t PSD_LAYER_CHANNEL_IDS[4] = {0, 1, 2, 0xFFFFu};
+static const int PSD_EXPORT_SCALE = 2;
+static const int PSD_EXPORT_WIDTH = CARD_WIDTH * 2;
+static const int PSD_EXPORT_HEIGHT = CARD_HEIGHT * 2;
 
 static void buf_init(ByteBuf *buf) {
     memset(buf, 0, sizeof(*buf));
@@ -174,6 +177,33 @@ static bool trim_layer_bounds(PSDLayer *layer) {
     layer->top += minY;
     layer->width = newWidth;
     layer->height = newHeight;
+    return true;
+}
+
+static bool scale_layer_nearest_neighbor(PSDLayer *layer, int scale) {
+    if (!layer || !layer->pixels || scale <= 1) return true;
+
+    int srcWidth = layer->width;
+    int srcHeight = layer->height;
+    int dstWidth = srcWidth * scale;
+    int dstHeight = srcHeight * scale;
+    Color *scaled = malloc((size_t)dstWidth * (size_t)dstHeight * sizeof(Color));
+    if (!scaled) return false;
+
+    for (int y = 0; y < dstHeight; y++) {
+        int srcY = y / scale;
+        for (int x = 0; x < dstWidth; x++) {
+            int srcX = x / scale;
+            scaled[y * dstWidth + x] = layer->pixels[srcY * srcWidth + srcX];
+        }
+    }
+
+    free(layer->pixels);
+    layer->pixels = scaled;
+    layer->left *= scale;
+    layer->top *= scale;
+    layer->width = dstWidth;
+    layer->height = dstHeight;
     return true;
 }
 
@@ -340,13 +370,13 @@ static void blend_over(Color *dst, Color src) {
 static void composite_layer(Color *canvas, const PSDLayer *layer) {
     for (int y = 0; y < layer->height; y++) {
         int dstY = layer->top + y;
-        if (dstY < 0 || dstY >= CARD_HEIGHT) continue;
+        if (dstY < 0 || dstY >= PSD_EXPORT_HEIGHT) continue;
 
         for (int x = 0; x < layer->width; x++) {
             int dstX = layer->left + x;
-            if (dstX < 0 || dstX >= CARD_WIDTH) continue;
+            if (dstX < 0 || dstX >= PSD_EXPORT_WIDTH) continue;
 
-            blend_over(&canvas[dstY * CARD_WIDTH + dstX], layer->pixels[y * layer->width + x]);
+            blend_over(&canvas[dstY * PSD_EXPORT_WIDTH + dstX], layer->pixels[y * layer->width + x]);
         }
     }
 }
@@ -363,7 +393,7 @@ bool card_export_psd(const CardAtlas *atlas, const CardVisual *visual, const cha
     bool ok = true;
     PSDLayer layers[CARD_LAYER_COUNT] = {0};
     int layerCount = 0;
-    Color *composite = calloc((size_t)CARD_WIDTH * (size_t)CARD_HEIGHT, sizeof(Color));
+    Color *composite = calloc((size_t)PSD_EXPORT_WIDTH * (size_t)PSD_EXPORT_HEIGHT, sizeof(Color));
     ByteBuf layerRecords;
     ByteBuf layerPixels;
     ByteBuf compositePixels;
@@ -421,6 +451,10 @@ bool card_export_psd(const CardAtlas *atlas, const CardVisual *visual, const cha
             layers[layerCount].pixels = NULL;
             continue;
         }
+        if (!scale_layer_nearest_neighbor(&layers[layerCount], PSD_EXPORT_SCALE)) {
+            ok = false;
+            break;
+        }
 
         composite_layer(composite, &layers[layerCount]);
         layerCount++;
@@ -475,7 +509,7 @@ bool card_export_psd(const CardAtlas *atlas, const CardVisual *visual, const cha
         }
     }
 
-    if (ok) ok = buf_rle_image(&compositePixels, composite, CARD_WIDTH, CARD_HEIGHT, 4);
+    if (ok) ok = buf_rle_image(&compositePixels, composite, PSD_EXPORT_WIDTH, PSD_EXPORT_HEIGHT, 4);
 
     if (ok) {
         f = fopen(path, "wb");
@@ -501,8 +535,8 @@ bool card_export_psd(const CardAtlas *atlas, const CardVisual *visual, const cha
         ok = ok && file_be16(f, 1);
         ok = ok && file_write(f, "\0\0\0\0\0\0", 6);
         ok = ok && file_be16(f, 4);
-        ok = ok && file_be32(f, CARD_HEIGHT);
-        ok = ok && file_be32(f, CARD_WIDTH);
+        ok = ok && file_be32(f, PSD_EXPORT_HEIGHT);
+        ok = ok && file_be32(f, PSD_EXPORT_WIDTH);
         ok = ok && file_be16(f, 8);
         ok = ok && file_be16(f, 3);
 
