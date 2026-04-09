@@ -1,6 +1,6 @@
 # NFC Card Game - TODO
 
-Last verified: 2026-04-04
+Last verified: 2026-04-09
 
 ## Verification Snapshot
 
@@ -37,7 +37,7 @@ Last verified: 2026-04-04
 | Card visual rendering | `src/rendering/card_renderer.c` | Atlas-driven card frame/background/icon composition |
 | Biome-aware tilemap rendering | `src/rendering/tilemap_renderer.c`, `src/rendering/biome.c` | Procedural territory tilemaps with biome definitions |
 | Core game loop and NFC event handling | `src/core/game.c`, `src/hardware/nfc_reader.c`, `src/hardware/arduino_protocol.c` | Init, update, render, cleanup, keyboard test input, NFC polling |
-| HUD basics | `src/rendering/ui.c` | Energy bars, viewport labels, and match-result overlays are implemented |
+| HUD basics | `src/rendering/ui.c` | Viewport labels, sustenance counters, and match-result overlays are implemented |
 | Build/test maintenance | `Makefile`, `CMakeLists.txt`, `tests/*.c` | Main source lists are aligned; unit tests cover battlefield, math, pathfinding, combat, animation, debug events, and win conditions |
 
 ---
@@ -49,7 +49,8 @@ Last verified: 2026-04-04
 | Pregame / match flow | `src/systems/match.c`, `src/systems/match.h` | Header is empty; source contains declarations/comments only |
 | Projectile system | `src/entities/projectile.c`, `src/entities/projectile.h` | Header is empty; source is comment-only |
 | Spell gameplay effects | `src/logic/card_effects.c` | `play_spell()` spends energy and prints parsed data, but applies no gameplay effect |
-| Base health and hand UI | `src/rendering/ui.c`, `src/rendering/card_renderer.c` | Match result text exists, but there are no base HP bars and cards are not rendered in the live match |
+| Health and energy status bars | `src/rendering/status_bars.c`, `src/core/game.c`, `src/entities/building.c`, `src/systems/energy.c` | New world-anchored bars render for troops and bases, but base bars are too coarse to reliably reflect common gameplay changes, there is no fallback if the atlas fails to load, and the feature still needs a manual in-game visual smoke test |
+| Base health and hand UI | `src/rendering/status_bars.c`, `src/rendering/ui.c`, `src/rendering/card_renderer.c` | Base HP and energy now have sprite-anchored world bars, but there is still no card/hand UI and no non-text fallback HUD for those resources |
 | Specific-target combat | `src/logic/combat.c`, `src/entities/troop.c` | `targetType` is parsed, but `TARGET_SPECIFIC_TYPE` still falls back to nearest-target behavior |
 | Snow and swamp biome identity | `src/rendering/biome.c` | Both are still placeholders built from the grass tileset |
 | Spawn system ownership | `src/systems/spawn.c` | File exists, but actual spawn logic still lives in `card_effects.c` and `troop.c` |
@@ -59,22 +60,27 @@ Last verified: 2026-04-04
 
 ## Highest Priority
 
-1. Add base-health UI.
-   - Draw HP bars for both bases in `src/rendering/ui.c`.
-   - Decide whether card/hand rendering should live in the same HUD pass.
+1. Fix the new health/energy bar feature before treating it as complete.
+   - Increase base-bar granularity or change the mapping so common costs and hits visibly move the bar.
+   - Add a fallback render path when `health_energy_bars.png` fails to load.
+   - Run a manual in-game smoke test for placement, clipping, and orientation in both viewports.
 
-2. Make spell cards do real gameplay work.
+2. Add remaining base/hand HUD work.
+   - Decide whether card/hand rendering should live in the same HUD pass.
+   - Decide whether bases still need a screen-space fallback HUD in addition to world bars.
+
+3. Make spell cards do real gameplay work.
    - Replace the current debug-print path with actual targeting/effect resolution.
 
-3. Build the projectile system if ranged attacks are part of the near-term plan.
+4. Build the projectile system if ranged attacks are part of the near-term plan.
    - Define the header API first.
    - Decide whether projectiles live in the battlefield entity list or in a dedicated pool.
 
-4. Add a real pregame/match phase.
+5. Add a real pregame/match phase.
    - Replace the declarations in `match.c` with real state and transitions.
    - Gate gameplay start on player readiness / deck confirmation.
 
-5. Normalize database reset behavior.
+6. Normalize database reset behavior.
    - Decide whether `nfc_tags` should stay user-managed or get optional seed data.
    - Make `init-db` recreate a clean database shape when a full reset is intended.
 
@@ -83,6 +89,7 @@ Last verified: 2026-04-04
 ## Secondary Cleanup
 
 - Fix the macro redefinition warning in `src/rendering/biome.c` (`R` is defined twice).
+- Add the new status-bar files to git before handing off the feature (`src/rendering/status_bars.c`, `src/rendering/status_bars.h`).
 - Move shared spawn orchestration out of `card_effects.c` if `src/systems/spawn.c` is meant to own it.
 - Fill out the empty public headers for `match` and `projectile`.
 - Decide whether `CardSlot.activeCard` should become real state or be removed.
