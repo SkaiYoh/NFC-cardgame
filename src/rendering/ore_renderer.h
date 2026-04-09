@@ -17,6 +17,7 @@
 Texture2D ore_renderer_load(void);
 
 // Draw all active ore nodes for one side. Call inside Camera2D.
-void ore_renderer_draw(const OreField *field, BattleSide side, Texture2D texture);
+void ore_renderer_draw(const OreField *field, BattleSide side, Texture2D texture,
+                       float rotationDegrees);
 
 #endif //NFC_CARDGAME_ORE_RENDERER_H

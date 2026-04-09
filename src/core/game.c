@@ -254,8 +254,8 @@ void game_render(GameState *g) {
     viewport_begin(&g->players[0]);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
-    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
-    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture, 0.0f);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
@@ -274,8 +274,8 @@ void game_render(GameState *g) {
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
-    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture);
-    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture);
+    ore_renderer_draw(&bf->oreField, SIDE_BOTTOM, g->oreTexture, 180.0f);
+    ore_renderer_draw(&bf->oreField, SIDE_TOP, g->oreTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
