@@ -70,7 +70,8 @@ After world-space drawing:
 ### Player-Facing UI
 
 - `ui_draw_energy_bar()` draws one energy bar per player in screen space.
-- `ui_draw_viewport_label()` draws both player labels in rotated screen space.
+- `ui_draw_sustenance_counter()` draws each player's sustenance count in the
+  rotated corner of their viewport.
 - `ui_draw_match_result()` draws `VICTORY`, `DEFEAT`, or `DRAW` centered in
   each player's viewport once the result is latched.
 - Base HP and in-game card/hand UI are still missing.
