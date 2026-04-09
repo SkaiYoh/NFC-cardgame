@@ -9,7 +9,7 @@ MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 # Source files
 SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/sustenance.c
 SRC_DATA = src/data/db.c src/data/cards.c
-SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c
+SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/status_bars.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c
 SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
 SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
 SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/farmer.c src/logic/pathfinding.c src/logic/win_condition.c

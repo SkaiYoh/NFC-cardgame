@@ -31,6 +31,7 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/viewport.c
                    src/rendering/sprite_renderer.c
                    src/rendering/spawn_fx.c
+                   src/rendering/status_bars.c
                    src/rendering/biome.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
