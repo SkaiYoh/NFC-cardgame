@@ -123,6 +123,11 @@ add_executable(test_spawn_fx
 target_link_libraries(test_spawn_fx ${MATH_LIB})
 add_test(NAME spawn_fx COMMAND test_spawn_fx)
 
+add_executable(test_status_bars
+    tests/test_status_bars.c)
+target_link_libraries(test_status_bars ${MATH_LIB})
+add_test(NAME status_bars COMMAND test_status_bars)
+
 add_executable(test_win_condition
     tests/test_win_condition.c)
 target_link_libraries(test_win_condition ${MATH_LIB})

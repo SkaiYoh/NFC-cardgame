@@ -39,8 +39,10 @@ static Rectangle status_bar_src(int frameIndex, float rowY, float width) {
 static int troop_health_frame(const Entity *troop) {
     if (!troop || troop->hp <= 0 || troop->maxHP <= 0) return -1;
 
+    // Troop bars stay hidden until the troop is missing health.
+    if (troop->hp >= troop->maxHP) return -1;
+
     float ratio = clamp01((float)troop->hp / (float)troop->maxHP);
-    if (ratio >= 1.0f) return 0;
 
     int frame = (int)floorf((1.0f - ratio) * (float)STATUS_BAR_TROOP_FRAMES);
     if (frame < 0) frame = 0;
