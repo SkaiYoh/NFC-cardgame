@@ -86,3 +86,31 @@ bool player_slot_is_available(Player *p, int slotIndex) {
     }
     return p->slots[slotIndex].cooldownTimer <= 0.0f;
 }
+
+void player_hand_set_card(Player *p, int handIndex, Card *card) {
+    if (!p || handIndex < 0 || handIndex >= HAND_MAX_CARDS) {
+        return;
+    }
+    p->handCards[handIndex] = card;
+}
+
+void player_hand_clear_card(Player *p, int handIndex) {
+    player_hand_set_card(p, handIndex, NULL);
+}
+
+Card *player_hand_get_card(const Player *p, int handIndex) {
+    if (!p || handIndex < 0 || handIndex >= HAND_MAX_CARDS) {
+        return NULL;
+    }
+    return p->handCards[handIndex];
+}
+
+int player_hand_occupied_count(const Player *p) {
+    if (!p) return 0;
+
+    int count = 0;
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        if (p->handCards[i]) count++;
+    }
+    return count;
+}

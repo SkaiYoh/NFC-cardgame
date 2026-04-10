@@ -28,6 +28,26 @@
 static bool s_showLaneDebug = false;
 static DebugOverlayFlags s_debugFlags = {0};
 
+static Card *game_default_hand_card(GameState *g) {
+    Card *card = cards_find(&g->deck, "KNIGHT_01");
+    if (card) return card;
+
+    if (g->deck.count > 0) {
+        return &g->deck.cards[0];
+    }
+
+    return NULL;
+}
+
+static void game_seed_demo_hands(GameState *g) {
+    Card *starter = game_default_hand_card(g);
+    if (!starter) return;
+
+    for (int i = 0; i < 2; i++) {
+        player_hand_set_card(&g->players[i], 0, starter);
+    }
+}
+
 bool game_init(GameState *g) {
     srand((unsigned int) time(NULL));
     // Derive sustenance seed before bf_init: tilemap creation reseeds global rand(),
@@ -85,6 +105,7 @@ bool game_init(GameState *g) {
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
+    game_seed_demo_hands(g);
 
     // Spawn home bases behind center-lane spawn points
     for (int i = 0; i < 2; i++) {

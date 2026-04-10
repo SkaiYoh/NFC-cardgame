@@ -119,6 +119,9 @@ struct Player {
     // Card slots (3 NFC readers per player)
     CardSlot slots[NUM_CARD_SLOTS];
 
+    // Visible hand contents, independent from the three NFC/lane slots.
+    Card *handCards[HAND_MAX_CARDS];
+
     // Energy system
     float energy;
     float maxEnergy;
