@@ -99,6 +99,7 @@ struct Entity {
     float hitFlashTimer;
     bool alive;
     bool markedForRemoval;
+    int healAmount;
 };
 
 /* ---- Battlefield stub (minimal for pathfinding) ---- */

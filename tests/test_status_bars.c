@@ -218,6 +218,7 @@ typedef struct Entity {
     float workTimer;
     bool alive;
     bool markedForRemoval;
+    int healAmount;
 } Entity;
 
 typedef struct Player {

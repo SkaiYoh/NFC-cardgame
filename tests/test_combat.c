@@ -128,6 +128,7 @@ struct Entity {
     float workTimer;
     bool alive;
     bool markedForRemoval;
+    int healAmount;
 };
 
 /* Player stub -- lean struct matching Plan 11-05 types.h */
@@ -768,6 +769,270 @@ static void test_building_take_damage_kills_non_base_no_match_end(void) {
     assert(gs.winnerID == -1);
 }
 
+/* ---- Healer support behavior tests ---- */
+
+static Entity make_healer(int ownerID, Vector2 pos) {
+    Entity h = make_entity(ownerID, ENTITY_TROOP, pos);
+    h.attack = 5;
+    h.healAmount = 8;
+    h.attackRange = 80.0f;
+    return h;
+}
+
+static void test_healer_prefers_injured_ally_in_range(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity injured_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    injured_ally.hp = 50;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &injured_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &injured_ally);
+}
+
+static void test_healer_falls_back_to_enemy_when_no_injured_ally(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity full_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &full_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &enemy);
+}
+
+static void test_healer_ignores_off_range_injured_ally(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+    healer.attackRange = 50.0f;
+
+    /* Ally is injured but far outside attack range */
+    Entity far_injured_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1500});
+    far_injured_ally.hp = 50;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &far_injured_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &enemy);
+}
+
+static void test_healer_ignores_self(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+    healer.hp = 50;  /* injured -- if we forgot to skip self, healer would target itself */
+
+    bf_test_add_entity(&gs, &healer);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == NULL);  /* no enemies, no other allies, no self */
+}
+
+static void test_healer_ignores_friendly_base(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity friendly_base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1000});
+    friendly_base.hp = 100;
+    friendly_base.maxHP = 5000;  /* injured */
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &friendly_base);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &enemy);  /* base is skipped, enemy is selected */
+}
+
+static void test_healer_ignores_dead_ally(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity dead_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    dead_ally.hp = 0;
+    dead_ally.alive = false;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &dead_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &enemy);
+}
+
+static void test_healer_ignores_marked_ally(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity marked_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    marked_ally.hp = 50;
+    marked_ally.markedForRemoval = true;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &marked_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &enemy);
+}
+
+static void test_non_healer_never_targets_friendly(void) {
+    GameState gs = make_game_state();
+    /* Plain combat troop, no healAmount */
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+
+    Entity injured_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    injured_ally.hp = 50;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &injured_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&attacker, &gs);
+    assert(target == &enemy);
+}
+
+static void test_apply_hit_heals_ally(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 80;
+    ally.maxHP = 100;
+
+    combat_apply_hit(&healer, &ally, &gs);
+
+    assert(ally.hp == 88);
+    assert(ally.alive == true);
+}
+
+static void test_apply_hit_heal_clamps_at_maxhp(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 97;
+    ally.maxHP = 100;
+
+    combat_apply_hit(&healer, &ally, &gs);
+
+    assert(ally.hp == 100);
+}
+
+static void test_apply_hit_rejects_full_health_friendly_troop(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 100;
+    ally.maxHP = 100;
+
+    int hp_before = ally.hp;
+    combat_apply_hit(&healer, &ally, &gs);
+
+    assert(ally.hp == hp_before);
+    assert(ally.alive == true);
+}
+
+static void test_healer_retargets_to_enemy_after_ally_fully_healed(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 95;
+    ally.maxHP = 100;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    /* First target: injured ally */
+    Entity *first = combat_find_target(&healer, &gs);
+    assert(first == &ally);
+
+    /* Heal lands -- ally is now full HP */
+    combat_apply_hit(&healer, &ally, &gs);
+    assert(ally.hp == 100);
+
+    /* Retarget: should now pick the enemy */
+    Entity *second = combat_find_target(&healer, &gs);
+    assert(second == &enemy);
+}
+
+static void test_apply_hit_rejects_heal_on_friendly_base(void) {
+    /* Stale/direct caller hands a healer a friendly base. This must be a
+     * strict no-op: no healing and no fallback damage. */
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity friendly_base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    friendly_base.hp = 50;
+    friendly_base.maxHP = 5000;
+
+    int hp_before = friendly_base.hp;
+    combat_apply_hit(&healer, &friendly_base, &gs);
+
+    assert(friendly_base.hp == hp_before);
+}
+
+static void test_apply_hit_rejects_self_heal(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+    healer.hp = 50;
+    healer.maxHP = 100;
+
+    int hp_before = healer.hp;
+    combat_apply_hit(&healer, &healer, &gs);
+
+    assert(healer.hp == hp_before);
+}
+
+static void test_apply_hit_rejects_marked_friendly_troop(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    ally.hp = 50;
+    ally.maxHP = 100;
+    ally.markedForRemoval = true;
+
+    int hp_before = ally.hp;
+    combat_apply_hit(&healer, &ally, &gs);
+
+    assert(ally.hp == hp_before);
+}
+
+static void test_resolve_rejects_full_health_friendly_troop_without_cooldown(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){0, 0});
+    healer.attackSpeed = 1.0f;
+    healer.attackCooldown = 0.0f;
+
+    Entity ally = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+    ally.hp = 100;
+    ally.maxHP = 100;
+
+    combat_resolve(&healer, &ally, &gs, 0.016f);
+
+    assert(ally.hp == 100);
+    assert(healer.attackCooldown == 0.0f);
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running combat tests...\n");
@@ -801,6 +1066,23 @@ int main(void) {
     RUN_TEST(test_building_take_damage_null_safety);
     RUN_TEST(test_building_take_damage_kills_p1_base_latches_p2_win);
     RUN_TEST(test_building_take_damage_kills_non_base_no_match_end);
+
+    RUN_TEST(test_healer_prefers_injured_ally_in_range);
+    RUN_TEST(test_healer_falls_back_to_enemy_when_no_injured_ally);
+    RUN_TEST(test_healer_ignores_off_range_injured_ally);
+    RUN_TEST(test_healer_ignores_self);
+    RUN_TEST(test_healer_ignores_friendly_base);
+    RUN_TEST(test_healer_ignores_dead_ally);
+    RUN_TEST(test_healer_ignores_marked_ally);
+    RUN_TEST(test_non_healer_never_targets_friendly);
+    RUN_TEST(test_apply_hit_heals_ally);
+    RUN_TEST(test_apply_hit_heal_clamps_at_maxhp);
+    RUN_TEST(test_apply_hit_rejects_full_health_friendly_troop);
+    RUN_TEST(test_healer_retargets_to_enemy_after_ally_fully_healed);
+    RUN_TEST(test_apply_hit_rejects_heal_on_friendly_base);
+    RUN_TEST(test_apply_hit_rejects_self_heal);
+    RUN_TEST(test_apply_hit_rejects_marked_friendly_troop);
+    RUN_TEST(test_resolve_rejects_full_health_friendly_troop_without_cooldown);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

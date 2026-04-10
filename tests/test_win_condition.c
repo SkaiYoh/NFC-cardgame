@@ -91,6 +91,7 @@ struct Entity {
     float workTimer;
     bool alive;
     bool markedForRemoval;
+    int healAmount;
 };
 
 typedef struct { float x; float y; float rotation; float zoom; } Camera2D_stub;

@@ -205,6 +205,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
     "hp":          120,
     "maxHP":       120,
     "attack":      5,
+    "healAmount":  8,
     "attackSpeed": 0.5,
     "attackRange": 85.0,
     "moveSpeed":   44.0,

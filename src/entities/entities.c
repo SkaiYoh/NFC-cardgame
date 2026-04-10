@@ -30,6 +30,20 @@ static void entity_face_toward(Entity *e, const Battlefield *bf, Vector2 targetP
                                                                  e->presentationSide);
 }
 
+static Entity *entity_retarget_or_walk(Entity *e, GameState *gs) {
+    Entity *nextTarget = combat_find_target(e, gs);
+    if (nextTarget && combat_in_range(e, nextTarget, gs)) {
+        e->attackTargetId = nextTarget->id;
+        entity_face_toward(e, &gs->battlefield, nextTarget->position);
+        entity_restart_clip(e);
+        return nextTarget;
+    }
+
+    e->attackTargetId = -1;
+    entity_set_state(e, ESTATE_WALKING);
+    return NULL;
+}
+
 Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     Entity *e = malloc(sizeof(Entity));
     if (!e) return NULL;
@@ -175,6 +189,13 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 break;
             }
 
+            if (e->healAmount > 0 &&
+                target->ownerID == e->ownerID &&
+                !combat_can_heal_target(e, target)) {
+                target = entity_retarget_or_walk(e, gs);
+                if (!target) break;
+            }
+
             // Tick animation and check for hit-marker crossing
             const EntityAnimSpec *spec = anim_spec_get(e->spriteType, ANIM_ATTACK);
             AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
@@ -197,15 +218,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // Clip finished — chain next swing or leave attack
             if (evt.finishedThisTick) {
                 // Retarget for next swing
-                Entity *nextTarget = combat_find_target(e, gs);
-                if (nextTarget && combat_in_range(e, nextTarget, gs)) {
-                    e->attackTargetId = nextTarget->id;
-                    entity_face_toward(e, &gs->battlefield, nextTarget->position);
-                    entity_restart_clip(e);
-                } else {
-                    e->attackTargetId = -1;
-                    entity_set_state(e, ESTATE_WALKING);
-                }
+                entity_retarget_or_walk(e, gs);
             }
 
             return; // skip unconditional anim_state_update below

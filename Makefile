@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -56,6 +56,9 @@ test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
 test_combat: tests/test_combat.c src/logic/combat.c src/entities/building.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_combat.c -o test_combat -lm
 
+test_entities: tests/test_entities.c src/entities/entities.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_entities.c -o test_entities -lm
+
 test_battlefield_math: tests/test_battlefield_math.c src/core/battlefield_math.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_battlefield_math.c -o test_battlefield_math -lm
 
@@ -83,9 +86,10 @@ test_sustenance: tests/test_sustenance.c src/core/sustenance.c src/core/battlefi
 test_hand_ui: tests/test_hand_ui.c src/rendering/hand_ui.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_hand_ui.c -o test_hand_ui -lm
 
-test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui
+test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui
 	./test_pathfinding
 	./test_combat
+	./test_entities
 	./test_battlefield_math
 	./test_battlefield
 	./test_animation
@@ -100,4 +104,4 @@ sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui test_ore

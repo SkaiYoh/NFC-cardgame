@@ -193,18 +193,29 @@ static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) 
     card_action_play(card, g, playerIndex, slotIndex);
 }
 
+static void game_test_play_healer(GameState *g, int playerIndex, int slotIndex) {
+    Card *card = cards_find(&g->deck, "HEALER_01");
+    if (!card) {
+        printf("[TEST] HEALER_01 not found in deck\n");
+        return;
+    }
+    card_action_play(card, g, playerIndex, slotIndex);
+}
+
 static void game_handle_spawn_input(GameState *g) {
-    // Player 1: key 1/2/3 = knight, F = farmer
+    // Player 1: key 1/2/3 = knight, F = farmer, H = healer
     if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
     if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
     if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
     if (IsKeyPressed(KEY_F)) game_test_play_farmer(g, 0, 0);
+    if (IsKeyPressed(KEY_H)) game_test_play_healer(g, 0, 0);
 
-    // Player 2: key Q/W/E = knight, R = farmer
+    // Player 2: key Q/W/E = knight, R = farmer, Y = healer
     if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
     if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
     if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
     if (IsKeyPressed(KEY_R)) game_test_play_farmer(g, 1, 0);
+    if (IsKeyPressed(KEY_Y)) game_test_play_healer(g, 1, 0);
 }
 
 void game_update(GameState *g) {

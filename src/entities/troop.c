@@ -46,6 +46,14 @@ TroopData troop_create_data_from_card(const Card *card) {
         data.attack = atk->valueint;
     }
 
+    cJSON *heal = cJSON_GetObjectItem(root, "healAmount");
+    if (heal && cJSON_IsNumber(heal)) {
+        data.healAmount = heal->valueint;
+    } else if (card->type && strcmp(card->type, "healer") == 0) {
+        // Older DBs without healAmount: keep healers functional by reusing attack.
+        data.healAmount = data.attack;
+    }
+
     cJSON *atkSpd = cJSON_GetObjectItem(root, "attackSpeed");
     if (atkSpd && cJSON_IsNumber(atkSpd)) {
         data.attackSpeed = (float) atkSpd->valuedouble;
@@ -88,6 +96,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->hp = data->hp;
     e->maxHP = data->maxHP;
     e->attack = data->attack;
+    e->healAmount = data->healAmount;
     e->attackSpeed = data->attackSpeed;
     e->attackRange = data->attackRange;
     e->moveSpeed = data->moveSpeed;

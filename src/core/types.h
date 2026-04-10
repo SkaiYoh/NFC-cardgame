@@ -95,6 +95,9 @@ struct Entity {
     // Flags
     bool alive;
     bool markedForRemoval;
+
+    // Support stats
+    int healAmount;             // > 0 marks this unit as a supporter; HP restored per hit on a friendly troop
 };
 
 // Card slot - represents a physical NFC reader position

@@ -27,4 +27,12 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs);
 // Returns true if the entity was just killed (was alive, now dead).
 bool entity_take_damage(Entity *entity, int damage);
 
+// Returns true if target is a currently valid friendly heal target for attacker.
+// Requires a supporter unit, another living friendly troop, and hp < maxHP.
+bool combat_can_heal_target(const Entity *attacker, const Entity *target);
+
+// Restore HP to an entity, clamped to maxHP. No-op on dead/marked entities.
+// Returns true if any HP was actually restored.
+bool entity_apply_heal(Entity *entity, int amount);
+
 #endif //NFC_CARDGAME_COMBAT_H

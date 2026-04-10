@@ -109,6 +109,11 @@ add_executable(test_combat
 target_link_libraries(test_combat ${MATH_LIB})
 add_test(NAME combat COMMAND test_combat)
 
+add_executable(test_entities
+    tests/test_entities.c)
+target_link_libraries(test_entities ${MATH_LIB})
+add_test(NAME entities COMMAND test_entities)
+
 add_executable(test_animation
     tests/test_animation.c)
 target_link_libraries(test_animation ${MATH_LIB})
