@@ -19,7 +19,13 @@ typedef struct {
     TargetingMode targeting;
     const char *targetType;
     SpriteType spriteType;
+    float bodyRadius;
 } TroopData;
+
+// Default collision footprint radius for a given sprite type.
+// Used for both troop spawn and the home-base building so all live entities
+// participate in the same overlap / aggro geometry.
+float troop_default_body_radius(SpriteType type);
 
 // Create a TroopData from a card's JSON data field (with sensible defaults)
 TroopData troop_create_data_from_card(const Card *card);

@@ -9,6 +9,18 @@
 #include <stdio.h>
 #include <string.h>
 
+float troop_default_body_radius(SpriteType type) {
+    switch (type) {
+        case SPRITE_TYPE_ASSASSIN: return 12.0f;
+        case SPRITE_TYPE_KNIGHT:   return 14.0f;
+        case SPRITE_TYPE_HEALER:   return 14.0f;
+        case SPRITE_TYPE_FARMER:   return 14.0f;
+        case SPRITE_TYPE_BRUTE:    return 18.0f;
+        case SPRITE_TYPE_BASE:     return 16.0f;
+        default:                   return 14.0f;
+    }
+}
+
 TroopData troop_create_data_from_card(const Card *card) {
     TroopData data = {0};
     data.name = card->name;
@@ -23,6 +35,7 @@ TroopData troop_create_data_from_card(const Card *card) {
     data.moveSpeed = 60.0f;
     data.targeting = TARGET_NEAREST;
     data.targetType = NULL;
+    data.bodyRadius = troop_default_body_radius(data.spriteType);
 
     // Override from card JSON data if available
     if (!card->data) return data;
@@ -100,6 +113,9 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->attackSpeed = data->attackSpeed;
     e->attackRange = data->attackRange;
     e->moveSpeed = data->moveSpeed;
+    e->bodyRadius = (data->bodyRadius > 0.0f)
+        ? data->bodyRadius
+        : troop_default_body_radius(data->spriteType);
 
     // Targeting
     e->targeting = data->targeting;

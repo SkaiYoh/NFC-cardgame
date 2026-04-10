@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -11,7 +11,7 @@ SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c sr
 SRC_DATA = src/data/db.c src/data/cards.c
 SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/status_bars.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c src/rendering/hand_ui.c
 SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
-SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
+SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/spawn_placement.c src/systems/match.c
 SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/farmer.c src/logic/pathfinding.c src/logic/win_condition.c
 SRC_HARDWARE = src/hardware/nfc_reader.c src/hardware/arduino_protocol.c
 SRC_LIB = third_party/cjson/cJSON.c
@@ -74,6 +74,9 @@ test_debug_events: tests/test_debug_events.c src/core/debug_events.c
 test_spawn_fx: tests/test_spawn_fx.c src/rendering/spawn_fx.c src/systems/spawn.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_spawn_fx.c -o test_spawn_fx -lm
 
+test_spawn_placement: tests/test_spawn_placement.c src/systems/spawn_placement.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_spawn_placement.c -o test_spawn_placement -lm
+
 test_status_bars: tests/test_status_bars.c src/rendering/status_bars.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_status_bars.c -o test_status_bars -lm
 
@@ -86,7 +89,7 @@ test_sustenance: tests/test_sustenance.c src/core/sustenance.c src/core/battlefi
 test_hand_ui: tests/test_hand_ui.c src/rendering/hand_ui.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_hand_ui.c -o test_hand_ui -lm
 
-test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui
+test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_status_bars test_win_condition test_sustenance test_hand_ui
 	./test_pathfinding
 	./test_combat
 	./test_entities
@@ -95,6 +98,7 @@ test: test_pathfinding test_combat test_entities test_battlefield_math test_batt
 	./test_animation
 	./test_debug_events
 	./test_spawn_fx
+	./test_spawn_placement
 	./test_status_bars
 	./test_win_condition
 	./test_sustenance
@@ -104,4 +108,4 @@ sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_status_bars test_win_condition test_sustenance test_hand_ui test_ore

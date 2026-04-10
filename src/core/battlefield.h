@@ -79,6 +79,14 @@ void bf_add_entity(Battlefield *bf, Entity *e);
 void bf_remove_entity(Battlefield *bf, int entityID);
 Entity *bf_find_entity(Battlefield *bf, int entityID);
 
+// Build a stable per-tick iteration order for the entity registry.
+// Writes `bf->entityCount` indices into `outIndices`, sorted ascending by
+// entity.id. This gives deterministic "lower-id wins the jam" semantics for
+// local steering regardless of the registry's swap-with-last removal order.
+// Caller must provide `outIndices` with capacity >= MAX_ENTITIES * 2.
+// Returns the number of indices written.
+int bf_build_update_order(const Battlefield *bf, int *outIndices);
+
 // --- World queries ---
 // Get territory for a given canonical position
 Territory *bf_territory_at(Battlefield *bf, CanonicalPos pos);

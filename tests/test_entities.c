@@ -16,6 +16,7 @@
 
 /* ---- Prevent entities.c's includes from pulling in heavy headers ---- */
 #define NFC_CARDGAME_TYPES_H
+#define NFC_CARDGAME_CONFIG_H
 #define NFC_CARDGAME_ENTITIES_H
 #define NFC_CARDGAME_ENTITY_ANIMATION_H
 #define NFC_CARDGAME_BATTLEFIELD_H
@@ -23,6 +24,17 @@
 #define NFC_CARDGAME_PATHFINDING_H
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_FARMER_H
+
+/* ---- Local steering constants (must mirror src/core/config.h) ---- */
+#define PATHFIND_AGGRO_RADIUS             192.0f
+#define PATHFIND_AGGRO_HYSTERESIS         32.0f
+#define PATHFIND_CANDIDATE_ANGLE_SOFT_DEG 30.0f
+#define PATHFIND_CANDIDATE_ANGLE_HARD_DEG 60.0f
+#define PATHFIND_CONTACT_GAP              2.0f
+#define PATHFIND_WAYPOINT_REACH_GAP       4.0f
+#define PATHFIND_LANE_LOOKAHEAD_DISTANCE  48.0f
+#define PATHFIND_PURSUIT_REAR_TOLERANCE   32.0f
+#define PATHFIND_LIVELOCK_TICKS           15
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
@@ -123,6 +135,7 @@ struct Entity {
     int ownerID;
     int lane;
     int waypointIndex;
+    float laneProgress;
     float hitFlashTimer;
     UnitRole unitRole;
     FarmerState farmerState;
@@ -132,6 +145,9 @@ struct Entity {
     bool alive;
     bool markedForRemoval;
     int healAmount;
+    float bodyRadius;
+    int movementTargetId;
+    int ticksSinceProgress;
 };
 
 typedef struct Battlefield {
@@ -145,6 +161,7 @@ struct GameState {
 
 /* ---- Test globals ---- */
 static Entity *g_findTargetResult = NULL;
+static Entity *g_findWithinRadiusResult = NULL;
 static int g_applyHitCalls = 0;
 static Entity *g_lastApplyHitAttacker = NULL;
 static Entity *g_lastApplyHitTarget = NULL;
@@ -182,6 +199,17 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
     return g_findTargetResult;
 }
 
+Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float maxRadius) {
+    (void)gs;
+    if (!attacker || !g_findWithinRadiusResult) return NULL;
+    if (g_findWithinRadiusResult->ownerID == attacker->ownerID) return NULL;
+    if (!g_findWithinRadiusResult->alive || g_findWithinRadiusResult->markedForRemoval) return NULL;
+    if (distance_between(attacker->position, g_findWithinRadiusResult->position) > maxRadius) {
+        return NULL;
+    }
+    return g_findWithinRadiusResult;
+}
+
 bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
     if (!attacker || !target) return false;
     if (attacker->healAmount <= 0) return false;
@@ -209,6 +237,22 @@ void pathfind_step_entity(Entity *e, const Battlefield *bf, float deltaTime) {
 void pathfind_commit_presentation(Entity *e, const Battlefield *bf) {
     (void)e;
     (void)bf;
+}
+
+float pathfind_lane_progress_for_position(const Entity *e, const Battlefield *bf,
+                                          Vector2 position) {
+    (void)bf;
+    if (!e) return 0.0f;
+    return (e->ownerID == 0) ? (2000.0f - position.y) : position.y;
+}
+
+void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf) {
+    (void)bf;
+    if (!e) return;
+    float projected = pathfind_lane_progress_for_position(e, bf, e->position);
+    if (projected > e->laneProgress) {
+        e->laneProgress = projected;
+    }
 }
 
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side) {
@@ -353,6 +397,7 @@ static int testsPassed = 0;
 
 static void reset_globals(void) {
     g_findTargetResult = NULL;
+    g_findWithinRadiusResult = NULL;
     g_applyHitCalls = 0;
     g_lastApplyHitAttacker = NULL;
     g_lastApplyHitTarget = NULL;
@@ -448,6 +493,333 @@ static void test_healer_cancels_stale_heal_and_walks_without_replacement(void) {
     assert(g_applyHitCalls == 0);
 }
 
+/* ---- Phase 2: walking aggro probe + movementTargetId lifecycle ---- */
+
+static void test_walking_unit_acquires_movement_target_in_aggro_radius(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* enemy at distance 100 -- inside aggro (192) but outside attack (80) */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.movementTargetId == enemy.id);
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.attackTargetId == -1);
+}
+
+static void test_idle_unit_acquires_enemy_pursuit_in_aggro_radius(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    unit.state = ESTATE_IDLE;
+    unit.waypointIndex = 8;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.movementTargetId == enemy.id);
+    assert(unit.attackTargetId == -1);
+}
+
+static void test_walking_unit_keeps_target_inside_hysteresis(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* Enemy at distance 200 -- outside aggro (192) but inside hysteresis (224). */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){200.0f, 0.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    /* Probe stub returns NULL; hysteresis-keep should skip the re-probe. */
+    g_findWithinRadiusResult = NULL;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.movementTargetId == enemy.id);
+    assert(unit.state == ESTATE_WALKING);
+}
+
+static void test_idle_healer_does_not_chase_injured_ally_out_of_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity healer = make_healer(1, (Vector2){0.0f, 0.0f});
+    Entity ally = make_entity(2, 0, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    healer.state = ESTATE_IDLE;
+    healer.attackTargetId = -1;
+    anim_state_init(&healer.anim, ANIM_IDLE, DIR_SIDE, 1.0f, false);
+    ally.hp = 50;
+
+    battlefield_add(&gs.battlefield, &ally);
+    g_findTargetResult = &ally;
+    g_findWithinRadiusResult = &ally;
+
+    entity_update(&healer, &gs, 0.016f);
+
+    assert(healer.state == ESTATE_IDLE);
+    assert(healer.attackTargetId == -1);
+    assert(healer.movementTargetId == -1);
+}
+
+static void test_walking_healer_does_not_chase_injured_ally_out_of_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity healer = make_healer(1, (Vector2){0.0f, 0.0f});
+    Entity ally = make_entity(2, 0, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    healer.state = ESTATE_WALKING;
+    healer.attackTargetId = -1;
+    healer.movementTargetId = -1;
+    anim_state_init(&healer.anim, ANIM_WALK, DIR_SIDE, 1.0f, false);
+    ally.hp = 50;
+
+    battlefield_add(&gs.battlefield, &ally);
+    g_findTargetResult = &ally;
+    g_findWithinRadiusResult = &ally;
+
+    entity_update(&healer, &gs, 0.016f);
+
+    assert(healer.state == ESTATE_WALKING);
+    assert(healer.attackTargetId == -1);
+    assert(healer.movementTargetId == -1);
+}
+
+static void test_walking_unit_releases_target_beyond_hysteresis(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* Enemy at distance 250 -- beyond hysteresis (224). */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){250.0f, 0.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = NULL;  /* re-probe returns nothing */
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.movementTargetId == -1);
+    assert(unit.state == ESTATE_WALKING);
+}
+
+static void test_walking_unit_clears_target_when_target_dies(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    enemy.alive = false;  /* dead mid-pursuit */
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = NULL;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.movementTargetId == -1);
+}
+
+static void test_walking_unit_transitions_to_attacking_before_moving(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* Enemy at distance 50 -- already in attackRange (80). */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_ATTACKING);
+    assert(unit.attackTargetId == enemy.id);
+    assert(unit.movementTargetId == enemy.id);
+}
+
+static void test_walking_unit_does_not_chase_enemy_behind_lane_progress(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 1000.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){0.0f, 1100.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.attackTargetId == -1);
+    assert(unit.movementTargetId == -1);
+}
+
+static void test_walking_unit_prefers_forward_enemy_over_behind_enemy_for_pursuit(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 1000.0f});
+    Entity behind = make_entity(2, 1, ENTITY_TROOP, (Vector2){0.0f, 1100.0f});
+    Entity ahead = make_entity(3, 1, ENTITY_TROOP, (Vector2){0.0f, 860.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &behind);
+    battlefield_add(&gs.battlefield, &ahead);
+    g_findWithinRadiusResult = &behind;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.movementTargetId == ahead.id);
+    assert(unit.attackTargetId == -1);
+}
+
+static void test_walking_unit_still_attacks_enemy_behind_when_in_range(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 1000.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){0.0f, 1050.0f});
+    unit.state = ESTATE_WALKING;
+    unit.movementTargetId = -1;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = &enemy;
+    g_findWithinRadiusResult = &enemy;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_ATTACKING);
+    assert(unit.attackTargetId == enemy.id);
+    assert(unit.movementTargetId == -1);
+}
+
+static void test_attack_fallback_immediately_pursues_nearby_enemy(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* Enemy just moved out of attackRange (80) but well inside aggro (192). */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){100.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == enemy.id);  /* immediate pursuit */
+}
+
+static void test_attack_fallback_does_not_pursue_enemy_behind_lane_progress(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 1000.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){0.0f, 1100.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == -1);
+}
+
+static void test_attack_fallback_keeps_pursuit_inside_hysteresis(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){200.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == enemy.id);
+}
+
+static void test_attack_fallback_clears_pursuit_beyond_hysteresis(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){230.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == -1);
+}
+
+static void test_attack_fallback_clears_pursuit_when_enemy_far(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    /* Enemy teleported beyond aggro radius entirely. */
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){500.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+
+    battlefield_add(&gs.battlefield, &enemy);
+    g_findTargetResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == -1);
+}
+
 static void test_non_healer_enemy_hit_flow_unchanged(void) {
     reset_globals();
     GameState gs = make_game_state();
@@ -477,6 +849,23 @@ int main(void) {
     RUN_TEST(test_healer_cancels_stale_heal_and_retargets_enemy);
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
+
+    RUN_TEST(test_walking_unit_acquires_movement_target_in_aggro_radius);
+    RUN_TEST(test_idle_unit_acquires_enemy_pursuit_in_aggro_radius);
+    RUN_TEST(test_walking_unit_keeps_target_inside_hysteresis);
+    RUN_TEST(test_idle_healer_does_not_chase_injured_ally_out_of_range);
+    RUN_TEST(test_walking_healer_does_not_chase_injured_ally_out_of_range);
+    RUN_TEST(test_walking_unit_releases_target_beyond_hysteresis);
+    RUN_TEST(test_walking_unit_clears_target_when_target_dies);
+    RUN_TEST(test_walking_unit_transitions_to_attacking_before_moving);
+    RUN_TEST(test_walking_unit_does_not_chase_enemy_behind_lane_progress);
+    RUN_TEST(test_walking_unit_prefers_forward_enemy_over_behind_enemy_for_pursuit);
+    RUN_TEST(test_walking_unit_still_attacks_enemy_behind_when_in_range);
+    RUN_TEST(test_attack_fallback_immediately_pursues_nearby_enemy);
+    RUN_TEST(test_attack_fallback_does_not_pursue_enemy_behind_lane_progress);
+    RUN_TEST(test_attack_fallback_keeps_pursuit_inside_hysteresis);
+    RUN_TEST(test_attack_fallback_clears_pursuit_beyond_hysteresis);
+    RUN_TEST(test_attack_fallback_clears_pursuit_when_enemy_far);
 
     printf("\nAll %d tests passed!\n", testsPassed);
     return 0;

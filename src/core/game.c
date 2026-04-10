@@ -239,11 +239,17 @@ void game_update(GameState *g) {
     player_update(&g->players[0], deltaTime);
     player_update(&g->players[1], deltaTime);
 
-    // Update all entities from Battlefield registry
+    // Update all entities from Battlefield registry in a stable id-sorted
+    // order so local steering jams deterministically (lower-id wins the
+    // jam) regardless of the registry's swap-with-last removal order.
     Battlefield *bf = &g->battlefield;
-    for (int i = 0; i < bf->entityCount; i++) {
-        entity_update(bf->entities[i], g, deltaTime);
-        if (g->gameOver) break;  // Win latched mid-loop — stop processing
+    int updateOrder[MAX_ENTITIES * 2];
+    int updateCount = bf_build_update_order(bf, updateOrder);
+    for (int i = 0; i < updateCount; i++) {
+        int idx = updateOrder[i];
+        if (idx < 0 || idx >= bf->entityCount) continue;
+        entity_update(bf->entities[idx], g, deltaTime);
+        if (g->gameOver) break;  // Win latched mid-loop -- stop processing
     }
 
     // Defensive fallback: catch base deaths from non-combat paths

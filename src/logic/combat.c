@@ -66,17 +66,13 @@ static Entity *combat_find_heal_target(Entity *attacker, GameState *gs) {
     return bestTarget;
 }
 
-Entity *combat_find_target(Entity *attacker, GameState *gs) {
-    if (!attacker || !gs) return NULL;
-
-    if (attacker->healAmount > 0) {
-        Entity *ally = combat_find_heal_target(attacker, gs);
-        if (ally) return ally;
-        // No injured ally in range -- fall through to normal enemy targeting.
-    }
-
+// Shared enemy-scan helper. Returns the nearest valid enemy within maxRadius
+// (center-to-center canonical distance), honoring the attacker's targeting
+// mode (nearest-valid, with TARGET_BUILDING priority). Pass FLT_MAX for an
+// unlimited search. Does NOT run the heal-first branch -- callers that need
+// heal-first semantics must run combat_find_heal_target themselves.
+static Entity *combat_find_enemy_within(Entity *attacker, GameState *gs, float maxRadius) {
     Battlefield *bf = &gs->battlefield;
-
     Entity *bestTarget = NULL;
     float bestDist = FLT_MAX;
     CanonicalPos attackerPos = { attacker->position };
@@ -86,14 +82,13 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
         if (!candidate->alive || candidate->markedForRemoval) continue;
         if (candidate->ownerID == attacker->ownerID) continue; // skip friendlies
 
-        // Direct canonical distance -- no coordinate mapping needed
         CanonicalPos candidatePos = { candidate->position };
         float d = bf_distance(attackerPos, candidatePos);
+        if (d > maxRadius) continue;
 
         switch (attacker->targeting) {
             case TARGET_BUILDING:
                 if (candidate->type == ENTITY_BUILDING) {
-                    // Prefer buildings -- pick closest building
                     if (d < bestDist || (bestTarget && bestTarget->type != ENTITY_BUILDING)) {
                         bestDist = d;
                         bestTarget = candidate;
@@ -104,7 +99,7 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
                 // fallthrough
             case TARGET_NEAREST:
             case TARGET_SPECIFIC_TYPE: // No name field on Entity yet -- falls back to nearest
-                if (d < bestDist || (bestTarget == NULL)) {
+                if (d < bestDist || bestTarget == NULL) {
                     if (attacker->targeting == TARGET_BUILDING && bestTarget &&
                         bestTarget->type == ENTITY_BUILDING) {
                         // Don't replace a building target with a non-building
@@ -118,10 +113,26 @@ Entity *combat_find_target(Entity *attacker, GameState *gs) {
                 break;
         }
     }
+    return bestTarget;
+}
+
+Entity *combat_find_target(Entity *attacker, GameState *gs) {
+    if (!attacker || !gs) return NULL;
+
+    if (attacker->healAmount > 0) {
+        Entity *ally = combat_find_heal_target(attacker, gs);
+        if (ally) return ally;
+        // No injured ally in range -- fall through to normal enemy targeting.
+    }
 
     // TODO: base fallback needs rework when bases are in Battlefield entity registry
+    return combat_find_enemy_within(attacker, gs, FLT_MAX);
+}
 
-    return bestTarget;
+Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float maxRadius) {
+    if (!attacker || !gs) return NULL;
+    if (maxRadius < 0.0f) return NULL;
+    return combat_find_enemy_within(attacker, gs, maxRadius);
 }
 
 bool entity_take_damage(Entity *entity, int damage) {

@@ -8,10 +8,12 @@
 #include "../systems/player.h"
 #include "../systems/energy.h"
 #include "../systems/spawn.h"
+#include "../systems/spawn_placement.h"
 #include "../core/battlefield.h"
 #include "../core/config.h"
 #include "cJSON.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // TODO: MAX_HANDLERS is hardcoded to 32. If new card types are ever added beyond this limit,
@@ -56,6 +58,12 @@ bool card_action_play(const Card *card, GameState *state, int playerIndex, int s
 
 // Helper: spawn a troop from a card for the given player into the given slot.
 // Uses canonical Battlefield spawn positions (per D-05, D-06).
+//
+// Ordering matters here: the free-slot search runs before energy_consume()
+// so a cancelled spawn is a clean early-exit with no refund rollback. If
+// we consumed energy first and then failed to find a slot, we'd have to
+// call energy_restore() -- which could interact badly with other energy
+// systems mid-frame (regen tick, future multi-cost spells, etc.).
 static void spawn_troop_from_card(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     if (!state) {
         printf("[%s] %s (cost %d): no game state, skipping spawn\n",
@@ -71,19 +79,38 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         return;
     }
 
-    if (!energy_consume(player, card->cost)) {
+    // 1. Energy affordability check (no consume yet).
+    if (!energy_can_afford(player, card->cost)) {
         printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
                card->name, card->cost, player->energy);
         return;
     }
 
-    // Canonical spawn position from Battlefield (per D-05, D-06, D-08)
+    // 2. Build troop data so we know the body radius for the placement search.
+    TroopData data = troop_create_data_from_card(card);
+
+    // 3. Find a non-overlapping spawn anchor. Farmers use the lane slot anchor
+    //    as a starting point too -- they become blockers and need a valid
+    //    initial position even though they walk freely after.
     BattleSide side = bf_side_for_player(playerIndex);
     int canonicalLane = bf_slot_to_lane(side, slotIndex);
-    CanonicalPos spawnCanonical = bf_spawn_pos(&state->battlefield, side, slotIndex);
-    Vector2 spawnPos = spawnCanonical.v;
+    Vector2 spawnPos;
+    if (!spawn_find_free_anchor(state, side, slotIndex, data.bodyRadius, &spawnPos)) {
+        printf("[PLAY] '%s' cancelled: no free spawn position at slot %d for player %d\n",
+               card->name, slotIndex, playerIndex);
+        if (data.targetType) free((char *)data.targetType);
+        return;
+    }
 
-    TroopData data = troop_create_data_from_card(card);
+    // 4. Commit: consume energy, spawn, register.
+    if (!energy_consume(player, card->cost)) {
+        // Defensive: affordability was just checked -- this should never fire,
+        // but guard against concurrent energy drains or race conditions.
+        printf("[PLAY] Energy consume failed unexpectedly for '%s'\n", card->name);
+        if (data.targetType) free((char *)data.targetType);
+        return;
+    }
+
     Entity *e = troop_spawn(player, &data, spawnPos, &state->spriteAtlas);
     if (e) {
         CanonicalPos spawnCheck = { e->position };
@@ -91,6 +118,7 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
         // Farmers use direct movement, not lane pathing — skip lane assignment
         if (e->unitRole != UNIT_ROLE_FARMER) {
             e->lane = canonicalLane;  // canonical lane index (per D-07)
+            e->laneProgress = 0.0f;
             e->waypointIndex = 1; // Skip waypoint[0] (== spawn pos) to avoid zero-distance pause
         }
         spawn_register_entity(state, e, SPAWN_FX_SMOKE);

@@ -37,6 +37,21 @@
 #define BOARD_HEIGHT 1920
 #define SEAM_Y       960
 
+/* ---- Local steering constants (must mirror src/core/config.h) ---- */
+#define PATHFIND_AGGRO_RADIUS             192.0f
+#define PATHFIND_AGGRO_HYSTERESIS         32.0f
+#define PATHFIND_CANDIDATE_ANGLE_SOFT_DEG 30.0f
+#define PATHFIND_CANDIDATE_ANGLE_HARD_DEG 60.0f
+#define PATHFIND_CANDIDATE_ANGLE_SIDE_DEG 90.0f
+#define PATHFIND_CANDIDATE_ANGLE_ESCAPE_DEG 120.0f
+#define PATHFIND_CONTACT_GAP              2.0f
+#define PATHFIND_WAYPOINT_REACH_GAP       4.0f
+#define PATHFIND_JAM_RELIEF_TICKS         6
+#define PATHFIND_ESCAPE_BACKTRACK_STEP_RATIO 0.5f
+#define PATHFIND_LANE_DRIFT_MAX_RATIO     0.65f
+#define PATHFIND_LANE_LOOKAHEAD_DISTANCE  48.0f
+#define PATHFIND_PURSUIT_REAR_TOLERANCE   32.0f
+
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
 typedef struct { float x; float y; float width; float height; } Rectangle;
@@ -96,10 +111,14 @@ struct Entity {
     int ownerID;
     int lane;
     int waypointIndex;
+    float laneProgress;
     float hitFlashTimer;
     bool alive;
     bool markedForRemoval;
     int healAmount;
+    float bodyRadius;
+    int movementTargetId;
+    int ticksSinceProgress;
 };
 
 /* ---- Battlefield stub (minimal for pathfinding) ---- */
@@ -119,6 +138,9 @@ typedef struct Battlefield {
     CanonicalPos laneWaypoints[2][3][LANE_WAYPOINT_COUNT];
     /* Slot spawn anchors: [side][slot] */
     CanonicalPos slotSpawnAnchors[2][NUM_CARD_SLOTS];
+    /* Entity registry -- used by blocker overlap checks in local steering */
+    Entity *entities[MAX_ENTITIES * 2];
+    int entityCount;
 } Battlefield;
 
 /* ---- Stub functions for battlefield API used by pathfinding.c ---- */
@@ -148,6 +170,16 @@ bool bf_crosses_seam(CanonicalPos pos, float spriteHeight, float seamY) {
     return (pos.v.y - halfH < seamY) && (pos.v.y + halfH > seamY);
 }
 
+Entity *bf_find_entity(const Battlefield *bf, int entityID) {
+    if (!bf) return NULL;
+    for (int i = 0; i < bf->entityCount; i++) {
+        if (bf->entities[i] && bf->entities[i]->id == entityID) {
+            return bf->entities[i];
+        }
+    }
+    return NULL;
+}
+
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
     if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
     return &cs->anims[anim];
@@ -166,6 +198,8 @@ BattleSide pathfind_presentation_side_for_position(Vector2 position, float seamY
 void pathfind_sync_presentation(Entity *e, const Battlefield *bf);
 void pathfind_commit_presentation(Entity *e, const Battlefield *bf);
 void pathfind_update_walk_facing(Entity *e, const Battlefield *bf);
+float pathfind_lane_progress_for_position(const Entity *e, const Battlefield *bf, Vector2 position);
+void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf);
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side);
 float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side);
 
@@ -223,6 +257,8 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     };
     Entity e;
     memset(&e, 0, sizeof(Entity));
+    static int s_nextId = 100;
+    e.id = s_nextId++;
     e.lane = lane;
     e.waypointIndex = waypointIndex;
     e.moveSpeed = moveSpeed;
@@ -235,7 +271,124 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.presentationSide = SIDE_BOTTOM;
     e.alive = true;
     e.ownerID = 0;  // SIDE_BOTTOM
+    e.type = ENTITY_TROOP;
+    e.bodyRadius = 14.0f;
+    e.movementTargetId = -1;
+    e.ticksSinceProgress = 0;
     return e;
+}
+
+/* Register a blocker entity with the minimal battlefield stub. Caller owns
+ * the storage; this helper just pushes a pointer into the registry. */
+static void bf_test_register(Battlefield *bf, Entity *e) {
+    bf->entities[bf->entityCount++] = e;
+}
+
+static bool test_spawn_pos_overlaps(const Battlefield *bf, Vector2 pos,
+                                    float bodyRadius) {
+    if (!bf) return false;
+
+    for (int i = 0; i < bf->entityCount; i++) {
+        const Entity *other = bf->entities[i];
+        if (!other || !other->alive || other->markedForRemoval) continue;
+        if (other->type == ENTITY_PROJECTILE) continue;
+
+        float dx = other->position.x - pos.x;
+        float dy = other->position.y - pos.y;
+        float minDist = bodyRadius + other->bodyRadius + PATHFIND_CONTACT_GAP;
+        if (dx * dx + dy * dy < minDist * minDist) return true;
+    }
+
+    return false;
+}
+
+static bool test_spawn_pos_in_bounds(const Battlefield *bf, Vector2 pos,
+                                     float bodyRadius) {
+    if (!bf) return false;
+
+    return pos.x - bodyRadius >= 0.0f &&
+           pos.x + bodyRadius <= bf->boardWidth &&
+           pos.y - bodyRadius >= 0.0f &&
+           pos.y + bodyRadius <= bf->boardHeight;
+}
+
+static bool test_find_spawn_anchor(const Battlefield *bf, BattleSide side,
+                                   int slotIndex, float bodyRadius,
+                                   Vector2 *outPos) {
+    if (!bf || !outPos || bodyRadius <= 0.0f ||
+        slotIndex < 0 || slotIndex >= NUM_CARD_SLOTS) {
+        return false;
+    }
+
+    static const float lateralMults[] = {
+        0.0f, -1.25f, 1.25f, -2.5f, 2.5f, -3.75f, 3.75f, -5.0f, 5.0f
+    };
+    int lateralCount = (int)(sizeof(lateralMults) / sizeof(lateralMults[0]));
+    Vector2 anchor = bf->slotSpawnAnchors[side][slotIndex].v;
+    float behindSign = (side == SIDE_BOTTOM) ? 1.0f : -1.0f;
+
+    for (int row = 0; row < 4; row++) {
+        float yOffset = behindSign * bodyRadius * (float)row;
+        for (int i = 0; i < lateralCount; i++) {
+            Vector2 candidate = {
+                anchor.x + lateralMults[i] * bodyRadius,
+                anchor.y + yOffset
+            };
+            if (!test_spawn_pos_in_bounds(bf, candidate, bodyRadius)) continue;
+            if (test_spawn_pos_overlaps(bf, candidate, bodyRadius)) continue;
+            *outPos = candidate;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void test_step_pack(Entity *pack, int count, Battlefield *bf, int ticks) {
+    for (int tick = 0; tick < ticks; tick++) {
+        for (int i = 0; i < count; i++) {
+            pathfind_step_entity(&pack[i], bf, 1.0f / 60.0f);
+        }
+    }
+}
+
+static int test_spawn_same_lane_pack(Battlefield *bf, Entity *pack, int targetCount,
+                                     BattleSide side, int slotIndex, int lane,
+                                     int maxTicks) {
+    if (!bf || !pack || targetCount <= 0 || maxTicks <= 0) return 0;
+
+    int spawned = 0;
+    for (int tick = 0; tick < maxTicks && spawned < targetCount; tick++) {
+        Vector2 spawnPos;
+        if (test_find_spawn_anchor(bf, side, slotIndex, 14.0f, &spawnPos)) {
+            pack[spawned] = make_test_entity(lane, 1, 58.0f);
+            pack[spawned].ownerID = (side == SIDE_BOTTOM) ? 0 : 1;
+            pack[spawned].position = spawnPos;
+            bf_test_register(bf, &pack[spawned]);
+            spawned++;
+        }
+
+        test_step_pack(pack, spawned, bf, 1);
+    }
+
+    return spawned;
+}
+
+static float test_pack_total_y(const Entity *pack, int count) {
+    float totalY = 0.0f;
+    for (int i = 0; i < count; i++) {
+        totalY += pack[i].position.y;
+    }
+    return totalY;
+}
+
+static int test_pack_units_at_or_past_waypoint(const Entity *pack, int count,
+                                               int waypointIndex) {
+    int units = 0;
+    for (int i = 0; i < count; i++) {
+        if (pack[i].waypointIndex >= waypointIndex) units++;
+    }
+    return units;
 }
 
 /* ---- CORE-01: Canonical waypoints progress toward enemy ---- */
@@ -290,11 +443,15 @@ static void test_movement_step_advances_waypoint(void) {
 static void test_idle_at_last_waypoint(void) {
     Battlefield bf = make_test_battlefield();
 
-    /* Place entity near last waypoint with high speed + large dt to guarantee overshoot */
+    /* Place entity near the last segment and step until the continuous lane
+     * cursor reaches the lane end. */
     Entity e = make_test_entity(1, LANE_WAYPOINT_COUNT - 1, 50000.0f);
     e.position = bf.laneWaypoints[SIDE_BOTTOM][1][LANE_WAYPOINT_COUNT - 2].v;
 
-    bool walking = pathfind_step_entity(&e, &bf, 1.0f);
+    bool walking = true;
+    for (int i = 0; i < 8 && walking; i++) {
+        walking = pathfind_step_entity(&e, &bf, 1.0f / 60.0f);
+    }
 
     /* Should have reached end and transitioned to idle */
     assert(walking == false);
@@ -507,6 +664,507 @@ static void test_walk_loop_commit_swaps_presentation_top_to_bottom(void) {
     assert(approx_eq(e.spriteRotationDegrees, 0.0f, 0.001f));
 }
 
+/* ---- Phase 3: local steering ---- */
+
+/* Forward progress on a clear lane still advances waypoints. */
+static void test_clear_lane_forward_still_advances(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity e = make_test_entity(1, 1, 300.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+
+    /* Step many frames to cover the distance to waypoint 2. */
+    for (int i = 0; i < 120; i++) {
+        pathfind_step_entity(&e, &bf, 1.0f / 60.0f);
+    }
+
+    assert(e.waypointIndex >= 2);
+}
+
+static void test_lane_progress_projection_is_monotonic_off_centerline(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 300.0f);
+    unit.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    pathfind_sync_lane_progress(&unit, &bf);
+    float progressAtWp1 = unit.laneProgress;
+
+    unit.position = (Vector2){ unit.position.x + 90.0f, unit.position.y - 120.0f };
+    pathfind_sync_lane_progress(&unit, &bf);
+    assert(unit.laneProgress > progressAtWp1 + 100.0f);
+
+    float before = unit.laneProgress;
+    unit.position = (Vector2){ unit.position.x + 40.0f, unit.position.y + 60.0f };
+    pathfind_sync_lane_progress(&unit, &bf);
+    assert(unit.laneProgress >= before - 0.001f);
+}
+
+static void test_lane_progress_prevents_backtracking_to_stale_waypoint(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 300.0f);
+    Vector2 wp2 = bf.laneWaypoints[SIDE_BOTTOM][1][2].v;
+    unit.position = (Vector2){ wp2.x + 70.0f, wp2.y - 40.0f };
+
+    Vector2 before = unit.position;
+    bool walking = pathfind_step_entity(&unit, &bf, 1.0f / 60.0f);
+
+    assert(walking == true);
+    assert(unit.position.y < before.y);
+    assert(unit.waypointIndex >= 3);
+    assert(unit.laneProgress > pathfind_lane_progress_for_position(&unit, &bf,
+                                                                   bf.laneWaypoints[SIDE_BOTTOM][1][1].v));
+}
+
+/* A fully blocked steering fan causes the follower to queue in place.
+ * Blocked units must not burn through the rest of the lane and transition to
+ * IDLE just because they remain jammed for many ticks. */
+static void test_blocker_on_waypoint_stays_queued_without_burning_waypoints(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity follower = make_test_entity(1, 1, 600.0f);
+    Vector2 wp = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    follower.position = (Vector2){ wp.x, wp.y + 40.0f };
+
+    Entity b_forward = make_test_entity(1, 1, 0.0f);
+    b_forward.position = (Vector2){ follower.position.x, follower.position.y - 20.0f };
+    b_forward.bodyRadius = 60.0f;
+
+    Entity b_left = make_test_entity(1, 1, 0.0f);
+    b_left.position = (Vector2){ follower.position.x - 30.0f, follower.position.y - 10.0f };
+    b_left.bodyRadius = 30.0f;
+
+    Entity b_right = make_test_entity(1, 1, 0.0f);
+    b_right.position = (Vector2){ follower.position.x + 30.0f, follower.position.y - 10.0f };
+    b_right.bodyRadius = 30.0f;
+
+    bf_test_register(&bf, &follower);
+    bf_test_register(&bf, &b_forward);
+    bf_test_register(&bf, &b_left);
+    bf_test_register(&bf, &b_right);
+
+    pathfind_sync_lane_progress(&follower, &bf);
+    int prevIdx = follower.waypointIndex;
+    float prevProgress = follower.laneProgress;
+    Vector2 before = follower.position;
+    /* Drive for long enough that the old discrete-waypoint logic would have
+     * had many chances to advance stale lane state. */
+    for (int i = 0; i < PATHFIND_JAM_RELIEF_TICKS * LANE_WAYPOINT_COUNT; i++) {
+        pathfind_step_entity(&follower, &bf, 1.0f / 60.0f);
+    }
+
+    assert(follower.state == ESTATE_WALKING);
+    assert(follower.waypointIndex == prevIdx);
+    assert(follower.laneProgress == prevProgress);
+    assert(follower.position.x == before.x);
+    assert(follower.position.y == before.y);
+}
+
+/* All candidate directions blocked: the unit stays in place and
+ * ticksSinceProgress accumulates while jammed. */
+static void test_all_candidates_blocked_stays_put(void) {
+    Battlefield bf = make_test_battlefield();
+
+    /* Offset the unit off the goal waypoint so goalDist > 0 and the
+     * candidate loop actually runs (otherwise the at-goal early-advance
+     * path would reset ticksSinceProgress). */
+    Entity unit = make_test_entity(1, 1, 300.0f);
+    Vector2 wp = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    unit.position = (Vector2){ wp.x, wp.y + 40.0f };
+
+    /* Ring the unit with oversized blockers in every candidate direction so
+     * no candidate escapes the overlap check. */
+    Entity b_forward = make_test_entity(1, 1, 0.0f);
+    b_forward.position = (Vector2){ unit.position.x, unit.position.y - 20.0f };
+    b_forward.bodyRadius = 60.0f;
+
+    Entity b_left = make_test_entity(1, 1, 0.0f);
+    b_left.position = (Vector2){ unit.position.x - 30.0f, unit.position.y - 10.0f };
+    b_left.bodyRadius = 30.0f;
+
+    Entity b_right = make_test_entity(1, 1, 0.0f);
+    b_right.position = (Vector2){ unit.position.x + 30.0f, unit.position.y - 10.0f };
+    b_right.bodyRadius = 30.0f;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &b_forward);
+    bf_test_register(&bf, &b_left);
+    bf_test_register(&bf, &b_right);
+
+    Vector2 before = unit.position;
+    int beforeTicks = unit.ticksSinceProgress;
+
+    pathfind_step_entity(&unit, &bf, 1.0f / 60.0f);
+
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+    assert(unit.ticksSinceProgress == beforeTicks + 1);
+}
+
+/* Reaching the last waypoint no longer applies random jitter: position stays
+ * exactly at the last waypoint location when snapped. */
+static void test_last_waypoint_no_jitter(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity e = make_test_entity(1, LANE_WAYPOINT_COUNT - 1, 50000.0f);
+    /* Start exactly at the last waypoint so one step reaches it. */
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][LANE_WAYPOINT_COUNT - 1].v;
+
+    Vector2 expected = e.position;
+    bool walking = pathfind_step_entity(&e, &bf, 1.0f / 60.0f);
+
+    assert(walking == false);
+    assert(e.state == ESTATE_IDLE);
+    /* Position should be at the last waypoint (within epsilon) -- no random offset. */
+    assert(fabsf(e.position.x - expected.x) < 0.001f);
+    assert(fabsf(e.position.y - expected.y) < 0.001f);
+}
+
+/* When movementTargetId is set, the entity steers toward the target center
+ * and stops at edge-to-edge contact distance (sum of radii + gap). */
+static void test_engagement_goal_stops_at_contact_distance(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity attacker = make_test_entity(1, 1, 600.0f);
+    attacker.position = (Vector2){500.0f, 1500.0f};
+    attacker.bodyRadius = 14.0f;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){500.0f, 1300.0f};  /* 200 units up */
+    target.bodyRadius = 14.0f;
+    target.ownerID = 1;  /* enemy */
+
+    attacker.movementTargetId = target.id;
+
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &target);
+
+    /* Step until the attacker stops making progress. */
+    for (int i = 0; i < 120; i++) {
+        pathfind_step_entity(&attacker, &bf, 1.0f / 60.0f);
+    }
+
+    float dx = target.position.x - attacker.position.x;
+    float dy = target.position.y - attacker.position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float expectedContact = attacker.bodyRadius + target.bodyRadius + PATHFIND_CONTACT_GAP;
+
+    /* Attacker stopped at the contact threshold (within one-step tolerance). */
+    assert(dist >= expectedContact - 0.5f);
+    assert(dist < expectedContact + 12.0f);
+}
+
+static void test_jam_relief_shuffles_after_threshold(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 600.0f);
+    unit.id = 200;  /* even => prefer left */
+    unit.position = (Vector2){ 540.0f, 1400.0f };
+    unit.ticksSinceProgress = PATHFIND_JAM_RELIEF_TICKS;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){ 540.0f, 1200.0f };
+    target.ownerID = 1;
+    unit.movementTargetId = target.id;
+
+    Entity blockers[7];
+    blockers[0] = make_test_entity(1, 1, 0.0f);
+    blockers[0].position = (Vector2){ 540.0f, 1340.0f };              /* forward */
+    blockers[1] = make_test_entity(1, 1, 0.0f);
+    blockers[1].position = (Vector2){ 510.0f, 1348.0f };              /* left 30 */
+    blockers[2] = make_test_entity(1, 1, 0.0f);
+    blockers[2].position = (Vector2){ 570.0f, 1348.0f };              /* right 30 */
+    blockers[3] = make_test_entity(1, 1, 0.0f);
+    blockers[3].position = (Vector2){ 488.0f, 1370.0f };              /* left 60 */
+    blockers[4] = make_test_entity(1, 1, 0.0f);
+    blockers[4].position = (Vector2){ 592.0f, 1370.0f };              /* right 60 */
+    blockers[5] = make_test_entity(1, 1, 0.0f);
+    blockers[5].position = (Vector2){ 600.0f, 1400.0f };              /* right 90 */
+    blockers[6] = make_test_entity(1, 1, 0.0f);
+    blockers[6].position = (Vector2){ 592.0f, 1430.0f };              /* right 120 */
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &target);
+    for (int i = 0; i < 7; i++) {
+        bf_test_register(&bf, &blockers[i]);
+    }
+
+    Vector2 before = unit.position;
+    pathfind_step_entity(&unit, &bf, 0.1f);
+
+    assert(unit.position.x < before.x - 1.0f);
+    assert(unit.position.x != before.x || unit.position.y != before.y);
+}
+
+static void test_jam_relief_respects_lane_corridor_limit(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 600.0f);
+    unit.id = 201;  /* odd => prefer right */
+    unit.position = (Vector2){ 770.0f, 1400.0f };
+    unit.ticksSinceProgress = PATHFIND_JAM_RELIEF_TICKS;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){ 770.0f, 1200.0f };
+    target.ownerID = 1;
+    unit.movementTargetId = target.id;
+
+    Entity blockers[11];
+    blockers[0] = make_test_entity(1, 1, 0.0f);
+    blockers[0].position = (Vector2){ 770.0f, 1340.0f };              /* forward */
+    blockers[1] = make_test_entity(1, 1, 0.0f);
+    blockers[1].position = (Vector2){ 740.0f, 1348.0f };              /* left 30 */
+    blockers[2] = make_test_entity(1, 1, 0.0f);
+    blockers[2].position = (Vector2){ 800.0f, 1348.0f };              /* right 30 */
+    blockers[3] = make_test_entity(1, 1, 0.0f);
+    blockers[3].position = (Vector2){ 718.0f, 1370.0f };              /* left 60 */
+    blockers[4] = make_test_entity(1, 1, 0.0f);
+    blockers[4].position = (Vector2){ 822.0f, 1370.0f };              /* right 60 */
+    blockers[5] = make_test_entity(1, 1, 0.0f);
+    blockers[5].position = (Vector2){ 710.0f, 1400.0f };              /* left 90 */
+    blockers[6] = make_test_entity(1, 1, 0.0f);
+    blockers[6].position = (Vector2){ 718.0f, 1430.0f };              /* left 120 */
+    blockers[7] = make_test_entity(1, 1, 0.0f);
+    blockers[7].position = (Vector2){ 650.0f, 1400.0f };              /* left 180 */
+    blockers[8] = make_test_entity(1, 1, 0.0f);
+    blockers[8].position = (Vector2){ 666.0f, 1460.0f };              /* left 240 diag */
+    blockers[9] = make_test_entity(1, 1, 0.0f);
+    blockers[9].position = (Vector2){ 590.0f, 1400.0f };              /* left 270 */
+    blockers[10] = make_test_entity(1, 1, 0.0f);
+    blockers[10].position = (Vector2){ 614.0f, 1490.0f };             /* left 360 diag */
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &target);
+    for (int i = 0; i < 11; i++) {
+        bf_test_register(&bf, &blockers[i]);
+    }
+
+    Vector2 before = unit.position;
+    pathfind_step_entity(&unit, &bf, 0.1f);
+
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+}
+
+static void test_fully_boxed_in_unit_stays_put_after_jam_relief(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 600.0f);
+    unit.position = (Vector2){ 540.0f, 1400.0f };
+    unit.ticksSinceProgress = PATHFIND_JAM_RELIEF_TICKS;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){ 540.0f, 1200.0f };
+    target.ownerID = 1;
+    unit.movementTargetId = target.id;
+
+    Entity blockers[17];
+    blockers[0] = make_test_entity(1, 1, 0.0f);
+    blockers[0].position = (Vector2){ 540.0f, 1340.0f };
+    blockers[1] = make_test_entity(1, 1, 0.0f);
+    blockers[1].position = (Vector2){ 510.0f, 1348.0f };
+    blockers[2] = make_test_entity(1, 1, 0.0f);
+    blockers[2].position = (Vector2){ 570.0f, 1348.0f };
+    blockers[3] = make_test_entity(1, 1, 0.0f);
+    blockers[3].position = (Vector2){ 488.0f, 1370.0f };
+    blockers[4] = make_test_entity(1, 1, 0.0f);
+    blockers[4].position = (Vector2){ 592.0f, 1370.0f };
+    blockers[5] = make_test_entity(1, 1, 0.0f);
+    blockers[5].position = (Vector2){ 480.0f, 1400.0f };
+    blockers[6] = make_test_entity(1, 1, 0.0f);
+    blockers[6].position = (Vector2){ 600.0f, 1400.0f };
+    blockers[7] = make_test_entity(1, 1, 0.0f);
+    blockers[7].position = (Vector2){ 488.0f, 1430.0f };
+    blockers[8] = make_test_entity(1, 1, 0.0f);
+    blockers[8].position = (Vector2){ 592.0f, 1430.0f };
+    blockers[9] = make_test_entity(1, 1, 0.0f);
+    blockers[9].position = (Vector2){ 420.0f, 1400.0f };
+    blockers[10] = make_test_entity(1, 1, 0.0f);
+    blockers[10].position = (Vector2){ 660.0f, 1400.0f };
+    blockers[11] = make_test_entity(1, 1, 0.0f);
+    blockers[11].position = (Vector2){ 436.0f, 1460.0f };
+    blockers[12] = make_test_entity(1, 1, 0.0f);
+    blockers[12].position = (Vector2){ 644.0f, 1460.0f };
+    blockers[13] = make_test_entity(1, 1, 0.0f);
+    blockers[13].position = (Vector2){ 360.0f, 1400.0f };
+    blockers[14] = make_test_entity(1, 1, 0.0f);
+    blockers[14].position = (Vector2){ 720.0f, 1400.0f };
+    blockers[15] = make_test_entity(1, 1, 0.0f);
+    blockers[15].position = (Vector2){ 384.0f, 1490.0f };
+    blockers[16] = make_test_entity(1, 1, 0.0f);
+    blockers[16].position = (Vector2){ 696.0f, 1490.0f };
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &target);
+    for (int i = 0; i < 17; i++) {
+        bf_test_register(&bf, &blockers[i]);
+    }
+
+    Vector2 before = unit.position;
+    int beforeTicks = unit.ticksSinceProgress;
+    pathfind_step_entity(&unit, &bf, 0.1f);
+
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+    assert(unit.ticksSinceProgress == beforeTicks + 1);
+}
+
+static void test_spawn_generated_same_lane_pack_makes_aggregate_progress(void) {
+    Battlefield bf = make_test_battlefield();
+    enum { PACK_SIZE = 24, BUILD_TICKS = 1800, DRAIN_TICKS = 1200 };
+    Entity pack[PACK_SIZE];
+
+    int spawned = test_spawn_same_lane_pack(&bf, pack, PACK_SIZE,
+                                            SIDE_BOTTOM, 1, 1, BUILD_TICKS);
+    assert(spawned == PACK_SIZE);
+
+    float totalStartY = test_pack_total_y(pack, PACK_SIZE);
+    test_step_pack(pack, PACK_SIZE, &bf, DRAIN_TICKS);
+    float totalEndY = test_pack_total_y(pack, PACK_SIZE);
+    int advancedUnits = test_pack_units_at_or_past_waypoint(pack, PACK_SIZE, 2);
+
+    assert(totalEndY < totalStartY - 4500.0f);
+    assert(advancedUnits >= 1);
+}
+
+static void test_spawn_generated_same_lane_pack_drains_forward_over_time(void) {
+    Battlefield bf = make_test_battlefield();
+    enum { PACK_SIZE = 24, BUILD_TICKS = 1800, WINDOW_TICKS = 120, WINDOW_COUNT = 5 };
+    Entity pack[PACK_SIZE];
+
+    int spawned = test_spawn_same_lane_pack(&bf, pack, PACK_SIZE,
+                                            SIDE_BOTTOM, 1, 1, BUILD_TICKS);
+    assert(spawned == PACK_SIZE);
+
+    float previousTotalY = test_pack_total_y(pack, PACK_SIZE);
+    for (int window = 0; window < WINDOW_COUNT; window++) {
+        test_step_pack(pack, PACK_SIZE, &bf, WINDOW_TICKS);
+        float currentTotalY = test_pack_total_y(pack, PACK_SIZE);
+        assert(currentTotalY < previousTotalY - 30.0f);
+        previousTotalY = currentTotalY;
+    }
+}
+
+static void test_lane_end_with_pursuit_continues_walking(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, LANE_WAYPOINT_COUNT, 300.0f);
+    unit.position = bf.laneWaypoints[SIDE_BOTTOM][1][LANE_WAYPOINT_COUNT - 1].v;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){ unit.position.x + 120.0f, unit.position.y - 40.0f };
+    target.ownerID = 1;
+
+    unit.movementTargetId = target.id;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &target);
+
+    Vector2 before = unit.position;
+    bool walking = pathfind_step_entity(&unit, &bf, 1.0f / 60.0f);
+
+    assert(walking == true);
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.position.x != before.x || unit.position.y != before.y);
+    assert(unit.movementTargetId == target.id);
+}
+
+static void test_lane_end_without_pursuit_idles_and_faces_enemy_base(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, LANE_WAYPOINT_COUNT, 300.0f);
+    unit.position = bf.laneWaypoints[SIDE_BOTTOM][1][LANE_WAYPOINT_COUNT - 1].v;
+    unit.movementTargetId = -1;
+
+    bool walking = pathfind_step_entity(&unit, &bf, 1.0f / 60.0f);
+
+    assert(walking == false);
+    assert(unit.state == ESTATE_IDLE);
+    assert(unit.presentationSide == SIDE_TOP);
+    assert(unit.anim.dir == DIR_DOWN);
+    assert(unit.anim.flipH == false);
+    assert(approx_eq(unit.spriteRotationDegrees, 180.0f, 0.001f));
+}
+
+static void test_walk_facing_prefers_pursuit_goal_over_waypoint(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 300.0f);
+    unit.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+
+    Entity target = make_test_entity(1, 1, 0.0f);
+    target.position = (Vector2){ unit.position.x + 120.0f, unit.position.y };
+    target.ownerID = 1;
+
+    unit.movementTargetId = target.id;
+    bf_test_register(&bf, &target);
+
+    pathfind_update_walk_facing(&unit, &bf);
+
+    assert(unit.anim.dir == DIR_SIDE);
+    assert(unit.anim.flipH == false);
+}
+
+static void test_body_radius_bounds_reject_edge_clipping_candidate(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 1, 300.0f);
+    unit.position = (Vector2){ 30.0f, 30.0f };
+    unit.bodyRadius = 30.0f;
+
+    Vector2 before = unit.position;
+    bool arrived = pathfind_move_toward_goal(&unit, (Vector2){ 0.0f, 0.0f }, 0.0f,
+                                             &bf, 1.0f / 60.0f);
+
+    assert(arrived == false);
+    assert(unit.position.x == before.x);
+    assert(unit.position.y == before.y);
+    assert(unit.ticksSinceProgress == 1);
+}
+
+/* Sidestep: blocker sits slightly offset from the path so the follower can
+ * route around it and reach the far waypoint. */
+static void test_unit_sidesteps_around_offset_blocker(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity unit = make_test_entity(1, 2, 300.0f);
+    Vector2 wp1 = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    Vector2 wp2 = bf.laneWaypoints[SIDE_BOTTOM][1][2].v;
+    unit.position = wp1;
+
+    /* Blocker offset laterally from the midpoint between wp1 and wp2 so
+     * forward candidates overlap and sidesteps don't. */
+    Entity blocker = make_test_entity(1, 1, 0.0f);
+    blocker.position = (Vector2){
+        (wp1.x + wp2.x) * 0.5f + 25.0f,
+        (wp1.y + wp2.y) * 0.5f
+    };
+    blocker.bodyRadius = 14.0f;
+
+    bf_test_register(&bf, &unit);
+    bf_test_register(&bf, &blocker);
+
+    for (int i = 0; i < 240; i++) {
+        pathfind_step_entity(&unit, &bf, 1.0f / 60.0f);
+    }
+
+    /* At no point should the unit have overlapped the blocker. Verify now: */
+    float bdx = unit.position.x - blocker.position.x;
+    float bdy = unit.position.y - blocker.position.y;
+    float bdist = sqrtf(bdx * bdx + bdy * bdy);
+    float minDist = unit.bodyRadius + blocker.bodyRadius + PATHFIND_CONTACT_GAP;
+    assert(bdist >= minDist - 0.001f);
+
+    /* And it made meaningful forward progress past wp1 -- either advanced
+     * waypoint or moved noticeably toward wp2. */
+    bool advanced = unit.waypointIndex > 2;
+    float currentToWp2 = sqrtf((unit.position.x - wp2.x) * (unit.position.x - wp2.x) +
+                               (unit.position.y - wp2.y) * (unit.position.y - wp2.y));
+    float wp1ToWp2 = sqrtf((wp1.x - wp2.x) * (wp1.x - wp2.x) +
+                           (wp1.y - wp2.y) * (wp1.y - wp2.y));
+    assert(advanced || currentToWp2 < wp1ToWp2 - 10.0f);
+}
+
 /* ---- CORE-01 bonus: Invalid lane produces IDLE ---- */
 static void test_invalid_lane_idles(void) {
     Battlefield bf = make_test_battlefield();
@@ -549,6 +1207,38 @@ int main(void) {
     test_walk_loop_commit_swaps_presentation_top_to_bottom();
     printf("  PASS: test_walk_loop_commit_swaps_presentation_top_to_bottom\n");
     test_invalid_lane_idles();                    printf("  PASS: test_invalid_lane_idles\n");
-    printf("\nAll 15 tests passed!\n");
+
+    test_clear_lane_forward_still_advances();     printf("  PASS: test_clear_lane_forward_still_advances\n");
+    test_lane_progress_projection_is_monotonic_off_centerline();
+    printf("  PASS: test_lane_progress_projection_is_monotonic_off_centerline\n");
+    test_lane_progress_prevents_backtracking_to_stale_waypoint();
+    printf("  PASS: test_lane_progress_prevents_backtracking_to_stale_waypoint\n");
+    test_blocker_on_waypoint_stays_queued_without_burning_waypoints();
+    printf("  PASS: test_blocker_on_waypoint_stays_queued_without_burning_waypoints\n");
+    test_all_candidates_blocked_stays_put();      printf("  PASS: test_all_candidates_blocked_stays_put\n");
+    test_last_waypoint_no_jitter();               printf("  PASS: test_last_waypoint_no_jitter\n");
+    test_engagement_goal_stops_at_contact_distance();
+    printf("  PASS: test_engagement_goal_stops_at_contact_distance\n");
+    test_jam_relief_shuffles_after_threshold();
+    printf("  PASS: test_jam_relief_shuffles_after_threshold\n");
+    test_jam_relief_respects_lane_corridor_limit();
+    printf("  PASS: test_jam_relief_respects_lane_corridor_limit\n");
+    test_fully_boxed_in_unit_stays_put_after_jam_relief();
+    printf("  PASS: test_fully_boxed_in_unit_stays_put_after_jam_relief\n");
+    test_spawn_generated_same_lane_pack_makes_aggregate_progress();
+    printf("  PASS: test_spawn_generated_same_lane_pack_makes_aggregate_progress\n");
+    test_spawn_generated_same_lane_pack_drains_forward_over_time();
+    printf("  PASS: test_spawn_generated_same_lane_pack_drains_forward_over_time\n");
+    test_lane_end_with_pursuit_continues_walking();
+    printf("  PASS: test_lane_end_with_pursuit_continues_walking\n");
+    test_lane_end_without_pursuit_idles_and_faces_enemy_base();
+    printf("  PASS: test_lane_end_without_pursuit_idles_and_faces_enemy_base\n");
+    test_walk_facing_prefers_pursuit_goal_over_waypoint();
+    printf("  PASS: test_walk_facing_prefers_pursuit_goal_over_waypoint\n");
+    test_body_radius_bounds_reject_edge_clipping_candidate();
+    printf("  PASS: test_body_radius_bounds_reject_edge_clipping_candidate\n");
+    test_unit_sidesteps_around_offset_blocker();  printf("  PASS: test_unit_sidesteps_around_offset_blocker\n");
+
+    printf("\nAll 32 tests passed!\n");
     return 0;
 }

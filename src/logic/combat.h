@@ -14,6 +14,13 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs);
 // Find the best target for attacker among the enemy player's entities
 Entity *combat_find_target(Entity *attacker, GameState *gs);
 
+// Enemy-only nearest-valid probe bounded by maxRadius (center-to-center).
+// Used by the local steering aggro probe. Unlike combat_find_target, this
+// does NOT run the heal-first branch: walking healers do not chase injured
+// allies. TARGET_BUILDING priority is still preserved for building-focused
+// attackers whose nearest building falls inside maxRadius.
+Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float maxRadius);
+
 // Apply one attack from attacker to target (respects cooldown).
 // Legacy: used before clip-driven attacks. Retained for non-clip entities.
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime);

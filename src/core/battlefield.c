@@ -258,6 +258,27 @@ Entity *bf_find_entity(Battlefield *bf, int entityID) {
     return NULL;
 }
 
+int bf_build_update_order(const Battlefield *bf, int *outIndices) {
+    if (!bf || !outIndices) return 0;
+    int count = bf->entityCount;
+    for (int i = 0; i < count; i++) outIndices[i] = i;
+
+    // Insertion sort by entity.id ascending. n <= MAX_ENTITIES * 2 = 128 so
+    // O(n^2) worst case is trivially cheap, and stable ordering beats
+    // quicksort for nearly-sorted per-frame state.
+    for (int i = 1; i < count; i++) {
+        int key = outIndices[i];
+        int keyId = bf->entities[key]->id;
+        int j = i - 1;
+        while (j >= 0 && bf->entities[outIndices[j]]->id > keyId) {
+            outIndices[j + 1] = outIndices[j];
+            j--;
+        }
+        outIndices[j + 1] = key;
+    }
+    return count;
+}
+
 Territory *bf_territory_at(Battlefield *bf, CanonicalPos pos) {
     BattleSide side = bf_side_for_pos(pos, bf->seamY);
     return &bf->territories[side];

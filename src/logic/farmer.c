@@ -17,34 +17,17 @@ static float farmer_sprite_rotation(const Entity *e) {
     return (bf_side_for_player(e->ownerID) == SIDE_TOP) ? 180.0f : 0.0f;
 }
 
-// TODO: farmer_move_direct uses naive line-of-sight movement.
-// Add collision avoidance / A* pathfinding when obstacles are implemented.
-// TODO: FARMER_SUSTENANCE_INTERACT_RADIUS and FARMER_BASE_DEPOSIT_RADIUS are fixed
-// constants. Make data-driven per unit or scale with sustenance node size later.
-static bool farmer_move_direct(Entity *e, Vector2 target, float radius,
-                               float deltaTime) {
-    float dx = target.x - e->position.x;
-    float dy = target.y - e->position.y;
-    float dist = sqrtf(dx * dx + dy * dy);
-
-    if (dist <= radius) return true;
-
-    float step = e->moveSpeed * deltaTime;
-    if (step >= dist) {
-        e->position = target;
-    } else {
-        float inv = 1.0f / dist;
-        e->position.x += dx * inv * step;
-        e->position.y += dy * inv * step;
-    }
-
-    // Update facing using the owner's perspective, not raw world-Y.
-    Vector2 diff = { target.x - e->position.x, target.y - e->position.y };
-    BattleSide side = bf_side_for_player(e->ownerID);
-    pathfind_apply_direction_for_side(&e->anim, diff, side);
+// Move a farmer toward `target`, stopping when within `radius`. Delegates
+// to pathfind_move_toward_goal so farmers participate in the same
+// obstacle-aware local steering as combat troops (queueing behind each
+// other and sidestepping around bases) while keeping the farmer-specific
+// 180-degree top-side rotation hook.
+static bool farmer_move_with_steering(Entity *e, GameState *gs, Vector2 target,
+                                      float radius, float deltaTime) {
+    bool arrived = pathfind_move_toward_goal(e, target, radius,
+                                             &gs->battlefield, deltaTime);
     e->spriteRotationDegrees = farmer_sprite_rotation(e);
-
-    return false;
+    return arrived;
 }
 
 // --- State handlers ---
@@ -83,8 +66,9 @@ static void farmer_walk_to_sustenance(Entity *e, GameState *gs, float deltaTime)
         return;
     }
 
-    bool arrived = farmer_move_direct(e, node->worldPos.v,
-                                      FARMER_SUSTENANCE_INTERACT_RADIUS, deltaTime);
+    bool arrived = farmer_move_with_steering(e, gs, node->worldPos.v,
+                                              FARMER_SUSTENANCE_INTERACT_RADIUS,
+                                              deltaTime);
     if (arrived) {
         SpriteDirection dir = e->anim.dir;
         bool flipH = e->anim.flipH;
@@ -141,8 +125,9 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
         return;
     }
 
-    bool arrived = farmer_move_direct(e, base->position,
-                                      FARMER_BASE_DEPOSIT_RADIUS, deltaTime);
+    bool arrived = farmer_move_with_steering(e, gs, base->position,
+                                              FARMER_BASE_DEPOSIT_RADIUS,
+                                              deltaTime);
     if (arrived) {
         SpriteDirection dir = e->anim.dir;
         bool flipH = e->anim.flipH;

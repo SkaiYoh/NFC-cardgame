@@ -120,6 +120,7 @@ struct Entity {
     int ownerID;
     int lane;
     int waypointIndex;
+    float laneProgress;
     float hitFlashTimer;
     UnitRole unitRole;
     FarmerState farmerState;
@@ -129,6 +130,9 @@ struct Entity {
     bool alive;
     bool markedForRemoval;
     int healAmount;
+    float bodyRadius;
+    int movementTargetId;
+    int ticksSinceProgress;
 };
 
 /* Player stub -- lean struct matching Plan 11-05 types.h */
@@ -1033,6 +1037,96 @@ static void test_resolve_rejects_full_health_friendly_troop_without_cooldown(voi
     assert(healer.attackCooldown == 0.0f);
 }
 
+/* ---- combat_find_target_within_radius tests ---- */
+
+static void test_find_within_radius_returns_enemy_inside_limit(void) {
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    Entity near_enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});  /* dist=70 */
+    Entity far_enemy  = make_entity(1, ENTITY_TROOP, (Vector2){540, 500});  /* dist=470 */
+
+    bf_test_add_entity(&gs, &near_enemy);
+    bf_test_add_entity(&gs, &far_enemy);
+
+    Entity *target = combat_find_target_within_radius(&attacker, &gs, 100.0f);
+    assert(target == &near_enemy);
+}
+
+static void test_find_within_radius_excludes_enemy_outside_limit(void) {
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    Entity far_enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 500});  /* dist=470 */
+
+    bf_test_add_entity(&gs, &far_enemy);
+
+    Entity *target = combat_find_target_within_radius(&attacker, &gs, 100.0f);
+    assert(target == NULL);
+}
+
+static void test_find_within_radius_preserves_building_priority(void) {
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    attacker.targeting = TARGET_BUILDING;
+
+    /* Troop is closer, building is farther -- both well inside radius */
+    Entity troop    = make_entity(1, ENTITY_TROOP,    (Vector2){540, 940});  /* dist=30 */
+    Entity building = make_entity(1, ENTITY_BUILDING, (Vector2){540, 870});  /* dist=100 */
+
+    bf_test_add_entity(&gs, &troop);
+    bf_test_add_entity(&gs, &building);
+
+    Entity *target = combat_find_target_within_radius(&attacker, &gs, 200.0f);
+    assert(target == &building);
+}
+
+static void test_find_within_radius_ignores_injured_ally_for_healer(void) {
+    /* Walking healers use this probe. It must be enemy-only -- no heal branch --
+     * so healers only seek heal targets when already in attack range (via
+     * combat_find_target, which does run the heal-first branch). */
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity injured_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1000});
+    injured_ally.hp = 50;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &injured_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target_within_radius(&healer, &gs, 200.0f);
+    assert(target == &enemy);
+}
+
+static void test_find_within_radius_skips_dead_and_marked(void) {
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+
+    Entity dead = make_entity(1, ENTITY_TROOP, (Vector2){540, 960});
+    dead.alive = false;
+
+    Entity marked = make_entity(1, ENTITY_TROOP, (Vector2){540, 955});
+    marked.markedForRemoval = true;
+
+    Entity valid = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &dead);
+    bf_test_add_entity(&gs, &marked);
+    bf_test_add_entity(&gs, &valid);
+
+    Entity *target = combat_find_target_within_radius(&attacker, &gs, 100.0f);
+    assert(target == &valid);
+}
+
+static void test_find_within_radius_null_safety(void) {
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){0, 0});
+
+    assert(combat_find_target_within_radius(NULL, &gs, 100.0f) == NULL);
+    assert(combat_find_target_within_radius(&attacker, NULL, 100.0f) == NULL);
+    assert(combat_find_target_within_radius(&attacker, &gs, -1.0f) == NULL);
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running combat tests...\n");
@@ -1083,6 +1177,13 @@ int main(void) {
     RUN_TEST(test_apply_hit_rejects_self_heal);
     RUN_TEST(test_apply_hit_rejects_marked_friendly_troop);
     RUN_TEST(test_resolve_rejects_full_health_friendly_troop_without_cooldown);
+
+    RUN_TEST(test_find_within_radius_returns_enemy_inside_limit);
+    RUN_TEST(test_find_within_radius_excludes_enemy_outside_limit);
+    RUN_TEST(test_find_within_radius_preserves_building_priority);
+    RUN_TEST(test_find_within_radius_ignores_injured_ally_for_healer);
+    RUN_TEST(test_find_within_radius_skips_dead_and_marked);
+    RUN_TEST(test_find_within_radius_null_safety);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

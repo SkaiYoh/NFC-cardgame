@@ -45,6 +45,7 @@ set(SRC_ENTITIES   src/entities/entities.c
 set(SRC_SYSTEMS    src/systems/player.c
                    src/systems/energy.c
                    src/systems/spawn.c
+                   src/systems/spawn_placement.c
                    src/systems/match.c)
 set(SRC_LOGIC      src/logic/card_effects.c
                    src/logic/combat.c
@@ -128,6 +129,11 @@ add_executable(test_spawn_fx
     tests/test_spawn_fx.c)
 target_link_libraries(test_spawn_fx ${MATH_LIB})
 add_test(NAME spawn_fx COMMAND test_spawn_fx)
+
+add_executable(test_spawn_placement
+    tests/test_spawn_placement.c)
+target_link_libraries(test_spawn_placement ${MATH_LIB})
+add_test(NAME spawn_placement COMMAND test_spawn_placement)
 
 add_executable(test_status_bars
     tests/test_status_bars.c)

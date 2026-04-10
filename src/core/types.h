@@ -80,7 +80,8 @@ struct Entity {
     // Ownership
     int ownerID; // Player index (0 or 1)
     int lane; // Which lane (0-2)
-    int waypointIndex; // Current target waypoint index along lane path
+    int waypointIndex; // Derived: first authored waypoint still ahead along the lane path
+    float laneProgress; // Monotonic distance traveled along the authored lane polyline
 
     // Debug
     float hitFlashTimer;        // countdown for hit-marker visual flash (debug overlay)
@@ -98,6 +99,11 @@ struct Entity {
 
     // Support stats
     int healAmount;             // > 0 marks this unit as a supporter; HP restored per hit on a friendly troop
+
+    // Local steering
+    float bodyRadius;           // collision/footprint radius in canonical world units
+    int movementTargetId;       // local aggro pursuit target, -1 when none
+    int ticksSinceProgress;     // ticks since the last forward step toward the current goal
 };
 
 // Card slot - represents a physical NFC reader position
