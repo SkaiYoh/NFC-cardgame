@@ -36,6 +36,7 @@
 #define MAX_ENTITIES       64
 #define TILE_COUNT         32
 #define MAX_DETAIL_DEFS    64
+#define HAND_UI_DEPTH_PX   180
 
 /* Sustenance config (required by sustenance.h included from battlefield.h) */
 #define SUSTENANCE_GRID_CELL_SIZE_PX        64.0f
@@ -146,7 +147,10 @@ static Battlefield create_test_battlefield(void) {
 
 /* ---- Test: bf_spawn_anchors_bottom ---- */
 /* Verify P1 (SIDE_BOTTOM) slot spawn X positions at canonical 1/6, 1/2, 5/6 of BOARD_WIDTH
- * and Y near SEAM_Y + 960 * 0.8 = 1728 */
+ * and Y inside the shortened play bounds.
+ *
+ * Shortened play bounds for SIDE_BOTTOM: {0, SEAM_Y, BOARD_WIDTH, 960 - HAND_UI_DEPTH_PX}
+ * = {0, 960, 1080, 780}. Spawn at 80% depth from seam = 960 + 780*0.8 = 1584. */
 static void test_bf_spawn_anchors_bottom(void) {
     Battlefield bf = create_test_battlefield();
     float laneWidth = (float)BOARD_WIDTH / 3.0f;
@@ -156,7 +160,8 @@ static void test_bf_spawn_anchors_bottom(void) {
     // Outer lanes are nudged inward by a small canonical inset.
     // P1 is SIDE_BOTTOM (identity mapping, no lateral mirror)
     float expectedX[3] = { 180.0f + outerInset, 540.0f, 900.0f - outerInset };
-    float expectedY = 960.0f + 960.0f * 0.8f;  // 1728.0
+    float playHeight = (float)(BOARD_HEIGHT - SEAM_Y - HAND_UI_DEPTH_PX); // 780
+    float expectedY = (float)SEAM_Y + playHeight * 0.8f;  // 1584.0
 
     for (int slot = 0; slot < 3; slot++) {
         CanonicalPos anchor = bf_spawn_pos(&bf, SIDE_BOTTOM, slot);
@@ -170,7 +175,10 @@ static void test_bf_spawn_anchors_bottom(void) {
 /* ---- Test: bf_spawn_anchors_top ---- */
 /* Verify P2 (SIDE_TOP) slot spawn positions have laterally mirrored X
  * (per D-06/D-08: slot 0 -> lane 2 -> canonical x=900; slot 2 -> lane 0 -> canonical x=180)
- * and Y near the top territory spawn depth */
+ * and Y inside the shortened play bounds.
+ *
+ * Shortened play bounds for SIDE_TOP: {0, HAND_UI_DEPTH_PX, BOARD_WIDTH, SEAM_Y - HAND_UI_DEPTH_PX}
+ * = {0, 180, 1080, 780}. Spawn at 20% depth from player edge = 180 + 780*0.2 = 336. */
 static void test_bf_spawn_anchors_top(void) {
     Battlefield bf = create_test_battlefield();
     float laneWidth = (float)BOARD_WIDTH / 3.0f;
@@ -180,8 +188,8 @@ static void test_bf_spawn_anchors_top(void) {
     // The canonical outer lanes are mirrored, then nudged inward toward center.
     float expectedX[3] = { 900.0f - outerInset, 540.0f, 180.0f + outerInset };
 
-    // P2 spawn Y: territory {0,0,1080,960}, spawn at 20% from top = 0 + 960 * 0.2 = 192
-    float expectedY = 960.0f * 0.2f;  // 192.0
+    float playHeight = (float)(SEAM_Y - HAND_UI_DEPTH_PX);  // 780
+    float expectedY = (float)HAND_UI_DEPTH_PX + playHeight * 0.2f;  // 336.0
 
     for (int slot = 0; slot < 3; slot++) {
         CanonicalPos anchor = bf_spawn_pos(&bf, SIDE_TOP, slot);
@@ -356,9 +364,16 @@ static void test_bf_outer_lanes_end_near_enemy_base(void) {
 }
 
 /* ---- Test: bf_seam_screen_placement ---- */
-/* Verify that the canonical seam (y=960) maps to screen x=960 for both
- * camera configurations used by the game.  This catches the P2 camera
- * orientation bug where the seam landed on the wrong edge. */
+/* Verify that the canonical seam (y=960) maps to the inner battlefield edge
+ * for both camera configurations used by the game.  This catches the P2 camera
+ * orientation bug where the seam landed on the wrong edge.
+ *
+ * After the shortened-playfield change:
+ *   P1 camera target  = center of bf_play_bounds(BOTTOM) = {540, 1350}
+ *   P1 camera offset  = center of battlefieldArea {180,0,780,1080} = {570, 540}
+ *   P2 in-RT target   = center of bf_play_bounds(TOP)    = {540, 570}
+ *   P2 in-RT offset   = center of shortened battlefield RT (780x1080) = {390, 540}
+ */
 static void test_bf_seam_screen_placement(void) {
     // Both cameras use rot=+90.  P2 renders to an RT then is flipped for
     // across-the-table perspective.
@@ -369,42 +384,42 @@ static void test_bf_seam_screen_placement(void) {
     //     screen_x = rx + offset_x = offset_x - (wy - target_y)
     Vector2 seamPoint = {540.0f, 960.0f};
 
-    // P1 (rot=+90, target_y=1440, offset_x=480):
-    float p1_sx = 480.0f - (seamPoint.y - 1440.0f);
-    // P2 RT (rot=+90, target_y=480, offset_x=480 in RT):
-    float p2_rt_sx = 480.0f - (seamPoint.y - 480.0f);
+    // P1 (rot=+90, target_y=1350, offset_x=570):
+    float p1_sx = 570.0f - (seamPoint.y - 1350.0f);
+    // P2 RT (rot=+90, target_y=570, offset_x=390 in RT):
+    float p2_rt_sx = 390.0f - (seamPoint.y - 570.0f);
 
-    // P1 seam maps to x=960 (inner screen edge)
+    // P1 seam maps to x=960 (inner screen edge): 570 - (960 - 1350) = 570 + 390 = 960
     assert(approx_eq(p1_sx, 960.0f, 1.0f));
-    // P2 seam maps to x=0 in the RT; after compositing at screen x=960..1920,
-    // RT x=0 → screen x=960 (inner edge). ✓
+    // P2 seam maps to x=0 in the RT: 390 - (960 - 570) = 390 - 390 = 0.
+    // After compositing at dst.x=960, RT x=0 → screen x=960 (inner edge). ✓
     assert(approx_eq(p2_rt_sx, 0.0f, 1.0f));
 
     printf("  PASS: test_bf_seam_screen_placement\n");
 }
 
 /* ---- Test: bf_base_anchor_bottom ---- */
-/* Verify P1 (SIDE_BOTTOM) base anchor is behind spawn by BASE_SPAWN_GAP */
+/* Verify P1 (SIDE_BOTTOM) base anchor is behind spawn by BASE_SPAWN_GAP.
+ * Center lane spawn Y = 960 + 780*0.8 = 1584; base = 1584 + 32 = 1616. */
 static void test_bf_base_anchor_bottom(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_BOTTOM);
 
-    // Center lane spawn Y = 960 + 960 * 0.8 = 1728; base = 1728 + 32 = 1760
     assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
-    assert(approx_eq(anchor.v.y, 1760.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 1616.0f, 5.0f));
 
     printf("  PASS: test_bf_base_anchor_bottom\n");
 }
 
 /* ---- Test: bf_base_anchor_top ---- */
-/* Verify P2 (SIDE_TOP) base anchor is behind spawn by BASE_SPAWN_GAP */
+/* Verify P2 (SIDE_TOP) base anchor is behind spawn by BASE_SPAWN_GAP.
+ * Center lane spawn Y = 180 + 780*0.2 = 336; base = 336 - 32 = 304. */
 static void test_bf_base_anchor_top(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_TOP);
 
-    // Center lane spawn Y = 960 * 0.2 = 192; base = 192 - 32 = 160
     assert(approx_eq(anchor.v.x, 540.0f, 5.0f));
-    assert(approx_eq(anchor.v.y, 160.0f, 5.0f));
+    assert(approx_eq(anchor.v.y, 304.0f, 5.0f));
 
     printf("  PASS: test_bf_base_anchor_top\n");
 }

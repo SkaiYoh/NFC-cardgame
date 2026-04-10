@@ -155,6 +155,7 @@ static Color sustenance_reason_color(SustenanceCellReason reason) {
     switch (reason) {
         case SUSTENANCE_CELL_VALID:          return Fade(GREEN,    0.15f);
         case SUSTENANCE_CELL_EDGE_BLOCKED:   return Fade(DARKGRAY, 0.15f);
+        case SUSTENANCE_CELL_OUT_OF_PLAY:    return Fade(PURPLE,   0.18f);
         case SUSTENANCE_CELL_LANE_BLOCKED:   return Fade(RED,      0.20f);
         case SUSTENANCE_CELL_BASE_BLOCKED:   return Fade(ORANGE,   0.20f);
         case SUSTENANCE_CELL_SPAWN_BLOCKED:  return Fade(YELLOW,   0.20f);

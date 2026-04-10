@@ -69,4 +69,12 @@
 #define FARMER_DEFAULT_SUSTENANCE_VALUE     1
 #define FARMER_DEFAULT_SUSTENANCE_DURABILITY 1
 
+// Hand UI (outer-edge placeholder card strip per player)
+#define HAND_UI_DEPTH_PX               180
+#define HAND_CARD_COUNT                8
+#define HAND_CARD_WIDTH                128
+#define HAND_CARD_HEIGHT               160
+#define HAND_CARD_GAP                  4
+#define HAND_CARD_PLACEHOLDER_PATH     "src/assets/cards/uvulite_card.png"
+
 #endif //NFC_CARDGAME_CONFIG_H

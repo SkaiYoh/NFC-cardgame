@@ -40,15 +40,18 @@ static float smoothstep01(float t) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-static float lane_spawn_y(const Territory *t, BattleSide side) {
+// Spawn Y lives inside the shortened playable rect (territory minus the
+// player-edge hand-bar inset), so spawn/base/waypoint geometry never projects
+// under the hand bar.
+static float lane_spawn_y_from_play(Rectangle play, BattleSide side) {
     if (side == SIDE_BOTTOM) {
-        return t->bounds.y + t->bounds.height * 0.8f;
+        return play.y + play.height * 0.8f;
     }
-    return t->bounds.y + t->bounds.height * 0.2f;
+    return play.y + play.height * 0.2f;
 }
 
-static float base_anchor_y_from_territory(const Territory *t, BattleSide side) {
-    float spawnY = lane_spawn_y(t, side);
+static float base_anchor_y_from_play(Rectangle play, BattleSide side) {
+    float spawnY = lane_spawn_y_from_play(play, side);
     return spawnY + ((side == SIDE_TOP) ? -BASE_SPAWN_GAP : BASE_SPAWN_GAP);
 }
 
@@ -83,13 +86,19 @@ static void territory_init(Territory *t, BattleSide side, Rectangle bounds,
 // SIDE_TOP (P2): forward = toward increasing y (per D-04)
 // Waypoints are generated in side-local space, then converted to canonical
 // via bf_to_canonical (per D-06, D-18).
+//
+// Y math lives inside bf_play_bounds(side), the shortened playable rect
+// that excludes the hand-bar region on each player's outer edge. X math
+// still uses the full territory width (1080 / 3 lanes) because the hand
+// bar only shortens the vertical axis.
 static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
     Territory *t = &bf->territories[side];
     BattleSide enemySide = (side == SIDE_BOTTOM) ? SIDE_TOP : SIDE_BOTTOM;
-    Territory *enemy = &bf->territories[enemySide];
+    Rectangle play = bf_play_bounds(bf, side);
+    Rectangle enemyPlay = bf_play_bounds(bf, enemySide);
     float laneWidth = t->bounds.width / 3.0f;
     float enemyBaseX = bf->boardWidth * 0.5f;
-    float enemyBaseY = base_anchor_y_from_territory(enemy, enemySide);
+    float enemyBaseY = base_anchor_y_from_play(enemyPlay, enemySide);
     float enemyApproachY = enemyBaseY + ((enemySide == SIDE_TOP) ? LANE_BASE_APPROACH_GAP
                                                                  : -LANE_BASE_APPROACH_GAP);
 
@@ -114,14 +123,12 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
                 float localY;
 
                 if (side == SIDE_BOTTOM) {
-                    // P1 spawn at 80% depth from territory top
-                    localY = t->bounds.y + t->bounds.height * 0.8f;
+                    // P1 spawn at 80% depth from seam inside the shortened play rect
+                    localY = play.y + play.height * 0.8f;
                 } else {
-                    // P2 spawn in local space: also at 80% from top of territory
-                    // In canonical terms P2 territory is {0,0,1080,960}
-                    // P2 base is at y=0 (own edge), forward is toward y=960
-                    // Spawn at 20% from base = 80% from front
-                    localY = t->bounds.y + t->bounds.height * 0.2f;
+                    // P2 spawn in local space: 20% from the player-edge inside
+                    // the shortened play rect (player edge = top of rect).
+                    localY = play.y + play.height * 0.2f;
                 }
 
                 SideLocalPos local = { .v = { localX, localY }, .side = side };
@@ -140,16 +147,14 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
 
             float localY;
             if (side == SIDE_BOTTOM) {
-                // P1: y decreases as depth increases (toward enemy at top)
-                // Formula from player_lane_pos: y = area.y + area.height * (0.9 - depth * 0.8)
-                localY = t->bounds.y + t->bounds.height * (0.9f - depth * 0.8f);
+                // P1: y decreases as depth increases (toward enemy at top).
+                // Formula from player_lane_pos: y = play.y + play.height * (0.9 - depth*0.8)
+                localY = play.y + play.height * (0.9f - depth * 0.8f);
             } else {
-                // P2: y increases as depth increases (toward enemy at bottom, in canonical terms)
-                // In P2's local territory {0,0,1080,960}:
-                //   depth=0 => near own base (y small)
-                //   depth increases => toward seam and beyond
-                // Use mirrored formula: y = area.y + area.height * (0.1 + depth * 0.8)
-                localY = t->bounds.y + t->bounds.height * (0.1f + depth * 0.8f);
+                // P2: y increases as depth increases (toward enemy at bottom,
+                // in canonical terms). Mirrored formula inside the shortened
+                // play rect: y = play.y + play.height * (0.1 + depth*0.8)
+                localY = play.y + play.height * (0.1f + depth * 0.8f);
             }
 
             // Convert to canonical coordinates FIRST, then apply bow in canonical space.
@@ -290,4 +295,25 @@ CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side) {
         base.v.y = spawn.v.y + BASE_SPAWN_GAP;
     }
     return base;
+}
+
+Rectangle bf_play_bounds(const Battlefield *bf, BattleSide side) {
+    // Shortened per-side playable rect: territory minus HAND_UI_DEPTH_PX
+    // on the outer (player-facing) edge. X dimensions are preserved so
+    // lane-width and lateral math remain unchanged.
+    Rectangle play;
+    play.x = 0.0f;
+    play.width = bf->boardWidth;
+    if (side == SIDE_BOTTOM) {
+        // Player-edge is the bottom of the board (y = boardHeight).
+        // Inset inward from there, keeping the seam edge fixed.
+        play.y = bf->seamY;
+        play.height = (bf->boardHeight - bf->seamY) - (float)HAND_UI_DEPTH_PX;
+    } else {
+        // Player-edge is the top of the board (y = 0).
+        // Inset downward from there, keeping the seam edge fixed.
+        play.y = (float)HAND_UI_DEPTH_PX;
+        play.height = bf->seamY - (float)HAND_UI_DEPTH_PX;
+    }
+    return play;
 }

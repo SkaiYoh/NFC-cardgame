@@ -82,8 +82,10 @@ void ui_draw_match_result(const Player *p, const char *text, float rotation,
 
     Vector2 textSize = MeasureTextEx(font, text, (float)fontSize, spacing);
 
-    float cx = p->screenArea.x + p->screenArea.width / 2.0f;
-    float cy = p->screenArea.y + p->screenArea.height / 2.0f;
+    // Center on the player's battlefield sub-rect, not the full half-screen,
+    // so the overlay stays off the hand bar on the player's outer edge.
+    float cx = p->battlefieldArea.x + p->battlefieldArea.width / 2.0f;
+    float cy = p->battlefieldArea.y + p->battlefieldArea.height / 2.0f;
 
     Vector2 position;
     if (rotation == 90.0f) {

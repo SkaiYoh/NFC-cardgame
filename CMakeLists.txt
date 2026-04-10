@@ -35,7 +35,8 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/biome.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
-                   src/rendering/sustenance_renderer.c)
+                   src/rendering/sustenance_renderer.c
+                   src/rendering/hand_ui.c)
 set(SRC_ENTITIES   src/entities/entities.c
                    src/entities/entity_animation.c
                    src/entities/troop.c
@@ -137,6 +138,11 @@ add_executable(test_sustenance
     tests/test_sustenance.c)
 target_link_libraries(test_sustenance ${MATH_LIB})
 add_test(NAME sustenance COMMAND test_sustenance)
+
+add_executable(test_hand_ui
+    tests/test_hand_ui.c)
+target_link_libraries(test_hand_ui ${MATH_LIB})
+add_test(NAME hand_ui COMMAND test_hand_ui)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

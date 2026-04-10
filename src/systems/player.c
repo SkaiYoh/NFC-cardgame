@@ -9,27 +9,31 @@
 #include <stdio.h>
 
 void player_init(Player *p, int id, BattleSide side,
-                 Rectangle screenArea, float cameraRotation,
-                 const Battlefield *bf) {
+                 Rectangle screenArea, Rectangle battlefieldArea, Rectangle handArea,
+                 float cameraRotation, const Battlefield *bf) {
     memset(p, 0, sizeof(Player));
     p->id = id;
     p->sustenanceCollected = 0;
     p->side = side;
     p->screenArea = screenArea;
+    p->battlefieldArea = battlefieldArea;
+    p->handArea = handArea;
     p->cameraRotation = cameraRotation;
 
-    // Camera targets the center of this player's territory
-    const Territory *territory = bf_territory_for_side((Battlefield *)bf, side);
+    // Camera targets the center of this side's shortened playable rect,
+    // so the seam (world y=SEAM_Y) continues to project onto the inner
+    // edge of the battlefield sub-rect after the hand-bar inset.
+    Rectangle play = bf_play_bounds(bf, side);
     Vector2 targetCenter = {
-        territory->bounds.x + territory->bounds.width / 2.0f,
-        territory->bounds.y + territory->bounds.height / 2.0f
+        play.x + play.width / 2.0f,
+        play.y + play.height / 2.0f
     };
 
     p->camera = (Camera2D){0};
     p->camera.target = targetCenter;
     p->camera.offset = (Vector2){
-        screenArea.x + screenArea.width / 2.0f,
-        screenArea.y + screenArea.height / 2.0f
+        battlefieldArea.x + battlefieldArea.width / 2.0f,
+        battlefieldArea.y + battlefieldArea.height / 2.0f
     };
     p->camera.rotation = cameraRotation;
     p->camera.zoom = 1.0f;

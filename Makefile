@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -9,7 +9,7 @@ MACFLAGS = -I/opt/homebrew/include -L/opt/homebrew/lib
 # Source files
 SRC_CORE = src/core/game.c src/core/battlefield.c src/core/battlefield_math.c src/core/debug_events.c src/core/sustenance.c
 SRC_DATA = src/data/db.c src/data/cards.c
-SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/status_bars.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c
+SRC_RENDERING = src/rendering/card_renderer.c src/rendering/tilemap_renderer.c src/rendering/viewport.c src/rendering/sprite_renderer.c src/rendering/spawn_fx.c src/rendering/status_bars.c src/rendering/biome.c src/rendering/ui.c src/rendering/debug_overlay.c src/rendering/sustenance_renderer.c src/rendering/hand_ui.c
 SRC_ENTITIES = src/entities/entities.c src/entities/entity_animation.c src/entities/troop.c src/entities/building.c src/entities/projectile.c
 SRC_SYSTEMS = src/systems/player.c src/systems/energy.c src/systems/spawn.c src/systems/match.c
 SRC_LOGIC = src/logic/card_effects.c src/logic/combat.c src/logic/farmer.c src/logic/pathfinding.c src/logic/win_condition.c
@@ -80,7 +80,10 @@ test_win_condition: tests/test_win_condition.c src/logic/win_condition.c
 test_sustenance: tests/test_sustenance.c src/core/sustenance.c src/core/battlefield.c src/core/battlefield_math.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_sustenance.c -o test_sustenance -lm
 
-test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance
+test_hand_ui: tests/test_hand_ui.c src/rendering/hand_ui.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_hand_ui.c -o test_hand_ui -lm
+
+test: test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui
 	./test_pathfinding
 	./test_combat
 	./test_battlefield_math
@@ -91,9 +94,10 @@ test: test_pathfinding test_combat test_battlefield_math test_battlefield test_a
 	./test_status_bars
 	./test_win_condition
 	./test_sustenance
+	./test_hand_ui
 
 sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_status_bars test_win_condition test_sustenance test_hand_ui test_ore

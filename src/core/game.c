@@ -16,6 +16,7 @@
 #include "../rendering/spawn_fx.h"
 #include "../rendering/status_bars.h"
 #include "../rendering/ui.h"
+#include "../rendering/hand_ui.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
 #include "../entities/building.h"
@@ -75,6 +76,9 @@ bool game_init(GameState *g) {
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
 
+    // Load placeholder hand-bar card texture (shared by both players)
+    g->handPlaceholderTexture = hand_ui_load_placeholder();
+
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
     spawn_fx_init(&g->spawnFx);
@@ -97,8 +101,10 @@ bool game_init(GameState *g) {
     g->gameOver = false;
     g->winnerID = -1;
 
-    // P2 viewport render target (flipped vertically for across-the-table perspective)
-    g->p2RT = LoadRenderTexture(g->halfWidth, SCREEN_HEIGHT);
+    // P2 viewport render target: sized to the shortened battlefield sub-rect
+    // (not the full half-screen) so compositing lands cleanly on the inner
+    // battlefield area without overlapping the hand bar.
+    g->p2RT = LoadRenderTexture((int)g->players[1].battlefieldArea.width, SCREEN_HEIGHT);
 
     // Initialize NFC serial ports (optional -- game works with keyboard input only if unset)
     g->nfc.fds[0] = -1;
@@ -262,11 +268,21 @@ void game_render(GameState *g) {
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     viewport_end();
+    if (s_showLaneDebug) {
+        BeginScissorMode(
+            (int)g->players[0].battlefieldArea.x,
+            (int)g->players[0].battlefieldArea.y,
+            (int)g->players[0].battlefieldArea.width,
+            (int)g->players[0].battlefieldArea.height
+        );
+        debug_draw_lane_paths_screen(bf, SIDE_BOTTOM, g->players[0].camera);
+        EndScissorMode();
+    }
     BeginScissorMode(
-        (int)g->players[0].screenArea.x,
-        (int)g->players[0].screenArea.y,
-        (int)g->players[0].screenArea.width,
-        (int)g->players[0].screenArea.height
+        (int)g->players[0].battlefieldArea.x,
+        (int)g->players[0].battlefieldArea.y,
+        (int)g->players[0].battlefieldArea.width,
+        (int)g->players[0].battlefieldArea.height
     );
     status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f);
     EndScissorMode();
@@ -278,9 +294,10 @@ void game_render(GameState *g) {
     BeginTextureMode(g->p2RT);
     ClearBackground(RAYWHITE);
     // Render with P2's camera but into the RT (no scissor needed — RT is viewport-sized).
-    // Override camera offset to center of RT (480,540) instead of screen position (1440,540).
+    // Override camera offset to the center of the RT (which is sized to the
+    // P2 battlefield sub-rect, not the full half-screen).
     Camera2D p2CamRT = g->players[1].camera;
-    p2CamRT.offset = (Vector2){ g->halfWidth / 2.0f, SCREEN_HEIGHT / 2.0f };
+    p2CamRT.offset = (Vector2){ g->players[1].battlefieldArea.width / 2.0f, SCREEN_HEIGHT / 2.0f };
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
@@ -290,31 +307,33 @@ void game_render(GameState *g) {
     game_draw_canonical_entities(bf);
     debug_overlay_draw(bf, g, s_debugFlags);
     EndMode2D();
+    if (s_showLaneDebug) {
+        debug_draw_lane_paths_screen(bf, SIDE_TOP, p2CamRT);
+    }
     status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f);
     EndTextureMode();
 
-    // Composite P2 RT to right half of screen, flipped vertically.
-    // Negative height flips Y (OpenGL convention), and we also flip the
-    // source rect height to flip the image vertically on screen, which
-    // reverses the world-X → screen-Y mapping for across-the-table.
+    // Composite P2 RT to the P2 battlefield sub-rect (not the full half-screen),
+    // flipped vertically. Negative source height flips Y (OpenGL convention),
+    // reversing the world-X → screen-Y mapping for across-the-table perspective.
     DrawTexturePro(
         g->p2RT.texture,
-        (Rectangle){ 0, 0, (float)g->halfWidth, -(float)SCREEN_HEIGHT },   // src: flip Y (OpenGL)
-        (Rectangle){ (float)g->halfWidth, 0, (float)g->halfWidth, (float)SCREEN_HEIGHT },  // dst: right half
+        (Rectangle){ 0, 0, (float)g->p2RT.texture.width, -(float)g->p2RT.texture.height },
+        g->players[1].battlefieldArea,
         (Vector2){ 0, 0 },
         0.0f,
         WHITE
     );
 
-    // Debug lane overlay
-    if (s_showLaneDebug) {
-        debug_draw_lane_paths_screen(bf, SIDE_BOTTOM, g->players[0].camera);
-        debug_draw_lane_paths_screen(bf, SIDE_TOP, g->players[1].camera);
-    }
+    // HUD — screen space, drawn after all viewports. Use battlefieldArea so
+    // the counter stays on the battlefield sub-rect, not the hand bar.
+    ui_draw_sustenance_counter(&g->players[0], g->players[0].battlefieldArea, 90.0f, DARKGREEN);
+    ui_draw_sustenance_counter(&g->players[1], g->players[1].battlefieldArea, 270.0f, MAROON);
 
-    // HUD — screen space, drawn after all viewports
-    ui_draw_sustenance_counter(&g->players[0], g->players[0].screenArea, 90.0f, DARKGREEN);
-    ui_draw_sustenance_counter(&g->players[1], g->players[1].screenArea, 270.0f, MAROON);
+    // Hand bars — drawn last so they always cover the outer strip, regardless
+    // of any earlier draws that may have bled past the battlefield scissor.
+    hand_ui_draw(&g->players[0], g->handPlaceholderTexture);
+    hand_ui_draw(&g->players[1], g->handPlaceholderTexture);
 
     // Match result overlay
     if (g->gameOver) {
@@ -350,6 +369,7 @@ void game_cleanup(GameState *g) {
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
+    hand_ui_unload_placeholder(g->handPlaceholderTexture);
 
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)

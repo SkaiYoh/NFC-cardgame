@@ -110,7 +110,9 @@ typedef struct {
 struct Player {
     int id;                    // 0 or 1
     BattleSide side;           // SIDE_BOTTOM or SIDE_TOP (per D-12)
-    Rectangle screenArea;      // Screen space viewport
+    Rectangle screenArea;      // Full half-screen owned by this player (kept for reference)
+    Rectangle battlefieldArea; // Inner sub-rect that hosts world-space rendering
+    Rectangle handArea;        // Outer-edge hand-bar strip (HAND_UI_DEPTH_PX deep)
     Camera2D camera;           // Camera for this player's view
     float cameraRotation;      // 90 or -90 for split screen orientation
 
@@ -153,6 +155,9 @@ struct GameState {
     // Sustenance node texture (shared by sustenance_renderer)
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
+
+    // Placeholder hand-bar card texture (shared by hand_ui)
+    Texture2D handPlaceholderTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

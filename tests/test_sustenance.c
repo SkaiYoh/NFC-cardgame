@@ -36,6 +36,7 @@
 #define MAX_ENTITIES       64
 #define TILE_COUNT         32
 #define MAX_DETAIL_DEFS    64
+#define HAND_UI_DEPTH_PX   180
 
 /* Sustenance config (must match src/core/config.h) */
 #define SUSTENANCE_GRID_CELL_SIZE_PX        64.0f
@@ -198,22 +199,24 @@ static void test_init_top_count(void) {
 
 static void test_all_bottom_in_territory(void) {
     Battlefield bf = create_test_bf();
+    // Shortened play bounds: BOTTOM nodes must sit inside {0,960,1080,780}.
     for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; i++) {
         SustenanceNode *n = &bf.sustenanceField.nodes[SIDE_BOTTOM][i];
         assert(n->active);
         assert(n->worldPos.v.y >= (float)SEAM_Y);
-        assert(n->worldPos.v.y <= (float)BOARD_HEIGHT);
+        assert(n->worldPos.v.y < (float)(BOARD_HEIGHT - HAND_UI_DEPTH_PX));
     }
     printf("  PASS: test_all_bottom_in_territory\n");
 }
 
 static void test_all_top_in_territory(void) {
     Battlefield bf = create_test_bf();
+    // Shortened play bounds: TOP nodes must sit inside {0,180,1080,780}.
     for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; i++) {
         SustenanceNode *n = &bf.sustenanceField.nodes[SIDE_TOP][i];
         assert(n->active);
-        assert(n->worldPos.v.y >= 0.0f);
-        assert(n->worldPos.v.y <= (float)SEAM_Y);
+        assert(n->worldPos.v.y >= (float)HAND_UI_DEPTH_PX);
+        assert(n->worldPos.v.y < (float)SEAM_Y);
     }
     printf("  PASS: test_all_top_in_territory\n");
 }
@@ -223,14 +226,24 @@ static void test_sustenance_obeys_edge_margin(void) {
     float minX = SUSTENANCE_GRID_ORIGIN_X + SUSTENANCE_EDGE_MARGIN_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX;
     float maxX = SUSTENANCE_GRID_ORIGIN_X + (SUSTENANCE_GRID_COLS - SUSTENANCE_EDGE_MARGIN_CELLS) * SUSTENANCE_GRID_CELL_SIZE_PX;
 
+    // Tight vertical bounds combine the edge-margin rule with the shortened
+    // play-bounds gate: BOTTOM [1024, 1740), TOP [180, 896]. The play-bounds
+    // cutoff is strictly tighter than the edge margin on the outer edge so
+    // only the outer-edge bound needs updating.
     for (int s = 0; s < 2; s++) {
         float territoryY = (s == SIDE_BOTTOM) ? (float)SEAM_Y : 0.0f;
-        float minY = territoryY + SUSTENANCE_EDGE_MARGIN_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX;
-        float maxY = territoryY + (SUSTENANCE_GRID_ROWS - SUSTENANCE_EDGE_MARGIN_CELLS) * SUSTENANCE_GRID_CELL_SIZE_PX;
+        float minY, maxY;
+        if (s == SIDE_BOTTOM) {
+            minY = territoryY + SUSTENANCE_EDGE_MARGIN_CELLS * SUSTENANCE_GRID_CELL_SIZE_PX;
+            maxY = (float)(BOARD_HEIGHT - HAND_UI_DEPTH_PX); // play-bounds dominates grid margin
+        } else {
+            minY = (float)HAND_UI_DEPTH_PX;                  // play-bounds dominates grid margin
+            maxY = territoryY + (SUSTENANCE_GRID_ROWS - SUSTENANCE_EDGE_MARGIN_CELLS) * SUSTENANCE_GRID_CELL_SIZE_PX;
+        }
         for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; i++) {
             SustenanceNode *n = &bf.sustenanceField.nodes[s][i];
             assert(n->worldPos.v.x >= minX && n->worldPos.v.x <= maxX);
-            assert(n->worldPos.v.y >= minY && n->worldPos.v.y <= maxY);
+            assert(n->worldPos.v.y >= minY && n->worldPos.v.y < maxY);
         }
     }
     printf("  PASS: test_sustenance_obeys_edge_margin\n");
@@ -388,8 +401,10 @@ static void test_deplete_respawn_in_same_territory(void) {
     int nodeId = bf.sustenanceField.nodes[SIDE_BOTTOM][2].id;
     sustenance_deplete_and_respawn(&bf, nodeId);
     SustenanceNode *node = &bf.sustenanceField.nodes[SIDE_BOTTOM][2];
+    // Respawned node must also live inside the shortened play bounds,
+    // not under the hand-bar zone at the player's outer edge.
     assert(node->worldPos.v.y >= (float)SEAM_Y);
-    assert(node->worldPos.v.y <= (float)BOARD_HEIGHT);
+    assert(node->worldPos.v.y < (float)(BOARD_HEIGHT - HAND_UI_DEPTH_PX));
     printf("  PASS: test_deplete_respawn_in_same_territory\n");
 }
 
@@ -653,9 +668,11 @@ static void test_classify_node_occupied_cell(void) {
 
 static void test_classify_lane_blocked_cell(void) {
     Battlefield bf = create_test_bf();
-    // The center-lane spawn anchor for SIDE_BOTTOM lies exactly on the lane
-    // polyline and is in an interior cell: row 12, col 8 on the fixed sustenance grid.
-    SustenanceCellDebugInfo info = sustenance_debug_classify_cell(&bf, SIDE_BOTTOM, 12, 8);
+    // After the shortened-playfield change the center-lane spawn for
+    // SIDE_BOTTOM sits at (540, 1584). Cell (row=10, col=8) center is
+    // (572, 1632), which is within one lane width (64px) of that spawn
+    // point and therefore lane-blocked under the documented priority.
+    SustenanceCellDebugInfo info = sustenance_debug_classify_cell(&bf, SIDE_BOTTOM, 10, 8);
     assert(info.reason == SUSTENANCE_CELL_LANE_BLOCKED);
     printf("  PASS: test_classify_lane_blocked_cell\n");
 }
@@ -716,7 +733,7 @@ static void test_classify_priority_lane_over_spawn(void) {
     Battlefield bf = create_test_bf();
     // Same center-lane spawn cell as the lane-block test: this cell is also
     // within spawn-anchor clearance, but lane must win by documented priority.
-    SustenanceCellDebugInfo info = sustenance_debug_classify_cell(&bf, SIDE_BOTTOM, 12, 8);
+    SustenanceCellDebugInfo info = sustenance_debug_classify_cell(&bf, SIDE_BOTTOM, 10, 8);
     assert(info.reason == SUSTENANCE_CELL_LANE_BLOCKED);
     printf("  PASS: test_classify_priority_lane_over_spawn\n");
 }
