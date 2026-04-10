@@ -3,7 +3,6 @@
 //
 
 #include "combat.h"
-#include "assault_slots.h"
 #include "farmer.h"
 #include "win_condition.h"
 #include "../core/battlefield.h"
@@ -13,8 +12,6 @@
 #include <math.h>
 #include <float.h>
 #include <stdio.h>
-
-float combat_melee_reach_distance(const Entity *attacker, const Entity *target);
 
 static float combat_center_distance(Vector2 a, Vector2 b) {
     CanonicalPos posA = { a };
@@ -56,37 +53,63 @@ static Vector2 combat_normalize_or(Vector2 v, Vector2 fallback) {
     return (Vector2){ v.x * invLen, v.y * invLen };
 }
 
-static Vector2 combat_building_radial_goal(const Entity *attacker, const Entity *target,
-                                           float radius) {
-    Vector2 fromTarget = {
+static float combat_tangent_bucket_for_pair(int attackerId, int targetId) {
+    static const float tangentBuckets[] = { -0.95f, -0.55f, -0.2f, 0.2f, 0.55f, 0.95f };
+    unsigned int hash = combat_pair_hash(attackerId, targetId);
+    return tangentBuckets[hash % (sizeof(tangentBuckets) / sizeof(tangentBuckets[0]))];
+}
+
+float combat_static_target_flow_angle_degrees(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG;
+
+    unsigned int hash = combat_pair_hash(attacker->id, target->id);
+    float t = (float)(hash & 1023u) / 1023.0f;
+    return COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG +
+           (COMBAT_STATIC_TARGET_FLOW_ANGLE_MAX_DEG -
+            COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG) * t;
+}
+
+static Vector2 combat_apply_tangent_bias(Vector2 baseDir, int attackerId,
+                                         int targetId, float tangentScale) {
+    Vector2 tangent = { -baseDir.y, baseDir.x };
+    float tangentBucket = combat_tangent_bucket_for_pair(attackerId, targetId);
+    return combat_normalize_or(
+        (Vector2){
+            baseDir.x + tangent.x * tangentBucket * tangentScale,
+            baseDir.y + tangent.y * tangentBucket * tangentScale
+        },
+        baseDir
+    );
+}
+
+static Vector2 combat_spread_direction(const Entity *attacker, const Entity *target) {
+    Vector2 radial = {
         attacker->position.x - target->position.x,
         attacker->position.y - target->position.y
     };
-    Vector2 sideFallback = (attacker && attacker->ownerID == 1)
+    Vector2 ownerFallback = (attacker->ownerID == 1)
         ? (Vector2){ 0.0f, 1.0f }
         : (Vector2){ 0.0f, -1.0f };
-    Vector2 dir = combat_normalize_or(fromTarget, sideFallback);
-    return (Vector2){
-        target->position.x + dir.x * radius,
-        target->position.y + dir.y * radius
+    radial = combat_normalize_or(radial, ownerFallback);
+
+    return combat_apply_tangent_bias(radial, attacker->id, target->id,
+                                     COMBAT_PERIMETER_TANGENT_SCALE);
+}
+
+Vector2 combat_static_target_flow_direction(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return (Vector2){ 0.0f, 0.0f };
+
+    Vector2 inward = {
+        target->position.x - attacker->position.x,
+        target->position.y - attacker->position.y
     };
-}
+    Vector2 ownerFallback = (attacker->ownerID == 1)
+        ? (Vector2){ 0.0f, -1.0f }
+        : (Vector2){ 0.0f, 1.0f };
+    inward = combat_normalize_or(inward, ownerFallback);
 
-static float combat_static_target_reach_radius(const Entity *attacker, const Entity *target) {
-    if (!attacker || !target) return 0.0f;
-    return combat_target_contact_radius(target) +
-           attacker->bodyRadius +
-           PATHFIND_CONTACT_GAP +
-           combat_melee_reach_distance(attacker, target);
-}
-
-static Vector2 combat_building_staging_goal(const Entity *attacker, const Entity *target) {
-    float queueRadius = combat_target_contact_radius(target) +
-                        DEFAULT_MELEE_BODY_RADIUS +
-                        BASE_ASSAULT_SLOT_GAP +
-                        BASE_ASSAULT_QUEUE_RADIAL_OFFSET;
-    float stagingRadius = queueRadius + attacker->bodyRadius + PATHFIND_CONTACT_GAP;
-    return combat_building_radial_goal(attacker, target, stagingRadius);
+    return combat_apply_tangent_bias(inward, attacker->id, target->id,
+                                     COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE);
 }
 
 float combat_melee_reach_distance(const Entity *attacker, const Entity *target) {
@@ -104,6 +127,29 @@ float combat_melee_reach_distance(const Entity *attacker, const Entity *target) 
     return slack;
 }
 
+float combat_static_target_attack_radius(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return 0.0f;
+    if (combat_uses_direct_range(attacker, target)) {
+        return attacker->attackRange;
+    }
+
+    return combat_target_contact_radius(target) +
+           attacker->bodyRadius +
+           PATHFIND_CONTACT_GAP +
+           combat_melee_reach_distance(attacker, target);
+}
+
+float combat_static_target_occupancy_radius(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return 0.0f;
+
+    float attackRadius = combat_static_target_attack_radius(attacker, target);
+    if (combat_uses_direct_range(attacker, target)) {
+        return attackRadius;
+    }
+
+    return attackRadius + attacker->bodyRadius + PATHFIND_CONTACT_GAP;
+}
+
 bool combat_engagement_goal(const Entity *attacker, const Entity *target,
                             const Battlefield *bf, Vector2 *outGoal,
                             float *outStopRadius) {
@@ -117,51 +163,12 @@ bool combat_engagement_goal(const Entity *attacker, const Entity *target,
     }
 
     if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
-        if (attacker->reservedAssaultTargetId == target->id &&
-            attacker->reservedAssaultSlotKind == ASSAULT_SLOT_PRIMARY) {
-            // Primary-slot holders are admitted into the base-contact cloud:
-            // once inside the authored melee shell they can overlap other
-            // admitted allies instead of fighting for an exact slot position.
-            *outGoal = target->position;
-            *outStopRadius = combat_static_target_reach_radius(attacker, target);
-            return true;
-        }
-
-        if (attacker->reservedAssaultTargetId == target->id &&
-            attacker->reservedAssaultSlotKind == ASSAULT_SLOT_QUEUE &&
-            attacker->reservedAssaultSlotIndex >= 0) {
-            *outGoal = assault_slots_get_position(target,
-                                                  attacker->reservedAssaultSlotKind,
-                                                  attacker->reservedAssaultSlotIndex);
-            *outStopRadius = attacker->bodyRadius;
-            return true;
-        }
-
-        *outGoal = combat_building_staging_goal(attacker, target);
-        *outStopRadius = attacker->bodyRadius;
+        *outGoal = target->position;
+        *outStopRadius = combat_static_target_attack_radius(attacker, target);
         return true;
     }
 
-    Vector2 radial = {
-        attacker->position.x - target->position.x,
-        attacker->position.y - target->position.y
-    };
-    Vector2 ownerFallback = (attacker->ownerID == 1)
-        ? (Vector2){ 0.0f, 1.0f }
-        : (Vector2){ 0.0f, -1.0f };
-    radial = combat_normalize_or(radial, ownerFallback);
-
-    Vector2 tangent = { -radial.y, radial.x };
-    static const float tangentBuckets[] = { -0.95f, -0.55f, -0.2f, 0.2f, 0.55f, 0.95f };
-    unsigned int hash = combat_pair_hash(attacker->id, target->id);
-    float tangentScale = tangentBuckets[hash % (sizeof(tangentBuckets) / sizeof(tangentBuckets[0]))];
-    Vector2 spreadDir = combat_normalize_or(
-        (Vector2){
-            radial.x + tangent.x * tangentScale * COMBAT_PERIMETER_TANGENT_SCALE,
-            radial.y + tangent.y * tangentScale * COMBAT_PERIMETER_TANGENT_SCALE
-        },
-        radial
-    );
+    Vector2 spreadDir = combat_spread_direction(attacker, target);
 
     float radius = combat_target_contact_radius(target) +
                    attacker->bodyRadius +
@@ -175,6 +182,7 @@ bool combat_engagement_goal(const Entity *attacker, const Entity *target,
 }
 
 bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
+    (void)gs;
     if (!a || !b) return false;
 
     if (combat_uses_direct_range(a, b)) {
@@ -191,19 +199,8 @@ bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs) {
         return centerDist <= contactDistance + 0.001f;
     }
 
-    if (a->reservedAssaultTargetId != b->id ||
-        a->reservedAssaultSlotKind != ASSAULT_SLOT_PRIMARY) {
-        return false;
-    }
-
-    Vector2 goal;
-    float stopRadius = 0.0f;
-    if (!gs || !combat_engagement_goal(a, b, &gs->battlefield, &goal, &stopRadius)) {
-        return false;
-    }
-
-    float distToGoal = combat_center_distance(a->position, goal);
-    return distToGoal <= stopRadius + 0.001f;
+    float centerDist = combat_center_distance(a->position, b->position);
+    return centerDist <= combat_static_target_attack_radius(a, b) + 0.001f;
 }
 
 static bool combat_is_friendly_target(const Entity *attacker, const Entity *target) {
@@ -344,14 +341,9 @@ bool entity_apply_heal(Entity *entity, int amount) {
 static void combat_on_kill(Entity *victim, GameState *gs) {
     if (!victim || !gs) return;
 
-    if (victim->reservedAssaultSlotKind != ASSAULT_SLOT_NONE) {
-        Battlefield *bf = &gs->battlefield;
-        for (int i = 0; i < bf->entityCount; i++) {
-            Entity *candidate = bf->entities[i];
-            if (!candidate || candidate->markedForRemoval) continue;
-            if (candidate->type != ENTITY_BUILDING && candidate->navProfile != NAV_PROFILE_STATIC) continue;
-            assault_slots_release_for_entity(candidate, victim->id);
-        }
+    if (victim->reservedAssaultTargetId != -1 ||
+        victim->reservedAssaultSlotIndex != -1 ||
+        victim->reservedAssaultSlotKind != ASSAULT_SLOT_NONE) {
         victim->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
         victim->reservedAssaultSlotIndex = -1;
         victim->reservedAssaultTargetId = -1;

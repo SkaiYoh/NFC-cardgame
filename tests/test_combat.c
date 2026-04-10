@@ -50,6 +50,9 @@
 #define COMBAT_BUILDING_MELEE_INSET 30.0f
 #define COMBAT_MELEE_GOAL_SLACK_MAX 8.0f
 #define COMBAT_PERIMETER_TANGENT_SCALE 0.65f
+#define COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE 0.70f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG 10.0f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MAX_DEG 20.0f
 #define BASE_DEPOSIT_PRIMARY_SLOT_COUNT 4
 #define BASE_DEPOSIT_QUEUE_SLOT_COUNT   6
 
@@ -498,9 +501,9 @@ static void test_in_range_null_safety(void) {
     assert(combat_in_range(&a, NULL, &gs) == false);
 }
 
-/* Static-target attacks now require primary-slot admission. Queue holders and
- * unreserved attackers may approach the base, but they cannot swing yet. */
-static void test_in_range_requires_primary_assault_slot(void) {
+/* Static-target attacks are gated only by distance now, not by assault-slot
+ * reservations. */
+static void test_in_range_static_target_uses_attack_radius(void) {
     GameState gs = make_game_state();
 
     Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 1568});
@@ -513,38 +516,41 @@ static void test_in_range_requires_primary_assault_slot(void) {
     base.navRadius = 56.0f;
     base.navProfile = NAV_PROFILE_STATIC;
 
-    assert(combat_in_range(&knight, &base, &gs) == false);
+    float attackRadius = combat_static_target_attack_radius(&knight, &base);
 
-    knight.reservedAssaultTargetId = 2;
-    knight.reservedAssaultSlotKind = ASSAULT_SLOT_QUEUE;
-    knight.reservedAssaultSlotIndex = 0;
-    base.assaultSlots.queue[0].worldPos = (Vector2){540.0f, 1552.0f};
+    knight.position = (Vector2){540.0f, base.position.y - attackRadius + 0.5f};
+    assert(combat_in_range(&knight, &base, &gs) == true);
+
+    knight.position = (Vector2){540.0f, base.position.y - attackRadius - 0.5f};
     assert(combat_in_range(&knight, &base, &gs) == false);
 }
 
-/* Primary-slot holders attack from a shared base-contact cloud instead of a
- * single exact slot point. */
-static void test_in_range_primary_assault_uses_base_contact_zone(void) {
+/* Multiple attackers can all hit the same static target once they enter the
+ * attack shell; there is no hidden slot-cap on base DPS. */
+static void test_in_range_multiple_attackers_share_static_target_cloud(void) {
     GameState gs = make_game_state();
 
-    Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 1568});
-    knight.attackRange = 50.0f;
-    knight.bodyRadius = 14.0f;
-    knight.reservedAssaultTargetId = 2;
-    knight.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
-    knight.reservedAssaultSlotIndex = 0;
+    Entity knightA = make_entity(0, ENTITY_TROOP, (Vector2){540, 1568});
+    knightA.attackRange = 50.0f;
+    knightA.bodyRadius = 14.0f;
+
+    Entity knightB = make_entity(0, ENTITY_TROOP, (Vector2){568, 1568});
+    knightB.attackRange = 50.0f;
+    knightB.bodyRadius = 14.0f;
 
     Entity base = make_entity(1, ENTITY_BUILDING, (Vector2){540, 1616});
     base.id = 2;
     base.bodyRadius = 16.0f;
     base.navRadius = 56.0f;
     base.navProfile = NAV_PROFILE_STATIC;
-    base.assaultSlots.primary[0].worldPos = (Vector2){480.0f, 1574.0f};
 
-    assert(combat_in_range(&knight, &base, &gs) == true);
+    float attackRadiusA = combat_static_target_attack_radius(&knightA, &base);
+    float attackRadiusB = combat_static_target_attack_radius(&knightB, &base);
+    knightA.position = (Vector2){540.0f, base.position.y - attackRadiusA + 0.5f};
+    knightB.position = (Vector2){base.position.x + attackRadiusB - 0.5f, 1616.0f};
 
-    knight.position = (Vector2){540, 1540};
-    assert(combat_in_range(&knight, &base, &gs) == false);
+    assert(combat_in_range(&knightA, &base, &gs) == true);
+    assert(combat_in_range(&knightB, &base, &gs) == true);
 }
 
 /* Troop-vs-troop melee uses near-contact geometry plus a small authored
@@ -1311,8 +1317,8 @@ int main(void) {
     RUN_TEST(test_in_range_same_space);
     RUN_TEST(test_in_range_cross_space);
     RUN_TEST(test_in_range_null_safety);
-    RUN_TEST(test_in_range_requires_primary_assault_slot);
-    RUN_TEST(test_in_range_primary_assault_uses_base_contact_zone);
+    RUN_TEST(test_in_range_static_target_uses_attack_radius);
+    RUN_TEST(test_in_range_multiple_attackers_share_static_target_cloud);
     RUN_TEST(test_in_range_unit_vs_unit_uses_contact_geometry);
     RUN_TEST(test_find_target_nearest);
     RUN_TEST(test_find_target_skips_dead);

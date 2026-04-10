@@ -48,6 +48,72 @@ typedef enum {
     FARMER_DEPOSITING
 } FarmerState;
 
+// Movement profile selects which steering algorithm pathfind_try_step_toward
+// runs. LANE is the strict monotone-progress march used before aggro
+// acquisition; ASSAULT unlocks tangential pursuit and soft crowd compression;
+// FREE_GOAL is the orbit-friendly profile used by farmers and other free
+// movers; STATIC entities are never stepped by pathfinding. LANE = 0 so memset
+// defaults keep existing troops on the unchanged code path.
+typedef enum {
+    NAV_PROFILE_LANE = 0,
+    NAV_PROFILE_ASSAULT,
+    NAV_PROFILE_FREE_GOAL,
+    NAV_PROFILE_STATIC
+} UnitNavProfile;
+
+// Kind of assault slot a combat troop is currently holding on a static target.
+// NONE = 0 so memset defaults indicate "no reservation".
+typedef enum {
+    ASSAULT_SLOT_NONE = 0,
+    ASSAULT_SLOT_PRIMARY,
+    ASSAULT_SLOT_QUEUE
+} AssaultSlotKind;
+
+typedef enum {
+    COMBAT_ENGAGEMENT_NONE = 0,
+    COMBAT_ENGAGEMENT_ASSAULT_SLOT,
+    COMBAT_ENGAGEMENT_PERIMETER,
+    COMBAT_ENGAGEMENT_DIRECT
+} CombatEngagementType;
+
+// Kind of deposit slot a farmer is currently holding a reservation on.
+// NONE = 0 so memset defaults indicate "no reservation" without code help.
+typedef enum {
+    DEPOSIT_SLOT_NONE = 0,
+    DEPOSIT_SLOT_PRIMARY,
+    DEPOSIT_SLOT_QUEUE
+} DepositSlotKind;
+
+// A single reservable contact point around a base, computed once at base
+// creation. Farmers walk to this world position instead of base->position
+// so they do not all collapse onto a single unreachable cell.
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId; // -1 when unclaimed
+} DepositSlot;
+
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId; // -1 when unclaimed
+} AssaultSlot;
+
+// Ring of deposit slots owned by a single base entity. `initialized` gates
+// safe API reads in case a non-base entity's zeroed memory is queried.
+typedef struct {
+    DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
+    DepositSlot queue  [BASE_DEPOSIT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} DepositSlotRing;
+
+// Ring of combat approach slots owned by a single static target. Attackers
+// reserve these points so base assaults spread along the front arc instead of
+// center-collapsing onto the target pivot.
+typedef struct {
+    AssaultSlot primary[BASE_ASSAULT_PRIMARY_SLOT_COUNT];
+    AssaultSlot queue  [BASE_ASSAULT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} AssaultSlotRing;
+
 // Entity definition
 struct Entity {
     int id;
@@ -102,8 +168,25 @@ struct Entity {
 
     // Local steering
     float bodyRadius;           // collision/footprint radius in canonical world units
+    float navRadius;            // pathfinding footprint; 0 => fall back to bodyRadius
+    UnitNavProfile navProfile;  // steering algorithm selector (LANE / FREE_GOAL / STATIC)
     int movementTargetId;       // local aggro pursuit target, -1 when none
     int ticksSinceProgress;     // ticks since the last forward step toward the current goal
+    int lastSteerSideSign;      // continuity bias for scored sidestep selection (-1/0/+1)
+
+    // Combat engagement state
+    CombatEngagementType engagementType;
+    int reservedAssaultTargetId;        // building/static target that owns the reserved slot, -1 when none
+    int reservedAssaultSlotIndex;       // -1 when no reservation held
+    AssaultSlotKind reservedAssaultSlotKind; // ASSAULT_SLOT_NONE when unclaimed
+
+    // Deposit slot reservation (farmers only)
+    int             reservedDepositSlotIndex;  // -1 when no reservation held
+    DepositSlotKind reservedDepositSlotKind;   // DEPOSIT_SLOT_NONE when unclaimed
+
+    // Base-only payloads. Non-base entities leave these zero-initialized.
+    DepositSlotRing depositSlots;
+    AssaultSlotRing assaultSlots;
 };
 
 // Card slot - represents a physical NFC reader position

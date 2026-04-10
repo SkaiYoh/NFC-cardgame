@@ -48,7 +48,9 @@ set(SRC_SYSTEMS    src/systems/player.c
                    src/systems/spawn_placement.c
                    src/systems/match.c)
 set(SRC_LOGIC      src/logic/card_effects.c
+                   src/logic/assault_slots.c
                    src/logic/combat.c
+                   src/logic/deposit_slots.c
                    src/logic/farmer.c
                    src/logic/pathfinding.c
                    src/logic/win_condition.c)
@@ -134,6 +136,16 @@ add_executable(test_spawn_placement
     tests/test_spawn_placement.c)
 target_link_libraries(test_spawn_placement ${MATH_LIB})
 add_test(NAME spawn_placement COMMAND test_spawn_placement)
+
+add_executable(test_deposit_slots
+    tests/test_deposit_slots.c)
+target_link_libraries(test_deposit_slots ${MATH_LIB})
+add_test(NAME deposit_slots COMMAND test_deposit_slots)
+
+add_executable(test_assault_slots
+    tests/test_assault_slots.c)
+target_link_libraries(test_assault_slots ${MATH_LIB})
+add_test(NAME assault_slots COMMAND test_assault_slots)
 
 add_executable(test_status_bars
     tests/test_status_bars.c)

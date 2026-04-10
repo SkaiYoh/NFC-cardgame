@@ -92,6 +92,14 @@ static Vector2 pathfind_rotate_vec(Vector2 v, float degrees) {
     return (Vector2){ v.x * c - v.y * s, v.x * s + v.y * c };
 }
 
+static Vector2 pathfind_normalize_or(Vector2 v, Vector2 fallback) {
+    float lenSq = v.x * v.x + v.y * v.y;
+    if (lenSq <= 0.0001f) return fallback;
+
+    float invLen = 1.0f / sqrtf(lenSq);
+    return (Vector2){ v.x * invLen, v.y * invLen };
+}
+
 static float pathfind_point_to_segment_dist(Vector2 p, Vector2 a, Vector2 b) {
     float abx = b.x - a.x;
     float aby = b.y - a.y;
@@ -269,6 +277,7 @@ typedef struct {
     float progress;
     float minHardClearance;
     float softOverlap;
+    float flowPreference;
     float angleDegrees;
     int lateralSign;
 } PathfindCandidateEval;
@@ -328,10 +337,7 @@ static float pathfind_contact_cloud_radius_for_entity(const Entity *e, const Ent
         return pathfind_nav_radius(target) + pathfind_nav_radius(e) + BASE_DEPOSIT_SLOT_GAP;
     }
 
-    return combat_target_contact_radius(target) +
-           pathfind_nav_radius(e) +
-           PATHFIND_CONTACT_GAP +
-           combat_melee_reach_distance(e, target);
+    return combat_static_target_occupancy_radius(e, target);
 }
 
 static bool pathfind_same_contact_cloud_pair(const Entity *self, const Entity *other,
@@ -340,10 +346,8 @@ static bool pathfind_same_contact_cloud_pair(const Entity *self, const Entity *o
     if (self->ownerID != other->ownerID) return false;
     if (other->movementTargetId != target->id) return false;
 
-    bool sameAssaultCloud = (self->reservedAssaultTargetId == target->id &&
-                             other->reservedAssaultTargetId == target->id &&
-                             self->reservedAssaultSlotKind == ASSAULT_SLOT_PRIMARY &&
-                             other->reservedAssaultSlotKind == ASSAULT_SLOT_PRIMARY);
+    bool sameAssaultCloud = (self->navProfile == NAV_PROFILE_ASSAULT &&
+                             other->navProfile == NAV_PROFILE_ASSAULT);
     bool sameDepositCloud = (self->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
                              other->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY);
 
@@ -352,7 +356,9 @@ static bool pathfind_same_contact_cloud_pair(const Entity *self, const Entity *o
 
 static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 candidate,
                                                   const Entity *other,
-                                                  const Battlefield *bf) {
+                                                  const Battlefield *bf,
+                                                  float *outSoftPenaltyScale) {
+    if (outSoftPenaltyScale) *outSoftPenaltyScale = 0.0f;
     const Entity *target = pathfind_contact_cloud_target(self, bf);
     if (!target) return false;
     if (!pathfind_same_contact_cloud_pair(self, other, target)) return false;
@@ -368,9 +374,27 @@ static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 ca
     float otherDy = other->position.y - target->position.y;
     float otherDist = sqrtf(otherDx * otherDx + otherDy * otherDy);
 
-    float selfOverlapRadius = selfCloud + pathfind_nav_radius(self);
-    float otherOverlapRadius = otherCloud + pathfind_nav_radius(other);
-    return selfDist <= selfOverlapRadius && otherDist <= otherOverlapRadius;
+    bool depositCloud = (self->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
+                         other->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY);
+    float selfOverlapRadius = selfCloud;
+    float otherOverlapRadius = otherCloud;
+    if (depositCloud) {
+        selfOverlapRadius += pathfind_nav_radius(self);
+        otherOverlapRadius += pathfind_nav_radius(other);
+    } else {
+        // Same-target base attackers need an extra ally shell beyond the core
+        // occupancy radius so late arrivals can merge into the packed assault
+        // blob instead of stalling just outside it.
+        selfOverlapRadius += pathfind_nav_radius(other);
+        otherOverlapRadius += pathfind_nav_radius(self);
+    }
+    bool insideCloud = selfDist <= selfOverlapRadius && otherDist <= otherOverlapRadius;
+    if (!insideCloud) return false;
+
+    if (!depositCloud && outSoftPenaltyScale) {
+        *outSoftPenaltyScale = PATHFIND_ASSAULT_CLOUD_SOFT_OVERLAP_SCALE;
+    }
+    return true;
 }
 
 // Resolve the entity's current steering goal.
@@ -451,6 +475,17 @@ static float pathfind_candidate_goal_dist(Vector2 goal, Vector2 candidate) {
     return sqrtf(dx * dx + dy * dy);
 }
 
+static float pathfind_clamp01(float value) {
+    if (value < 0.0f) return 0.0f;
+    if (value > 1.0f) return 1.0f;
+    return value;
+}
+
+static float pathfind_static_target_flow_outer_radius(const Entity *e, const Entity *target) {
+    if (!e || !target) return 0.0f;
+    return combat_static_target_occupancy_radius(e, target) + pathfind_nav_radius(e);
+}
+
 static bool pathfind_is_soft_blocker(const Entity *self, const Entity *other) {
     if (!pathfind_is_blocker(self, other)) return false;
     if (self->ownerID != other->ownerID) return false;
@@ -502,6 +537,78 @@ static int pathfind_candidate_lateral_sign(Vector2 forward, Vector2 stepDir) {
     return 0;
 }
 
+static bool pathfind_static_target_flow_active(const Entity *e, const Battlefield *bf) {
+    if (!e || !bf || e->navProfile != NAV_PROFILE_ASSAULT) return false;
+
+    const Entity *target = pathfind_contact_cloud_target(e, bf);
+    if (!target) return false;
+
+    float flowOuterRadius = pathfind_static_target_flow_outer_radius(e, target);
+    if (flowOuterRadius <= 0.0f) return false;
+
+    float dx = e->position.x - target->position.x;
+    float dy = e->position.y - target->position.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    return dist <= flowOuterRadius;
+}
+
+static bool pathfind_static_target_flow_candidates(const Entity *e, const Battlefield *bf,
+                                                   Vector2 forward, Vector2 *outBlendDir,
+                                                   Vector2 *outFlowDir) {
+    if (!outBlendDir || !outFlowDir) return false;
+    if (!pathfind_static_target_flow_active(e, bf)) return false;
+
+    const Entity *target = pathfind_contact_cloud_target(e, bf);
+    if (!target) return false;
+
+    Vector2 flowDir = combat_static_target_flow_direction(e, target);
+    float flowCross = forward.x * flowDir.y - forward.y * flowDir.x;
+    if (fabsf(flowCross) <= 0.001f) return false;
+
+    float signedAngle = combat_static_target_flow_angle_degrees(e, target);
+    if (flowCross < 0.0f) signedAngle = -signedAngle;
+
+    *outFlowDir = pathfind_rotate_vec(forward, signedAngle);
+    *outBlendDir = pathfind_normalize_or(
+        (Vector2){ forward.x + outFlowDir->x, forward.y + outFlowDir->y },
+        *outFlowDir
+    );
+    return true;
+}
+
+static float pathfind_static_target_flow_preference(const Entity *e, Vector2 candidate,
+                                                    Vector2 forward, Vector2 stepDir,
+                                                    const Battlefield *bf) {
+    if (!e || !bf || e->navProfile != NAV_PROFILE_ASSAULT) return 0.0f;
+
+    const Entity *target = pathfind_contact_cloud_target(e, bf);
+    if (!target) return 0.0f;
+
+    float attackRadius = combat_static_target_attack_radius(e, target);
+    float flowOuterRadius = pathfind_static_target_flow_outer_radius(e, target);
+    float flowWidth = flowOuterRadius - attackRadius;
+    if (flowWidth <= 0.001f) return 0.0f;
+
+    float dx = candidate.x - target->position.x;
+    float dy = candidate.y - target->position.y;
+    float candidateDist = sqrtf(dx * dx + dy * dy);
+    if (candidateDist > flowOuterRadius) return 0.0f;
+
+    float ramp = pathfind_clamp01((flowOuterRadius - candidateDist) / flowWidth);
+
+    Entity attackerView = *e;
+    attackerView.position = candidate;
+    Vector2 desiredDir = combat_static_target_flow_direction(&attackerView, target);
+    float desiredCross = forward.x * desiredDir.y - forward.y * desiredDir.x;
+    float candidateCross = forward.x * stepDir.y - forward.y * stepDir.x;
+    if (desiredCross * candidateCross <= 0.0f) return 0.0f;
+
+    float candidateForward = forward.x * stepDir.x + forward.y * stepDir.y;
+    if (candidateForward <= 0.0f) return 0.0f;
+
+    return fabsf(candidateCross) * fabsf(desiredCross) * candidateForward * ramp;
+}
+
 static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
                                         Vector2 candidate, const Battlefield *bf,
                                         const PathfindStepParams *params,
@@ -513,6 +620,7 @@ static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
     outEval->progress = -INFINITY;
     outEval->minHardClearance = 1000000.0f;
     outEval->softOverlap = 0.0f;
+    outEval->flowPreference = 0.0f;
     outEval->angleDegrees = 180.0f;
     outEval->lateralSign = 0;
 
@@ -538,13 +646,22 @@ static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *other = bf->entities[i];
         if (!pathfind_is_blocker(e, other)) continue;
-        if (pathfind_allows_contact_cloud_overlap(e, candidate, other, bf)) continue;
 
         float dx = other->position.x - candidate.x;
         float dy = other->position.y - candidate.y;
         float centerDist = sqrtf(dx * dx + dy * dy);
         float hardShell = selfRadius + pathfind_blocker_radius_for_self(e, other) +
                           PATHFIND_CONTACT_GAP;
+        float contactCloudPenaltyScale = 0.0f;
+        if (pathfind_allows_contact_cloud_overlap(e, candidate, other, bf,
+                                                  &contactCloudPenaltyScale)) {
+            float overlap = hardShell - centerDist;
+            if (overlap > 0.0f) {
+                outEval->softOverlap += overlap * contactCloudPenaltyScale;
+            }
+            continue;
+        }
+
         bool softBlocker = pathfind_is_soft_blocker(e, other);
         float legalShell = hardShell;
         if (softBlocker) {
@@ -578,6 +695,8 @@ static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
     outEval->legal = true;
     outEval->goalDist = goalDist;
     outEval->progress = currentGoalDist - goalDist;
+    outEval->flowPreference = pathfind_static_target_flow_preference(e, candidate, forward,
+                                                                     stepDir, bf);
     outEval->angleDegrees = acosf(dot) * 180.0f / PI_F;
     outEval->lateralSign = pathfind_candidate_lateral_sign(forward, stepDir);
     return true;
@@ -589,12 +708,14 @@ static float pathfind_candidate_score(const Entity *e,
     float progressWeight = 18.0f;
     float clearanceWeight = 0.7f;
     float softPenaltyWeight = 5.0f;
+    float flowWeight = 0.0f;
     float angleWeight = 0.08f;
 
     if (e->navProfile == NAV_PROFILE_ASSAULT) {
         progressWeight = 13.0f;
         clearanceWeight = 1.2f;
         softPenaltyWeight = 1.6f;
+        flowWeight = PATHFIND_ASSAULT_CLOUD_FLOW_WEIGHT;
         angleWeight = 0.05f;
     } else if (e->navProfile == NAV_PROFILE_FREE_GOAL) {
         progressWeight = 11.0f;
@@ -606,6 +727,7 @@ static float pathfind_candidate_score(const Entity *e,
     if (jamRelief) {
         progressWeight *= 0.55f;
         clearanceWeight *= 1.75f;
+        flowWeight *= 0.75f;
         angleWeight *= 0.5f;
     }
 
@@ -623,6 +745,7 @@ static float pathfind_candidate_score(const Entity *e,
            cappedClearance * clearanceWeight -
            eval->softOverlap * softPenaltyWeight -
            eval->angleDegrees * angleWeight +
+           eval->flowPreference * flowWeight +
            continuityBonus;
 }
 
@@ -692,18 +815,25 @@ static bool pathfind_try_normal_march(Entity *e, Vector2 goal, const Battlefield
     float hardSign = preferLeft ? -1.0f : 1.0f;
     float sideSign = preferLeft ? -1.0f : 1.0f;
 
-    Vector2 directions[7];
-    directions[0] = forward;
-    directions[1] = pathfind_rotate_vec(forward,  softSign * PATHFIND_CANDIDATE_ANGLE_SOFT_DEG);
-    directions[2] = pathfind_rotate_vec(forward, -softSign * PATHFIND_CANDIDATE_ANGLE_SOFT_DEG);
-    directions[3] = pathfind_rotate_vec(forward,  hardSign * PATHFIND_CANDIDATE_ANGLE_HARD_DEG);
-    directions[4] = pathfind_rotate_vec(forward, -hardSign * PATHFIND_CANDIDATE_ANGLE_HARD_DEG);
-    directions[5] = pathfind_rotate_vec(forward,  sideSign * PATHFIND_CANDIDATE_ANGLE_SIDE_DEG);
-    directions[6] = pathfind_rotate_vec(forward, -sideSign * PATHFIND_CANDIDATE_ANGLE_SIDE_DEG);
+    Vector2 directions[9];
+    int directionCount = 0;
+    directions[directionCount++] = forward;
+    Vector2 flowBlendDir;
+    Vector2 flowDir;
+    if (pathfind_static_target_flow_candidates(e, bf, forward, &flowBlendDir, &flowDir)) {
+        directions[directionCount++] = flowBlendDir;
+        directions[directionCount++] = flowDir;
+    }
+    directions[directionCount++] = pathfind_rotate_vec(forward,  softSign * PATHFIND_CANDIDATE_ANGLE_SOFT_DEG);
+    directions[directionCount++] = pathfind_rotate_vec(forward, -softSign * PATHFIND_CANDIDATE_ANGLE_SOFT_DEG);
+    directions[directionCount++] = pathfind_rotate_vec(forward,  hardSign * PATHFIND_CANDIDATE_ANGLE_HARD_DEG);
+    directions[directionCount++] = pathfind_rotate_vec(forward, -hardSign * PATHFIND_CANDIDATE_ANGLE_HARD_DEG);
+    directions[directionCount++] = pathfind_rotate_vec(forward,  sideSign * PATHFIND_CANDIDATE_ANGLE_SIDE_DEG);
+    directions[directionCount++] = pathfind_rotate_vec(forward, -sideSign * PATHFIND_CANDIDATE_ANGLE_SIDE_DEG);
 
     Vector2 bestCandidate;
     int lateralSign = 0;
-    if (!pathfind_select_best_candidate(e, goal, bf, directions, 7, step,
+    if (!pathfind_select_best_candidate(e, goal, bf, directions, directionCount, step,
                                         params, false, &bestCandidate,
                                         &lateralSign)) {
         return false;

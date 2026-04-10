@@ -116,6 +116,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->bodyRadius = (data->bodyRadius > 0.0f)
         ? data->bodyRadius
         : troop_default_body_radius(data->spriteType);
+    e->navProfile = NAV_PROFILE_LANE; // farmer block below overrides to FREE_GOAL
 
     // Targeting
     e->targeting = data->targeting;
@@ -136,6 +137,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     // Farmer role: override combat stats from code, not card JSON
     if (data->spriteType == SPRITE_TYPE_FARMER) {
         e->unitRole = UNIT_ROLE_FARMER;
+        e->navProfile = NAV_PROFILE_FREE_GOAL;
         e->attack = 0;
         e->attackSpeed = 0.0f;
         e->attackRange = 0.0f;

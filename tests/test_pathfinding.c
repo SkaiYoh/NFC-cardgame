@@ -40,7 +40,12 @@
 #define BASE_NAV_RADIUS 56.0f
 #define BASE_DEPOSIT_SLOT_GAP 4.0f
 #define BASE_ASSAULT_QUEUE_RADIAL_OFFSET 22.0f
+#define COMBAT_BUILDING_MELEE_INSET 30.0f
 #define COMBAT_MELEE_GOAL_SLACK_MAX 8.0f
+#define COMBAT_PERIMETER_TANGENT_SCALE 0.65f
+#define COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE 0.70f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG 10.0f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MAX_DEG 20.0f
 
 /* ---- Local steering constants (must mirror src/core/config.h) ---- */
 #define PATHFIND_AGGRO_RADIUS             192.0f
@@ -64,6 +69,8 @@
 #define PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_MAX   8.0f
 #define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_BONUS 2.0f
 #define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_MAX   10.0f
+#define PATHFIND_ASSAULT_CLOUD_SOFT_OVERLAP_SCALE 1.0f
+#define PATHFIND_ASSAULT_CLOUD_FLOW_WEIGHT 18.0f
 #define PATHFIND_FREE_MOVER_LATERAL_TOLERANCE_RATIO 1.5f
 
 /* ---- Minimal type stubs ---- */
@@ -236,40 +243,80 @@ void entity_set_state(Entity *e, EntityState newState) {
 
 float combat_target_contact_radius(const Entity *target);
 float combat_melee_reach_distance(const Entity *attacker, const Entity *target);
+float combat_static_target_attack_radius(const Entity *attacker, const Entity *target);
+float combat_static_target_occupancy_radius(const Entity *attacker, const Entity *target);
+Vector2 combat_static_target_flow_direction(const Entity *attacker, const Entity *target);
+float combat_static_target_flow_angle_degrees(const Entity *attacker, const Entity *target);
+
+static bool combat_uses_direct_range(const Entity *attacker, const Entity *target) {
+    (void)target;
+    return attacker && attacker->healAmount > 0;
+}
+
+static unsigned int combat_pair_hash(int attackerId, int targetId) {
+    unsigned int x = (unsigned int)attackerId * 1103515245u;
+    x ^= (unsigned int)targetId * 2654435761u;
+    x ^= x >> 16;
+    return x;
+}
+
+static Vector2 combat_normalize_or(Vector2 v, Vector2 fallback) {
+    float lenSq = v.x * v.x + v.y * v.y;
+    if (lenSq <= 0.0001f) return fallback;
+
+    float invLen = 1.0f / sqrtf(lenSq);
+    return (Vector2){ v.x * invLen, v.y * invLen };
+}
+
+Vector2 combat_static_target_flow_direction(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return (Vector2){ 0.0f, 0.0f };
+
+    Vector2 inward = {
+        target->position.x - attacker->position.x,
+        target->position.y - attacker->position.y
+    };
+    Vector2 ownerFallback = (attacker->ownerID == 1)
+        ? (Vector2){ 0.0f, -1.0f }
+        : (Vector2){ 0.0f, 1.0f };
+    inward = combat_normalize_or(inward, ownerFallback);
+
+    Vector2 tangent = { -inward.y, inward.x };
+    float tangentBuckets[] = { -0.95f, -0.55f, -0.2f, 0.2f, 0.55f, 0.95f };
+    unsigned int hash = combat_pair_hash(attacker->id, target->id);
+    float tangentBucket = tangentBuckets[hash % (sizeof(tangentBuckets) / sizeof(tangentBuckets[0]))];
+
+    return combat_normalize_or(
+        (Vector2){
+            inward.x + tangent.x * tangentBucket * COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE,
+            inward.y + tangent.y * tangentBucket * COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE
+        },
+        inward
+    );
+}
+
+float combat_static_target_flow_angle_degrees(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG;
+
+    unsigned int hash = combat_pair_hash(attacker->id, target->id);
+    float t = (float)(hash & 1023u) / 1023.0f;
+    return COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG +
+           (COMBAT_STATIC_TARGET_FLOW_ANGLE_MAX_DEG -
+            COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG) * t;
+}
 
 bool combat_engagement_goal(const Entity *attacker, const Entity *target,
                             const Battlefield *bf, Vector2 *outGoal,
                             float *outStopRadius) {
     (void)bf;
     if (!attacker || !target || !outGoal || !outStopRadius) return false;
+    if (combat_uses_direct_range(attacker, target)) {
+        *outGoal = target->position;
+        *outStopRadius = attacker->attackRange;
+        return true;
+    }
     if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
-        if (attacker->reservedAssaultTargetId == target->id &&
-            attacker->reservedAssaultSlotKind == ASSAULT_SLOT_PRIMARY) {
-            *outGoal = target->position;
-            *outStopRadius = combat_target_contact_radius(target) +
-                             attacker->bodyRadius +
-                             PATHFIND_CONTACT_GAP +
-                             combat_melee_reach_distance(attacker, target);
-            return true;
-        }
-
-        Vector2 radial = {
-            attacker->position.x - target->position.x,
-            attacker->position.y - target->position.y
-        };
-        float len = sqrtf(radial.x * radial.x + radial.y * radial.y);
-        if (len <= 0.001f) radial = (Vector2){ 0.0f, -1.0f };
-        else radial = (Vector2){ radial.x / len, radial.y / len };
-
-        float radius = combat_target_contact_radius(target) +
-                       attacker->bodyRadius +
-                       PATHFIND_CONTACT_GAP +
-                       BASE_ASSAULT_QUEUE_RADIAL_OFFSET;
-        *outGoal = (Vector2){
-            target->position.x + radial.x * radius,
-            target->position.y + radial.y * radius
-        };
-        *outStopRadius = attacker->bodyRadius;
+        *outGoal = target->position;
+        *outStopRadius = combat_static_target_attack_radius(attacker, target);
         return true;
     }
     *outGoal = target->position;
@@ -281,7 +328,7 @@ float combat_target_contact_radius(const Entity *target) {
     if (!target) return 0.0f;
     if (target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC) {
         float navR = (target->navRadius > 0.0f) ? target->navRadius : target->bodyRadius;
-        float combatRadius = navR - 30.0f;
+        float combatRadius = navR - COMBAT_BUILDING_MELEE_INSET;
         return (combatRadius > target->bodyRadius) ? combatRadius : target->bodyRadius;
     }
     return (target->navRadius > 0.0f) ? target->navRadius : target->bodyRadius;
@@ -297,6 +344,29 @@ float combat_melee_reach_distance(const Entity *attacker, const Entity *target) 
     if (slack < 0.0f) slack = 0.0f;
     if (slack > COMBAT_MELEE_GOAL_SLACK_MAX) slack = COMBAT_MELEE_GOAL_SLACK_MAX;
     return slack;
+}
+
+float combat_static_target_attack_radius(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return 0.0f;
+    if (combat_uses_direct_range(attacker, target)) {
+        return attacker->attackRange;
+    }
+
+    return combat_target_contact_radius(target) +
+           attacker->bodyRadius +
+           PATHFIND_CONTACT_GAP +
+           combat_melee_reach_distance(attacker, target);
+}
+
+float combat_static_target_occupancy_radius(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return 0.0f;
+
+    float attackRadius = combat_static_target_attack_radius(attacker, target);
+    if (combat_uses_direct_range(attacker, target)) {
+        return attackRadius;
+    }
+
+    return attackRadius + attacker->bodyRadius + PATHFIND_CONTACT_GAP;
 }
 
 /* ---- Forward declarations for functions in pathfinding.c ---- */
@@ -1521,8 +1591,6 @@ static void test_assault_target_allows_entry_inside_static_nav_shell(void) {
     base.ownerID = 1;
 
     attacker.movementTargetId = base.id;
-    attacker.reservedAssaultTargetId = base.id;
-    attacker.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
 
     bf_test_register(&bf, &attacker);
     bf_test_register(&bf, &base);
@@ -1535,16 +1603,15 @@ static void test_assault_target_allows_entry_inside_static_nav_shell(void) {
     float dy = attacker.position.y - base.position.y;
     float dist = sqrtf(dx * dx + dy * dy);
     float navShell = attacker.bodyRadius + base.navRadius + PATHFIND_CONTACT_GAP;
-    float combatShell = attacker.bodyRadius +
-                        combat_target_contact_radius(&base) +
-                        PATHFIND_CONTACT_GAP +
-                        combat_melee_reach_distance(&attacker, &base);
+    float blockerShell = attacker.bodyRadius +
+                         combat_target_contact_radius(&base) +
+                         PATHFIND_CONTACT_GAP;
 
     assert(dist < navShell - 1.0f);
-    assert(dist >= combatShell - 2.0f);
+    assert(dist >= blockerShell - 2.0f);
 }
 
-static void test_primary_assault_contact_cloud_allows_overlap(void) {
+static void test_same_target_assault_contact_cloud_allows_overlap(void) {
     Battlefield bf = make_test_battlefield();
 
     Entity attacker = make_test_entity(1, 2, 200.0f);
@@ -1567,11 +1634,7 @@ static void test_primary_assault_contact_cloud_allows_overlap(void) {
     base.ownerID = 1;
 
     attacker.movementTargetId = base.id;
-    attacker.reservedAssaultTargetId = base.id;
-    attacker.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
     ally.movementTargetId = base.id;
-    ally.reservedAssaultTargetId = base.id;
-    ally.reservedAssaultSlotKind = ASSAULT_SLOT_PRIMARY;
 
     bf_test_register(&bf, &attacker);
     bf_test_register(&bf, &ally);
@@ -1591,6 +1654,217 @@ static void test_primary_assault_contact_cloud_allows_overlap(void) {
 
     assert(attacker.position.y > 1550.0f);
     assert(dist < shell - 1.0f);
+}
+
+static void test_late_arriving_attacker_overlaps_packed_front_blob(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity late = make_test_entity(1, 2, 120.0f);
+    late.navProfile = NAV_PROFILE_ASSAULT;
+    late.position = (Vector2){ 540.0f, 1548.0f };
+    late.bodyRadius = 14.0f;
+
+    Entity allyA = make_test_entity(1, 2, 0.0f);
+    allyA.navProfile = NAV_PROFILE_ASSAULT;
+    allyA.position = (Vector2){ 540.0f, 1568.0f };
+    allyA.bodyRadius = 14.0f;
+
+    Entity allyB = make_test_entity(1, 2, 0.0f);
+    allyB.navProfile = NAV_PROFILE_ASSAULT;
+    allyB.position = (Vector2){ 522.0f, 1576.0f };
+    allyB.bodyRadius = 14.0f;
+
+    Entity allyC = make_test_entity(1, 2, 0.0f);
+    allyC.navProfile = NAV_PROFILE_ASSAULT;
+    allyC.position = (Vector2){ 558.0f, 1576.0f };
+    allyC.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 889;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 1;
+
+    late.movementTargetId = base.id;
+    allyA.movementTargetId = base.id;
+    allyB.movementTargetId = base.id;
+    allyC.movementTargetId = base.id;
+
+    bf_test_register(&bf, &late);
+    bf_test_register(&bf, &allyA);
+    bf_test_register(&bf, &allyB);
+    bf_test_register(&bf, &allyC);
+    bf_test_register(&bf, &base);
+
+    for (int tick = 0; tick < 24; tick++) {
+        pathfind_step_entity(&late, &bf, 1.0f / 60.0f);
+    }
+
+    float attackRadius = combat_static_target_attack_radius(&late, &base);
+    float lateDx = late.position.x - base.position.x;
+    float lateDy = late.position.y - base.position.y;
+    float lateDist = sqrtf(lateDx * lateDx + lateDy * lateDy);
+    float overlapDistA = sqrtf((late.position.x - allyA.position.x) * (late.position.x - allyA.position.x) +
+                               (late.position.y - allyA.position.y) * (late.position.y - allyA.position.y));
+    float shell = late.bodyRadius + allyA.bodyRadius + PATHFIND_CONTACT_GAP;
+
+    assert(fabsf(late.position.x - 540.0f) <= 8.0f);
+    assert(lateDist <= attackRadius + 0.5f);
+    assert(overlapDistA < shell - 1.0f);
+}
+
+static void test_assault_contact_cloud_allows_entry_through_front_line(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity late = make_test_entity(1, 2, 120.0f);
+    late.navProfile = NAV_PROFILE_ASSAULT;
+    late.position = (Vector2){ 540.0f, 1532.0f };
+    late.bodyRadius = 14.0f;
+
+    Entity ally = make_test_entity(1, 2, 0.0f);
+    ally.navProfile = NAV_PROFILE_ASSAULT;
+    ally.position = (Vector2){ 540.0f, 1566.0f };
+    ally.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 890;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 1;
+
+    late.movementTargetId = base.id;
+    ally.movementTargetId = base.id;
+
+    bf_test_register(&bf, &late);
+    bf_test_register(&bf, &ally);
+    bf_test_register(&bf, &base);
+
+    float attackRadius = combat_static_target_attack_radius(&late, &base);
+    pathfind_move_toward_goal(&late, base.position, attackRadius, &bf, 0.15f);
+
+    float overlapDist = sqrtf((late.position.x - ally.position.x) * (late.position.x - ally.position.x) +
+                              (late.position.y - ally.position.y) * (late.position.y - ally.position.y));
+    float shell = late.bodyRadius + ally.bodyRadius + PATHFIND_CONTACT_GAP;
+
+    assert(fabsf(late.position.x - 540.0f) <= 6.0f);
+    assert(late.position.y >= 1548.0f);
+    assert(overlapDist < shell - PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_MAX - 1.0f);
+}
+
+static void test_same_lane_assault_blob_spreads_subtly_near_base(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 891;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 1;
+
+    enum { ATTACKER_COUNT = 8 };
+    Entity attackers[ATTACKER_COUNT];
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        attackers[i] = make_test_entity(1, 2, 120.0f);
+        attackers[i].navProfile = NAV_PROFILE_ASSAULT;
+        attackers[i].position = (Vector2){ 540.0f, 1456.0f + (float)i * 18.0f };
+        attackers[i].bodyRadius = 14.0f;
+        attackers[i].movementTargetId = base.id;
+    }
+
+    bf_test_register(&bf, &base);
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        bf_test_register(&bf, &attackers[i]);
+    }
+
+    for (int tick = 0; tick < 360; tick++) {
+        for (int i = 0; i < ATTACKER_COUNT; i++) {
+            pathfind_step_entity(&attackers[i], &bf, 1.0f / 60.0f);
+        }
+    }
+
+    float minX = attackers[0].position.x;
+    float maxX = attackers[0].position.x;
+    bool sawLeft = false;
+    bool sawRight = false;
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        float dx = attackers[i].position.x - base.position.x;
+        float dy = attackers[i].position.y - base.position.y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        float attackRadius = combat_static_target_attack_radius(&attackers[i], &base);
+
+        if (attackers[i].position.x < minX) minX = attackers[i].position.x;
+        if (attackers[i].position.x > maxX) maxX = attackers[i].position.x;
+        if (attackers[i].position.x < base.position.x - 4.0f) sawLeft = true;
+        if (attackers[i].position.x > base.position.x + 4.0f) sawRight = true;
+        assert(dist <= attackRadius + 1.0f);
+    }
+
+    float spread = maxX - minX;
+    assert(sawLeft);
+    assert(sawRight);
+    assert(spread >= 12.0f);
+    assert(spread <= 72.0f);
+}
+
+static void test_many_attackers_converge_on_static_target_without_slot_cap(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity base = make_test_entity(1, 1, 0.0f);
+    base.id = 990;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.ownerID = 1;
+
+    enum { ATTACKER_COUNT = 16 };
+    Entity attackers[ATTACKER_COUNT];
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        attackers[i] = make_test_entity(1, 2, (i < 12) ? 120.0f : 105.0f);
+        attackers[i].navProfile = NAV_PROFILE_ASSAULT;
+        attackers[i].position = (Vector2){
+            486.0f + (float)(i % 4) * 36.0f,
+            1458.0f + (float)(i / 4) * 28.0f
+        };
+        attackers[i].bodyRadius = (i < 12) ? 14.0f : 18.0f;
+        attackers[i].attackRange = 50.0f;
+        attackers[i].movementTargetId = base.id;
+    }
+
+    bf_test_register(&bf, &base);
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        bf_test_register(&bf, &attackers[i]);
+    }
+
+    for (int tick = 0; tick < 480; tick++) {
+        for (int i = 0; i < ATTACKER_COUNT; i++) {
+            pathfind_step_entity(&attackers[i], &bf, 1.0f / 60.0f);
+        }
+    }
+
+    for (int i = 0; i < ATTACKER_COUNT; i++) {
+        float dx = attackers[i].position.x - base.position.x;
+        float dy = attackers[i].position.y - base.position.y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        float attackRadius = combat_static_target_attack_radius(&attackers[i], &base);
+        float occupancyRadius = combat_static_target_occupancy_radius(&attackers[i], &base);
+        float blockerShell = attackers[i].bodyRadius +
+                             combat_target_contact_radius(&base) +
+                             PATHFIND_CONTACT_GAP;
+
+        assert(dist <= occupancyRadius + 1.0f);
+        assert(dist <= attackRadius + 1.0f);
+        assert(dist >= blockerShell - 1.0f);
+    }
 }
 
 static void test_primary_deposit_contact_cloud_allows_overlap(void) {
@@ -1723,11 +1997,19 @@ int main(void) {
     printf("  PASS: test_assault_soft_overlap_is_capped_for_moving_allies\n");
     test_assault_target_allows_entry_inside_static_nav_shell();
     printf("  PASS: test_assault_target_allows_entry_inside_static_nav_shell\n");
-    test_primary_assault_contact_cloud_allows_overlap();
-    printf("  PASS: test_primary_assault_contact_cloud_allows_overlap\n");
+    test_same_target_assault_contact_cloud_allows_overlap();
+    printf("  PASS: test_same_target_assault_contact_cloud_allows_overlap\n");
+    test_late_arriving_attacker_overlaps_packed_front_blob();
+    printf("  PASS: test_late_arriving_attacker_overlaps_packed_front_blob\n");
+    test_assault_contact_cloud_allows_entry_through_front_line();
+    printf("  PASS: test_assault_contact_cloud_allows_entry_through_front_line\n");
+    test_same_lane_assault_blob_spreads_subtly_near_base();
+    printf("  PASS: test_same_lane_assault_blob_spreads_subtly_near_base\n");
+    test_many_attackers_converge_on_static_target_without_slot_cap();
+    printf("  PASS: test_many_attackers_converge_on_static_target_without_slot_cap\n");
     test_primary_deposit_contact_cloud_allows_overlap();
     printf("  PASS: test_primary_deposit_contact_cloud_allows_overlap\n");
 
-    printf("\nAll 41 tests passed!\n");
+    printf("\nAll 45 tests passed!\n");
     return 0;
 }

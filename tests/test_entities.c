@@ -21,11 +21,13 @@
 #define NFC_CARDGAME_ENTITY_ANIMATION_H
 #define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_DEBUG_EVENTS_H
+#define NFC_CARDGAME_ASSAULT_SLOTS_H
 #define NFC_CARDGAME_PATHFINDING_H
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_FARMER_H
 
 /* ---- Local steering constants (must mirror src/core/config.h) ---- */
+#define LANE_WAYPOINT_COUNT              8
 #define PATHFIND_AGGRO_RADIUS             192.0f
 #define PATHFIND_AGGRO_HYSTERESIS         32.0f
 #define PATHFIND_CANDIDATE_ANGLE_SOFT_DEG 30.0f
@@ -108,8 +110,50 @@ typedef struct {
 
 typedef struct { int dummy; } CharacterSprite;
 
+/* ---- Deposit slot type stubs (mirrors src/core/types.h) ---- */
+#define BASE_DEPOSIT_PRIMARY_SLOT_COUNT 4
+#define BASE_DEPOSIT_QUEUE_SLOT_COUNT   6
+
+typedef enum {
+    NAV_PROFILE_LANE = 0,
+    NAV_PROFILE_ASSAULT,
+    NAV_PROFILE_FREE_GOAL,
+    NAV_PROFILE_STATIC
+} UnitNavProfile;
+
+typedef enum {
+    ASSAULT_SLOT_NONE = 0,
+    ASSAULT_SLOT_PRIMARY,
+    ASSAULT_SLOT_QUEUE
+} AssaultSlotKind;
+
+typedef enum {
+    COMBAT_ENGAGEMENT_NONE = 0,
+    COMBAT_ENGAGEMENT_ASSAULT_SLOT,
+    COMBAT_ENGAGEMENT_PERIMETER,
+    COMBAT_ENGAGEMENT_DIRECT
+} CombatEngagementType;
+
+typedef enum {
+    DEPOSIT_SLOT_NONE = 0,
+    DEPOSIT_SLOT_PRIMARY,
+    DEPOSIT_SLOT_QUEUE
+} DepositSlotKind;
+
+typedef struct {
+    Vector2 worldPos;
+    int     claimedByEntityId;
+} DepositSlot;
+
+typedef struct {
+    DepositSlot primary[BASE_DEPOSIT_PRIMARY_SLOT_COUNT];
+    DepositSlot queue  [BASE_DEPOSIT_QUEUE_SLOT_COUNT];
+    bool initialized;
+} DepositSlotRing;
+
 typedef struct Entity Entity;
 typedef struct GameState GameState;
+typedef struct Player Player;
 
 struct Entity {
     int id;
@@ -146,8 +190,18 @@ struct Entity {
     bool markedForRemoval;
     int healAmount;
     float bodyRadius;
+    float navRadius;
+    UnitNavProfile navProfile;
     int movementTargetId;
     int ticksSinceProgress;
+    int lastSteerSideSign;
+    CombatEngagementType engagementType;
+    int reservedAssaultTargetId;
+    int reservedAssaultSlotIndex;
+    AssaultSlotKind reservedAssaultSlotKind;
+    int reservedDepositSlotIndex;
+    DepositSlotKind reservedDepositSlotKind;
+    DepositSlotRing depositSlots;
 };
 
 typedef struct Battlefield {
@@ -155,8 +209,13 @@ typedef struct Battlefield {
     int entityCount;
 } Battlefield;
 
+struct Player {
+    Entity *base;
+};
+
 struct GameState {
     Battlefield battlefield;
+    Player players[2];
 };
 
 /* ---- Test globals ---- */
@@ -179,6 +238,29 @@ void farmer_update(Entity *e, GameState *gs, float deltaTime) {
     (void)e;
     (void)gs;
     (void)deltaTime;
+}
+
+AssaultSlotKind assault_slots_reserve_for(Entity *base, int entityId,
+                                          Vector2 fromPos, int *outSlotIndex) {
+    (void)base;
+    (void)entityId;
+    (void)fromPos;
+    if (outSlotIndex) *outSlotIndex = -1;
+    return ASSAULT_SLOT_NONE;
+}
+
+bool assault_slots_try_promote(Entity *base, int entityId, int queueSlotIndex,
+                               int *outPrimarySlotIndex) {
+    (void)base;
+    (void)entityId;
+    (void)queueSlotIndex;
+    (void)outPrimarySlotIndex;
+    return false;
+}
+
+void assault_slots_release_for_entity(Entity *base, int entityId) {
+    (void)base;
+    (void)entityId;
 }
 
 static float distance_between(Vector2 a, Vector2 b) {
@@ -626,16 +708,66 @@ static void test_walking_unit_clears_target_when_target_dies(void) {
 
     Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
     Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    Entity base = make_entity(3, 1, ENTITY_BUILDING, (Vector2){540.0f, 64.0f});
     enemy.alive = false;  /* dead mid-pursuit */
     unit.state = ESTATE_WALKING;
     unit.movementTargetId = enemy.id;
+    gs.players[1].base = &base;
 
     battlefield_add(&gs.battlefield, &enemy);
+    battlefield_add(&gs.battlefield, &base);
     g_findWithinRadiusResult = NULL;
 
     entity_update(&unit, &gs, 0.016f);
 
     assert(unit.movementTargetId == -1);
+}
+
+static void test_idle_lane_end_unit_resumes_enemy_base_assault(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity unit = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity base = make_entity(3, 1, ENTITY_BUILDING, (Vector2){540.0f, 64.0f});
+    unit.state = ESTATE_IDLE;
+    unit.waypointIndex = LANE_WAYPOINT_COUNT;
+    unit.movementTargetId = -1;
+    gs.players[1].base = &base;
+
+    battlefield_add(&gs.battlefield, &base);
+    g_findTargetResult = NULL;
+    g_findWithinRadiusResult = NULL;
+
+    entity_update(&unit, &gs, 0.016f);
+
+    assert(unit.state == ESTATE_WALKING);
+    assert(unit.movementTargetId == base.id);
+}
+
+static void test_attack_fallback_uses_enemy_base_when_lane_end_target_dies(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){50.0f, 0.0f});
+    Entity base = make_entity(3, 1, ENTITY_BUILDING, (Vector2){540.0f, 64.0f});
+    enemy.alive = false;
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = enemy.id;
+    attacker.waypointIndex = LANE_WAYPOINT_COUNT;
+    anim_state_init(&attacker.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
+    gs.players[1].base = &base;
+
+    battlefield_add(&gs.battlefield, &enemy);
+    battlefield_add(&gs.battlefield, &base);
+    g_findTargetResult = NULL;
+    g_findWithinRadiusResult = NULL;
+
+    entity_update(&attacker, &gs, 0.016f);
+
+    assert(attacker.state == ESTATE_WALKING);
+    assert(attacker.attackTargetId == -1);
+    assert(attacker.movementTargetId == base.id);
 }
 
 static void test_walking_unit_transitions_to_attacking_before_moving(void) {
@@ -857,12 +989,14 @@ int main(void) {
     RUN_TEST(test_walking_healer_does_not_chase_injured_ally_out_of_range);
     RUN_TEST(test_walking_unit_releases_target_beyond_hysteresis);
     RUN_TEST(test_walking_unit_clears_target_when_target_dies);
+    RUN_TEST(test_idle_lane_end_unit_resumes_enemy_base_assault);
     RUN_TEST(test_walking_unit_transitions_to_attacking_before_moving);
     RUN_TEST(test_walking_unit_does_not_chase_enemy_behind_lane_progress);
     RUN_TEST(test_walking_unit_prefers_forward_enemy_over_behind_enemy_for_pursuit);
     RUN_TEST(test_walking_unit_still_attacks_enemy_behind_when_in_range);
     RUN_TEST(test_attack_fallback_immediately_pursues_nearby_enemy);
     RUN_TEST(test_attack_fallback_does_not_pursue_enemy_behind_lane_progress);
+    RUN_TEST(test_attack_fallback_uses_enemy_base_when_lane_end_target_dies);
     RUN_TEST(test_attack_fallback_keeps_pursuit_inside_hysteresis);
     RUN_TEST(test_attack_fallback_clears_pursuit_beyond_hysteresis);
     RUN_TEST(test_attack_fallback_clears_pursuit_when_enemy_far);

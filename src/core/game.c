@@ -182,6 +182,9 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
     if (IsKeyPressed(KEY_F6)) s_debugFlags.sustenanceNodes     = !s_debugFlags.sustenanceNodes;
     if (IsKeyPressed(KEY_F7)) s_debugFlags.sustenancePlacement  = !s_debugFlags.sustenancePlacement;
+    if (IsKeyPressed(KEY_F8)) s_debugFlags.assaultGeometry      = !s_debugFlags.assaultGeometry;
+    if (IsKeyPressed(KEY_F9)) s_debugFlags.depositSlots         = !s_debugFlags.depositSlots;
+    if (IsKeyPressed(KEY_F10)) s_debugFlags.crowdShells         = !s_debugFlags.crowdShells;
 }
 
 static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {

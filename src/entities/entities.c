@@ -31,6 +31,75 @@ static void entity_face_toward(Entity *e, const Battlefield *bf, Vector2 targetP
                                                                  e->presentationSide);
 }
 
+static bool entity_target_uses_static_assault_cloud(const Entity *target) {
+    if (!target) return false;
+    return target->type == ENTITY_BUILDING || target->navProfile == NAV_PROFILE_STATIC;
+}
+
+static void entity_clear_assault_reservation(Entity *e) {
+    if (!e) return;
+
+    e->reservedAssaultTargetId = -1;
+    e->reservedAssaultSlotIndex = -1;
+    e->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
+}
+
+static void entity_apply_enemy_pursuit(Entity *e, GameState *gs, Entity *pursuit) {
+    if (!e || !gs) return;
+
+    if (!pursuit) {
+        entity_clear_assault_reservation(e);
+        e->movementTargetId = -1;
+        e->engagementType = COMBAT_ENGAGEMENT_NONE;
+        e->lastSteerSideSign = 0;
+        if (e->unitRole == UNIT_ROLE_COMBAT) {
+            e->navProfile = NAV_PROFILE_LANE;
+        }
+        return;
+    }
+
+    bool targetChanged = (e->movementTargetId != pursuit->id);
+    e->movementTargetId = pursuit->id;
+    if (targetChanged) {
+        e->lastSteerSideSign = 0;
+    }
+    if (e->unitRole == UNIT_ROLE_COMBAT) {
+        e->navProfile = NAV_PROFILE_ASSAULT;
+    }
+
+    entity_clear_assault_reservation(e);
+    e->engagementType = COMBAT_ENGAGEMENT_PERIMETER;
+}
+
+static Entity *entity_find_enemy_base_objective(Entity *e, GameState *gs) {
+    if (!e || !gs) return NULL;
+
+    int enemyPlayerId = (e->ownerID == 0) ? 1 : 0;
+    Entity *base = gs->players[enemyPlayerId].base;
+    if (!base || !base->alive || base->markedForRemoval) return NULL;
+    if (base->ownerID == e->ownerID) return NULL;
+    return base;
+}
+
+static bool entity_lane_march_exhausted(Entity *e, Battlefield *bf) {
+    if (!e || !bf) return false;
+    if (e->lane < 0 || e->lane >= 3) return false;
+
+    if (e->waypointIndex >= LANE_WAYPOINT_COUNT) {
+        return true;
+    }
+
+    pathfind_sync_lane_progress(e, bf);
+    return e->waypointIndex >= LANE_WAYPOINT_COUNT;
+}
+
+static Entity *entity_find_base_objective_fallback(Entity *e, GameState *gs) {
+    if (!e || !gs) return NULL;
+    if (e->unitRole != UNIT_ROLE_COMBAT) return NULL;
+    if (!entity_lane_march_exhausted(e, &gs->battlefield)) return NULL;
+    return entity_find_enemy_base_objective(e, gs);
+}
+
 // Enemy-only validation for local-steering pursuit targets.
 // Healers should not pursue injured allies across the map, so movementTargetId
 // is always restricted to enemy entities even though combat_find_target() can
@@ -61,6 +130,17 @@ static Entity *entity_validate_enemy_pursuit_id(Entity *e, Battlefield *bf,
                                                 int targetId, float maxRadius) {
     if (!e || !bf || targetId < 0) return NULL;
     return entity_validate_enemy_pursuit(e, bf_find_entity(bf, targetId), bf, maxRadius);
+}
+
+static bool entity_should_seed_pursuit_for_target(Entity *e, GameState *gs,
+                                                   Entity *target) {
+    if (!e || !gs || !target) return false;
+    if (target->ownerID == e->ownerID) return false;
+    if (entity_target_uses_static_assault_cloud(target)) return true;
+    return entity_validate_enemy_pursuit(
+        e, target, &gs->battlefield,
+        PATHFIND_AGGRO_RADIUS + PATHFIND_AGGRO_HYSTERESIS
+    ) != NULL;
 }
 
 static Entity *entity_find_forward_pursuit_target(Entity *e, GameState *gs, float maxRadius) {
@@ -105,9 +185,27 @@ static Entity *entity_find_forward_pursuit_target(Entity *e, GameState *gs, floa
     return bestTarget;
 }
 
+static Entity *entity_select_post_attack_pursuit(Entity *e, GameState *gs,
+                                                 Entity *staleTarget) {
+    if (!e || !gs) return NULL;
+
+    Entity *pursuit = entity_validate_enemy_pursuit(
+        e, staleTarget, &gs->battlefield,
+        PATHFIND_AGGRO_RADIUS + PATHFIND_AGGRO_HYSTERESIS
+    );
+    if (pursuit) return pursuit;
+
+    pursuit = entity_find_forward_pursuit_target(e, gs, PATHFIND_AGGRO_RADIUS);
+    if (pursuit) return pursuit;
+
+    return entity_find_base_objective_fallback(e, gs);
+}
+
 // Refresh the current movementTargetId using the standard aggro policy:
 // keep a valid existing enemy target out to AGGRO + HYSTERESIS, otherwise
-// acquire the nearest valid forward-biased enemy within AGGRO.
+// acquire the nearest valid forward-biased enemy within AGGRO. Once the troop
+// has exhausted lane marching, fall back to the enemy base so temporary edge
+// chases cannot strand it in idle.
 static Entity *entity_refresh_enemy_pursuit(Entity *e, GameState *gs) {
     if (!e || !gs) return NULL;
 
@@ -117,18 +215,24 @@ static Entity *entity_refresh_enemy_pursuit(Entity *e, GameState *gs) {
         PATHFIND_AGGRO_RADIUS + PATHFIND_AGGRO_HYSTERESIS
     );
     if (pursuit) {
-        e->movementTargetId = pursuit->id;
+        entity_apply_enemy_pursuit(e, gs, pursuit);
         return pursuit;
     }
 
     pursuit = entity_find_forward_pursuit_target(e, gs, PATHFIND_AGGRO_RADIUS);
-    e->movementTargetId = pursuit ? pursuit->id : -1;
+    if (!pursuit) {
+        pursuit = entity_find_base_objective_fallback(e, gs);
+    }
+    entity_apply_enemy_pursuit(e, gs, pursuit);
     return pursuit;
 }
 
 static Entity *entity_retarget_or_walk(Entity *e, GameState *gs) {
     Entity *nextTarget = combat_find_target(e, gs);
     if (nextTarget && combat_in_range(e, nextTarget, gs)) {
+        if (entity_should_seed_pursuit_for_target(e, gs, nextTarget)) {
+            entity_apply_enemy_pursuit(e, gs, nextTarget);
+        }
         e->attackTargetId = nextTarget->id;
         entity_face_toward(e, &gs->battlefield, nextTarget->position);
         entity_restart_clip(e);
@@ -140,10 +244,8 @@ static Entity *entity_retarget_or_walk(Entity *e, GameState *gs) {
     // for one frame. Use the same release radius as the walking hysteresis.
     Entity *stale = (e->attackTargetId != -1)
         ? bf_find_entity(&gs->battlefield, e->attackTargetId) : NULL;
-    Entity *pursuit = entity_validate_enemy_pursuit(
-        e, stale, &gs->battlefield, PATHFIND_AGGRO_RADIUS + PATHFIND_AGGRO_HYSTERESIS
-    );
-    e->movementTargetId = pursuit ? pursuit->id : -1;
+    Entity *pursuit = entity_select_post_attack_pursuit(e, gs, stale);
+    entity_apply_enemy_pursuit(e, gs, pursuit);
     e->attackTargetId = -1;
     entity_set_state(e, ESTATE_WALKING);
     return NULL;
@@ -166,6 +268,15 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->ticksSinceProgress = 0;
     e->laneProgress = 0.0f;
     e->bodyRadius = 14.0f;  // sensible default; overridden by troop/building spawn paths
+    e->navRadius = 0.0f;    // 0 => pathfinding falls back to bodyRadius
+    e->navProfile = NAV_PROFILE_LANE; // overridden by troop_spawn / building_create_base
+    e->reservedDepositSlotIndex = -1;
+    e->reservedDepositSlotKind = DEPOSIT_SLOT_NONE;
+    e->lastSteerSideSign = 0;
+    e->engagementType = COMBAT_ENGAGEMENT_NONE;
+    e->reservedAssaultTargetId = -1;
+    e->reservedAssaultSlotIndex = -1;
+    e->reservedAssaultSlotKind = ASSAULT_SLOT_NONE;
     // TODO: spriteScale is hardcoded to 2.0f here; troop_spawn overrides it correctly, but other
     // TODO: entity types that don't override this may inadvertently inherit the wrong scale.
     e->spriteScale = 2.0f;
@@ -264,6 +375,9 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             if (e->type == ENTITY_TROOP) {
                 Entity *target = combat_find_target(e, gs);
                 if (target && combat_in_range(e, target, gs)) {
+                    if (entity_should_seed_pursuit_for_target(e, gs, target)) {
+                        entity_apply_enemy_pursuit(e, gs, target);
+                    }
                     e->attackTargetId = target->id;
                     entity_set_state(e, ESTATE_ATTACKING);
                     entity_face_toward(e, &gs->battlefield, target->position);
@@ -292,6 +406,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // attack range, transition this tick instead of lane-walking
             // one more step past it.
             if (pursuit && combat_in_range(e, pursuit, gs)) {
+                entity_apply_enemy_pursuit(e, gs, pursuit);
                 e->attackTargetId = pursuit->id;
                 entity_set_state(e, ESTATE_ATTACKING);
                 entity_face_toward(e, bf, pursuit->position);
@@ -308,6 +423,9 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // range after the walk step.
             Entity *target = combat_find_target(e, gs);
             if (target && combat_in_range(e, target, gs)) {
+                if (entity_should_seed_pursuit_for_target(e, gs, target)) {
+                    entity_apply_enemy_pursuit(e, gs, target);
+                }
                 e->attackTargetId = target->id;
                 entity_set_state(e, ESTATE_ATTACKING);
                 entity_face_toward(e, bf, target->position);
@@ -326,10 +444,8 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
             // enemy inside aggro radius, seed movementTargetId so the
             // walking probe skips the one-tick lane relapse.
             if (!target || !target->alive || !combat_in_range(e, target, gs)) {
-                Entity *pursuit = entity_validate_enemy_pursuit(
-                    e, target, &gs->battlefield, PATHFIND_AGGRO_RADIUS + PATHFIND_AGGRO_HYSTERESIS
-                );
-                e->movementTargetId = pursuit ? pursuit->id : -1;
+                Entity *pursuit = entity_select_post_attack_pursuit(e, gs, target);
+                entity_apply_enemy_pursuit(e, gs, pursuit);
                 e->attackTargetId = -1;
                 entity_set_state(e, ESTATE_WALKING);
                 break;

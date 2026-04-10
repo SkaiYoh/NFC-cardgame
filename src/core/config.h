@@ -33,6 +33,48 @@
 
 // Base geometry
 #define BASE_SPAWN_GAP 32.0f
+#define BASE_NAV_RADIUS 56.0f   // authored pathfinding footprint, independent of sprite size
+#define DEFAULT_MELEE_BODY_RADIUS         14.0f
+
+// Base deposit slot ring (farmers reserve slots instead of pathing to base center).
+// 4 primary slots on a 160-deg arc at the canonical ring radius gives
+// ~66 px linear spacing between adjacent slots (2 * 74 * sin(26.7 deg))
+// with ~36 px clearance between adjacent farmer shells -- enough elbow
+// room in the approach corridor without sprawling the ring visually.
+// Earlier iterations used 6 primary slots which had only ~11 px clearance
+// and deadlocked farmers in the approach phase.
+#define BASE_DEPOSIT_PRIMARY_SLOT_COUNT  4
+#define BASE_DEPOSIT_QUEUE_SLOT_COUNT    6
+#define BASE_DEPOSIT_PRIMARY_ARC_DEGREES 160.0f
+#define BASE_DEPOSIT_QUEUE_ARC_DEGREES   170.0f
+// Primary ring radius = BASE_NAV_RADIUS + FARMER_DEFAULT_BODY_RADIUS + SLOT_GAP.
+#define BASE_DEPOSIT_SLOT_GAP            4.0f
+// Queue ring sits this far outside the primary ring.
+#define BASE_DEPOSIT_QUEUE_RADIAL_OFFSET 40.0f
+#define FARMER_DEFAULT_BODY_RADIUS       14.0f  // used by deposit slot geometry; must match troop.c default
+#define FARMER_DEPOSIT_ARRIVAL_RADIUS    10.0f  // per-primary-slot arrival tolerance
+#define FARMER_QUEUE_WAIT_PROXIMITY      14.0f  // per-queue-slot arrival tolerance
+
+// Base assault slot ring (combat troops reserve front-arc contact points
+// instead of collapsing onto base center).
+#define BASE_ASSAULT_PRIMARY_SLOT_COUNT  8
+#define BASE_ASSAULT_QUEUE_SLOT_COUNT    8
+#define BASE_ASSAULT_PRIMARY_ARC_DEGREES 150.0f
+#define BASE_ASSAULT_QUEUE_ARC_DEGREES   170.0f
+#define BASE_ASSAULT_SLOT_GAP            2.0f
+#define BASE_ASSAULT_QUEUE_RADIAL_OFFSET 22.0f
+// Explicit melee contact geometry for static building targets. This is
+// intentionally separate from BASE_NAV_RADIUS so pathfinding footprint and
+// visual combat contact can be tuned independently.
+#define COMBAT_BUILDING_MELEE_INSET      30.0f
+#define COMBAT_MELEE_GOAL_SLACK_MAX      8.0f
+#define COMBAT_PERIMETER_TANGENT_SCALE   0.65f
+// Small deterministic tangent bias used only for the near-base soft fan.
+// Strong enough to break perfect center-stacking, but much tighter than the
+// old perimeter-slot behavior.
+#define COMBAT_STATIC_TARGET_FLOW_TANGENT_SCALE 0.70f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MIN_DEG 10.0f
+#define COMBAT_STATIC_TARGET_FLOW_ANGLE_MAX_DEG 20.0f
 
 // Lane pathfinding
 #define LANE_WAYPOINT_COUNT  8
@@ -57,6 +99,28 @@
 #define PATHFIND_LANE_DRIFT_MAX_RATIO     0.65f
 #define PATHFIND_LANE_LOOKAHEAD_DISTANCE  48.0f
 #define PATHFIND_PURSUIT_REAR_TOLERANCE   32.0f
+#define PATHFIND_ASSAULT_JAM_RELIEF_TICKS 3
+#define PATHFIND_ASSAULT_LATERAL_TOLERANCE_RATIO 1.0f
+#define PATHFIND_ALLY_SOFT_OVERLAP_RATIO  0.12f
+#define PATHFIND_ALLY_SOFT_OVERLAP_MAX    6.0f
+#define PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_RATIO 0.20f
+#define PATHFIND_ASSAULT_ALLY_SOFT_OVERLAP_MAX   8.0f
+#define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_BONUS 2.0f
+#define PATHFIND_ASSAULT_SAME_TARGET_SOFT_OVERLAP_MAX   10.0f
+// Inside the base assault cloud, overlap remains legal but is not fully free.
+// A small residual penalty encourages subtle local flow around the blob instead
+// of perfectly center-stacking from a single approach lane.
+#define PATHFIND_ASSAULT_CLOUD_SOFT_OVERLAP_SCALE 1.0f
+// Additional score for candidates that match a unit's deterministic near-base
+// flow direction. This only applies inside the static-target assault cloud.
+#define PATHFIND_ASSAULT_CLOUD_FLOW_WEIGHT 18.0f
+/// Free-mover lateral slack: fraction of one move-step by which the goal
+// distance may grow when picking a tangential candidate. At 1.5 a pure
+// perpendicular sidestep is always legal near arrival (goal-distance change
+// is bounded by step for small step/d ratios), letting farmers wiggle past
+// each other instead of stalling in packed approach corridors. Bumped from
+// 0.35 after the first playtest showed residual clustering near the ring.
+#define PATHFIND_FREE_MOVER_LATERAL_TOLERANCE_RATIO 1.5f
 
 // Entity / slot limits (shared by types.h and battlefield.h)
 #define NUM_CARD_SLOTS 3
@@ -80,7 +144,6 @@
 
 // Farmer tuning
 #define FARMER_SUSTENANCE_INTERACT_RADIUS   40.0f
-#define FARMER_BASE_DEPOSIT_RADIUS   60.0f
 #define FARMER_DEFAULT_SUSTENANCE_VALUE     1
 #define FARMER_DEFAULT_SUSTENANCE_DURABILITY 1
 

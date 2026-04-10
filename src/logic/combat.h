@@ -11,6 +11,43 @@
 // Returns true if b is within a's attack range (cross-space aware)
 bool combat_in_range(const Entity *a, const Entity *b, const GameState *gs);
 
+// Small arrival slack around a melee engagement goal. This is intentionally
+// much tighter than raw attackRange so melee units reach readable contact
+// positions before swinging.
+float combat_melee_reach_distance(const Entity *attacker, const Entity *target);
+
+// Effective combat contact radius for the target, distinct from authored
+// pathfinding nav radius. Static targets can expose a smaller melee shell than
+// their navigation footprint so attackers read as contacting the sprite.
+float combat_target_contact_radius(const Entity *target);
+
+// Center-to-center attack radius for a static target. Any attacker inside this
+// shell may apply hits to the base; there is no assault-slot gate.
+float combat_static_target_attack_radius(const Entity *attacker, const Entity *target);
+
+// Larger center-to-center occupancy shell used only by local steering. Allied
+// same-target assault units inside this radius may compress near a static
+// target without hard-blocking each other.
+float combat_static_target_occupancy_radius(const Entity *attacker, const Entity *target);
+
+// Stable center-seeking movement direction for a static target with a small
+// deterministic tangent bias. Used by local steering to create a compact
+// left/right assault fan without reintroducing slot-seeking.
+Vector2 combat_static_target_flow_direction(const Entity *attacker, const Entity *target);
+
+// Deterministic per-attacker/target fan angle used by local steering. This is
+// stable for the pair and stays within a compact readable range.
+float combat_static_target_flow_angle_degrees(const Entity *attacker, const Entity *target);
+
+// Resolve the current steering goal for attacker -> target combat. Static
+// targets use the target center plus a radius stop, so multiple same-target
+// attackers can compress into the shared assault cloud without ring-seeking.
+// Troop targets still use a dynamic perimeter point with a stable tangent
+// spread.
+bool combat_engagement_goal(const Entity *attacker, const Entity *target,
+                            const Battlefield *bf, Vector2 *outGoal,
+                            float *outStopRadius);
+
 // Find the best target for attacker among the enemy player's entities
 Entity *combat_find_target(Entity *attacker, GameState *gs);
 
