@@ -52,6 +52,7 @@ static void SetTextureFilter(Texture2D t, int f) { (void)t; (void)f; }
 #define HAND_CARD_KNIGHT_SHEET_ROWS    1
 #define HAND_CARD_KNIGHT_FRAME_COUNT   5
 #define HAND_CARD_KNIGHT_FRAME_TIME    0.10f
+#define HAND_CARD_PLAY_LIFT_PEAK_SCALE 1.06f
 
 static int g_draw_texture_calls = 0;
 static Rectangle g_drawn_dst[HAND_MAX_CARDS];
@@ -378,6 +379,50 @@ static void test_knight_frame_sequence_once_then_static(void) {
     printf("  PASS: test_knight_frame_sequence_once_then_static\n");
 }
 
+/* ---- Test: lift pulse scales up early, then returns to rest ---- */
+static void test_play_lift_scale_pulses_then_returns_to_rest(void) {
+    const float duration = hand_ui_play_animation_duration();
+    const float peakTime = duration * 0.25f;
+
+    assert(approx_eq(hand_ui_play_lift_scale(0.00f), 1.0f, 0.001f));
+    assert(approx_eq(hand_ui_play_lift_scale(peakTime), HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.001f));
+    assert(hand_ui_play_lift_scale(duration * 0.50f) < HAND_CARD_PLAY_LIFT_PEAK_SCALE);
+    assert(hand_ui_play_lift_scale(duration * 0.50f) > 1.0f);
+    assert(approx_eq(hand_ui_play_lift_scale(duration), 1.0f, 0.001f));
+    assert(approx_eq(hand_ui_play_lift_scale(duration + 0.01f), 1.0f, 0.001f));
+
+    printf("  PASS: test_play_lift_scale_pulses_then_returns_to_rest\n");
+}
+
+/* ---- Test: animated placeholder card scales up without changing center ---- */
+static void test_animating_placeholder_card_scales_around_center(void) {
+    Player p = {0};
+    Card assassin = { .card_id = "ASSASSIN_01", .type = "assassin" };
+    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    const float peakTime = hand_ui_play_animation_duration() * 0.25f;
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &assassin;
+    p.handCardAnimating[0] = true;
+    p.handCardAnimElapsed[0] = peakTime;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, placeholder, knightSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == placeholder.id);
+    assert(approx_eq(g_drawn_dst[0].x, 90.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].width,
+                     (float)HAND_CARD_WIDTH * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].height,
+                     (float)HAND_CARD_HEIGHT * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
+
+    printf("  PASS: test_animating_placeholder_card_scales_around_center\n");
+}
+
 /* ---- Test: animated knight compacts normally and selects the current sheet frame ---- */
 static void test_sparse_hand_with_knight_uses_current_sheet_frame(void) {
     Player p = {0};
@@ -411,6 +456,36 @@ static void test_sparse_hand_with_knight_uses_current_sheet_frame(void) {
     printf("  PASS: test_sparse_hand_with_knight_uses_current_sheet_frame\n");
 }
 
+/* ---- Test: animated knight scales at center while keeping current sheet frame ---- */
+static void test_animating_knight_scales_around_center(void) {
+    Player p = {0};
+    Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
+    Texture2D placeholder = { .id = 11, .width = 128, .height = 160, .mipmaps = 1, .format = 0 };
+    Texture2D knightSheet = { .id = 22, .width = 640, .height = 160, .mipmaps = 1, .format = 0 };
+    const float peakTime = hand_ui_play_animation_duration() * 0.25f;
+
+    p.side = SIDE_TOP;
+    p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &knight;
+    p.handCardAnimating[0] = true;
+    p.handCardAnimElapsed[0] = peakTime;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, placeholder, knightSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == knightSheet.id);
+    assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].x, 1830.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].width,
+                     (float)HAND_CARD_WIDTH * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].height,
+                     (float)HAND_CARD_HEIGHT * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
+
+    printf("  PASS: test_animating_knight_scales_around_center\n");
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("Running hand_ui tests...\n");
@@ -427,7 +502,10 @@ int main(void) {
     test_idle_knight_uses_uvulite_frame_one();
     test_non_knight_uses_placeholder_texture();
     test_knight_frame_sequence_once_then_static();
+    test_play_lift_scale_pulses_then_returns_to_rest();
+    test_animating_placeholder_card_scales_around_center();
     test_sparse_hand_with_knight_uses_current_sheet_frame();
-    printf("\nAll 14 tests passed!\n");
+    test_animating_knight_scales_around_center();
+    printf("\nAll 17 tests passed!\n");
     return 0;
 }

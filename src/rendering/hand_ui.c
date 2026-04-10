@@ -59,13 +59,31 @@ static bool hand_ui_is_knight_card(const Card *card) {
     return card && card->card_id && strcmp(card->card_id, "KNIGHT_01") == 0;
 }
 
-static float hand_ui_knight_animation_duration(void) {
+static float hand_ui_play_animation_duration(void) {
     return HAND_CARD_KNIGHT_FRAME_TIME * (float)(HAND_CARD_KNIGHT_FRAME_COUNT + 1);
+}
+
+static float hand_ui_play_lift_scale(float elapsedSeconds) {
+    const float duration = hand_ui_play_animation_duration();
+    const float peakScale = HAND_CARD_PLAY_LIFT_PEAK_SCALE;
+    const float baseScale = 1.0f;
+    const float peakT = 0.25f;
+
+    if (elapsedSeconds <= 0.0f || elapsedSeconds >= duration) {
+        return baseScale;
+    }
+
+    const float t = elapsedSeconds / duration;
+    if (t <= peakT) {
+        return baseScale + (peakScale - baseScale) * (t / peakT);
+    }
+
+    return peakScale - (peakScale - baseScale) * ((t - peakT) / (1.0f - peakT));
 }
 
 static int hand_ui_knight_frame_for_elapsed(float elapsedSeconds) {
     static const int sequence[] = {0, 1, 2, 3, 4, 0};
-    const float duration = hand_ui_knight_animation_duration();
+    const float duration = hand_ui_play_animation_duration();
     if (elapsedSeconds <= 0.0f || elapsedSeconds >= duration) {
         return 0;
     }
@@ -148,6 +166,9 @@ void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet)
         }
 
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
+        const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[i]);
+        const float drawWidth = (float)HAND_CARD_WIDTH * liftScale;
+        const float drawHeight = (float)HAND_CARD_HEIGHT * liftScale;
 
         // Destination rect is native-size 128x160 centered on the computed
         // center, with origin at the rect's center so rotation pivots around
@@ -157,11 +178,10 @@ void hand_ui_draw(const Player *p, Texture2D placeholder, Texture2D knightSheet)
         Rectangle dstRect = {
             center.x,
             center.y,
-            (float)HAND_CARD_WIDTH,
-            (float)HAND_CARD_HEIGHT
+            drawWidth,
+            drawHeight
         };
-        Vector2 origin = { (float)HAND_CARD_WIDTH * 0.5f,
-                           (float)HAND_CARD_HEIGHT * 0.5f };
+        Vector2 origin = { drawWidth * 0.5f, drawHeight * 0.5f };
         DrawTexturePro(texture, srcRect, dstRect, origin, rotation, WHITE);
         visibleIndex++;
     }
