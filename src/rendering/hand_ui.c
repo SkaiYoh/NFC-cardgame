@@ -16,6 +16,42 @@ static const Color HAND_BAR_BG = { 20, 20, 24, 255 };
 int player_hand_occupied_count(const Player *p);
 
 static const int HAND_CARD_ANIMATION_SEQUENCE[] = {0, 1, 2, 3, 4, 0};
+// Measured from card_sheet.png alpha bounds. These are source-space offsets
+// from the nominal 128x160 frame center to the visible sprite center.
+static const Vector2 HAND_CARD_VISUAL_CENTER_OFFSETS[HAND_CARD_SHEET_ROWS][HAND_CARD_FRAME_COUNT] = {
+    {
+        {-3.0f, -3.0f}, {-3.0f, -3.0f}, {-3.0f, -3.0f},
+        {-3.0f, -3.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
+    },
+    {
+        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
+    },
+    {
+        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
+    },
+    {
+        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
+    },
+    {
+        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
+    },
+    {
+        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
+    },
+    {
+        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f},
+        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
+    },
+    {
+        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f},
+        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
+    }
+};
 
 static Texture2D hand_ui_load_texture_checked(const char *path, int expectedWidth, int expectedHeight,
                                               const char *label) {
@@ -111,15 +147,21 @@ static int hand_ui_frame_for_elapsed(float elapsedSeconds) {
     return HAND_CARD_ANIMATION_SEQUENCE[step];
 }
 
-static Rectangle hand_ui_card_src_rect(const Card *card, float elapsedSeconds) {
-    const int frameIndex = hand_ui_frame_for_elapsed(elapsedSeconds);
-    const int rowIndex = hand_ui_sheet_row_for_card(card);
+static Rectangle hand_ui_card_src_rect(int rowIndex, int frameIndex) {
     return (Rectangle){
         (float)(frameIndex * HAND_CARD_WIDTH),
         (float)(rowIndex * HAND_CARD_HEIGHT),
         (float)HAND_CARD_WIDTH,
         (float)HAND_CARD_HEIGHT
     };
+}
+
+static Vector2 hand_ui_card_visual_center_offset(int rowIndex, int frameIndex) {
+    if (rowIndex < 0 || rowIndex >= HAND_CARD_SHEET_ROWS
+        || frameIndex < 0 || frameIndex >= HAND_CARD_FRAME_COUNT) {
+        return (Vector2){0.0f, 0.0f};
+    }
+    return HAND_CARD_VISUAL_CENTER_OFFSETS[rowIndex][frameIndex];
 }
 
 Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, int visibleIndex) {
@@ -151,6 +193,22 @@ Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, 
 // P1 sits at the bottom edge (SIDE_BOTTOM), P2 sits at the top (SIDE_TOP).
 static float hand_ui_side_rotation(BattleSide side) {
     return (side == SIDE_BOTTOM) ? 90.0f : 270.0f;
+}
+
+static Vector2 hand_ui_card_visual_draw_correction(BattleSide side, int rowIndex,
+                                                   int frameIndex, float drawScale) {
+    Vector2 sourceOffset = hand_ui_card_visual_center_offset(rowIndex, frameIndex);
+    Vector2 correction = {0.0f, 0.0f};
+
+    if (side == SIDE_BOTTOM) {
+        correction.x = sourceOffset.y * drawScale;
+        correction.y = -sourceOffset.x * drawScale;
+    } else {
+        correction.x = -sourceOffset.y * drawScale;
+        correction.y = sourceOffset.x * drawScale;
+    }
+
+    return correction;
 }
 
 void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet) {
@@ -189,9 +247,18 @@ void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet
             continue;
         }
 
-        Rectangle srcRect = hand_ui_card_src_rect(card, p->handCardAnimElapsed[i]);
+        const int rowIndex = hand_ui_sheet_row_for_card(card);
+        const int frameIndex = hand_ui_frame_for_elapsed(p->handCardAnimElapsed[i]);
+        Rectangle srcRect = hand_ui_card_src_rect(rowIndex, frameIndex);
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
         const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[i]);
+        // The measured visual-center correction is frame-specific and scales
+        // with the play-lift pulse, so cards will "step" slightly as the clip
+        // moves between frames with different opaque-bounds centers.
+        Vector2 visualCorrection =
+            hand_ui_card_visual_draw_correction(p->side, rowIndex, frameIndex, liftScale);
+        center.x += visualCorrection.x;
+        center.y += visualCorrection.y;
         const float drawWidth = (float)HAND_CARD_WIDTH * liftScale;
         const float drawHeight = (float)HAND_CARD_HEIGHT * liftScale;
 

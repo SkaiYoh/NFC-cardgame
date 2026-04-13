@@ -150,6 +150,44 @@ static float expected_center_y(Rectangle handArea, int visibleCardCount, int vis
     return startY + (float)visibleIndex * stride;
 }
 
+static Vector2 expected_visual_source_offset(int rowIndex, int frameIndex) {
+    if (frameIndex < 0 || frameIndex >= HAND_CARD_FRAME_COUNT) {
+        return (Vector2){0.0f, 0.0f};
+    }
+
+    if (rowIndex == 0) {
+        return (frameIndex <= 3)
+            ? (Vector2){-3.0f, -3.0f}
+            : (Vector2){0.0f, 0.0f};
+    }
+
+    if (rowIndex >= 1 && rowIndex <= 5) {
+        return (frameIndex <= 3)
+            ? (Vector2){-3.0f, -9.0f}
+            : (Vector2){0.0f, -6.0f};
+    }
+
+    return (Vector2){0.0f, 0.0f};
+}
+
+static Vector2 expected_visual_center(Rectangle handArea, int visibleCardCount, int visibleIndex,
+                                      BattleSide side, const Card *card,
+                                      float elapsedSeconds, float drawScale) {
+    Vector2 center = hand_ui_card_center_for_index(handArea, visibleCardCount, visibleIndex);
+    Vector2 sourceOffset = expected_visual_source_offset(hand_ui_sheet_row_for_card(card),
+                                                         hand_ui_frame_for_elapsed(elapsedSeconds));
+
+    if (side == SIDE_BOTTOM) {
+        center.x += sourceOffset.y * drawScale;
+        center.y += -sourceOffset.x * drawScale;
+    } else {
+        center.x += -sourceOffset.y * drawScale;
+        center.y += sourceOffset.x * drawScale;
+    }
+
+    return center;
+}
+
 static void reset_draw_capture(void) {
     g_draw_texture_calls = 0;
     g_draw_rectangle_calls = 0;
@@ -384,8 +422,8 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[1], 270.0f, 0.01f));
 
-    Vector2 expected0 = hand_ui_card_center_for_index(p.handArea, 2, 0);
-    Vector2 expected1 = hand_ui_card_center_for_index(p.handArea, 2, 1);
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardA, 0.0f, 1.0f);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardB, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[0].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[1].x, expected1.x, 0.01f));
@@ -556,8 +594,10 @@ static void test_animating_mapped_card_scales_around_center(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
-    assert(approx_eq(g_drawn_dst[0].x, 90.0f, 0.01f));
-    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin,
+                                              peakTime, HAND_CARD_PLAY_LIFT_PEAK_SCALE);
+    assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, expected.y, 0.01f));
     assert(approx_eq(g_drawn_dst[0].width,
                      (float)HAND_CARD_WIDTH * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
     assert(approx_eq(g_drawn_dst[0].height,
@@ -566,19 +606,48 @@ static void test_animating_mapped_card_scales_around_center(void) {
     printf("  PASS: test_animating_mapped_card_scales_around_center\n");
 }
 
+/* ---- Test: frame-4 non-row-zero cards still center by visible bounds ---- */
+static void test_frame_four_non_row_zero_card_recenters_visual_bounds(void) {
+    Player p = {0};
+    Card assassin = { .card_id = "ASSASSIN_01", .type = "assassin" };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+    const float elapsed = 0.20f;
+    const float drawScale = hand_ui_play_lift_scale(elapsed);
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &assassin;
+    p.handCardAnimating[0] = true;
+    p.handCardAnimElapsed[0] = elapsed;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, (Texture2D){0}, cardSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(approx_eq(g_drawn_src[0].x, 512.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin, elapsed, drawScale);
+    assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, expected.y, 0.01f));
+
+    printf("  PASS: test_frame_four_non_row_zero_card_recenters_visual_bounds\n");
+}
+
 /* ---- Test: sparse hand uses the current frame and each card's mapped row ---- */
 static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
     Card healer = { .card_id = "HEALER_01", .type = "healer" };
     Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+    const float knightElapsed = 0.20f;
+    const float knightScale = hand_ui_play_lift_scale(knightElapsed);
 
     p.side = SIDE_TOP;
     p.handArea = (Rectangle){ 1740.0f, 0.0f, 180.0f, 1080.0f };
     p.handCards[1] = &knight;
     p.handCards[4] = &healer;
     p.handCardAnimating[1] = true;
-    p.handCardAnimElapsed[1] = 0.20f;
+    p.handCardAnimElapsed[1] = knightElapsed;
 
     reset_draw_capture();
     hand_ui_draw(&p, (Texture2D){0}, cardSheet);
@@ -591,8 +660,9 @@ static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     assert(approx_eq(g_drawn_src[1].x, 0.0f, 0.01f));
     assert(approx_eq(g_drawn_src[1].y, 160.0f, 0.01f));
 
-    Vector2 expected0 = hand_ui_card_center_for_index(p.handArea, 2, 0);
-    Vector2 expected1 = hand_ui_card_center_for_index(p.handArea, 2, 1);
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &knight,
+                                               knightElapsed, knightScale);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &healer, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[0].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[1].x, expected1.x, 0.01f));
@@ -629,8 +699,8 @@ static void test_background_draws_before_cards_and_preserves_positions(void) {
     assert(g_drawn_texture_id[1] == cardSheet.id);
     assert(g_drawn_texture_id[2] == cardSheet.id);
 
-    Vector2 expected0 = hand_ui_card_center_for_index(p.handArea, 2, 0);
-    Vector2 expected1 = hand_ui_card_center_for_index(p.handArea, 2, 1);
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardA, 0.0f, 1.0f);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardB, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[1].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[1].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[2].x, expected1.x, 0.01f));
@@ -661,8 +731,10 @@ static void test_animating_knight_scales_around_center(void) {
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
-    assert(approx_eq(g_drawn_dst[0].x, 1830.0f, 0.01f));
-    assert(approx_eq(g_drawn_dst[0].y, 540.0f, 0.01f));
+    Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &knight,
+                                              peakTime, HAND_CARD_PLAY_LIFT_PEAK_SCALE);
+    assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
+    assert(approx_eq(g_drawn_dst[0].y, expected.y, 0.01f));
     assert(approx_eq(g_drawn_dst[0].width,
                      (float)HAND_CARD_WIDTH * HAND_CARD_PLAY_LIFT_PEAK_SCALE, 0.01f));
     assert(approx_eq(g_drawn_dst[0].height,
@@ -714,10 +786,11 @@ int main(void) {
     test_frame_sequence_once_then_static();
     test_play_lift_scale_pulses_then_returns_to_rest();
     test_animating_mapped_card_scales_around_center();
+    test_frame_four_non_row_zero_card_recenters_visual_bounds();
     test_sparse_hand_uses_current_frame_and_mapped_rows();
     test_background_draws_before_cards_and_preserves_positions();
     test_animating_knight_scales_around_center();
     test_zero_background_texture_falls_back_to_fill_and_still_draws_cards();
-    printf("\nAll 24 tests passed!\n");
+    printf("\nAll 25 tests passed!\n");
     return 0;
 }
