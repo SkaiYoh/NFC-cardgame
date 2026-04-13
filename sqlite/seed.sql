@@ -49,7 +49,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'ASSASSIN_01',
   'Assassin',
-  3,
+  4,
   'assassin',
   'A swift killer that strikes hard and fades before the enemy can react.',
   '{
@@ -135,7 +135,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'FARMER_01',
   'Farmer',
-  2,
+  3,
   'farmer',
   'A hardworking farmer who gathers sustenance from the battlefield and returns it to base.',
   '{
@@ -173,7 +173,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'HEALER_01',
   'Healer',
-  3,
+  5,
   'healer',
   'A battlefield medic that keeps allies fighting long after they should have fallen.',
   '{
@@ -217,7 +217,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'BIRD_01',
   'Bird',
-  4,
+  5,
   'bird',
   'A swift flier that harries enemies from above.',
   '{
@@ -303,7 +303,7 @@ INSERT INTO cards (card_id, name, cost, type, rules_text, data) VALUES
 (
   'KING_01',
   'King',
-  4,
+  8,
   'king',
   'Channel the crown''s wrath through your base.',
   '{
