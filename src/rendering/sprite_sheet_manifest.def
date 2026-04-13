@@ -15,7 +15,8 @@ SPRITE_SHEET(knight_walk,       false, SPRITE_TYPE_KNIGHT,  ANIM_WALK,   "src/as
 SPRITE_SHEET(knight_hurt,       false, SPRITE_TYPE_KNIGHT,  ANIM_HURT,   "src/assets/characters/Knight/hurt.png",       4, 3, true)
 SPRITE_SHEET(knight_attack,     false, SPRITE_TYPE_KNIGHT,  ANIM_ATTACK, "src/assets/characters/Knight/sword.png",      6, 3, true)
 
-SPRITE_SHEET(healer_walk,       false, SPRITE_TYPE_HEALER,  ANIM_WALK,   "src/assets/characters/Healer/walk.png",       8, 3, true)
+// Healer walk art is authored as a single side-facing row; troop facing is side-only.
+SPRITE_SHEET(healer_walk,       false, SPRITE_TYPE_HEALER,  ANIM_WALK,   "src/assets/characters/Healer/blubert_walk.png", 8, 1, true)
 SPRITE_SHEET(healer_hurt,       false, SPRITE_TYPE_HEALER,  ANIM_HURT,   "src/assets/characters/Healer/hurt.png",       4, 3, true)
 SPRITE_SHEET(healer_attack,     false, SPRITE_TYPE_HEALER,  ANIM_ATTACK, "src/assets/characters/Healer/staff.png",      10, 3, true)
 
