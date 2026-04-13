@@ -31,6 +31,7 @@ typedef struct {
     int frameWidth;
     int frameHeight;
     int frameCount; // number of columns (frames per direction)
+    int sourceRowCount; // number of authored directional rows in the source sheet
     Rectangle *visibleBounds; // frame-local opaque bounds, indexed by dir * frameCount + frame
 } SpriteSheet;
 
@@ -83,6 +84,8 @@ void sprite_atlas_init(SpriteAtlas *atlas);
 
 void sprite_atlas_free(SpriteAtlas *atlas);
 
+// Returns the authored sheet for anim, or the explicit fallback sheet when a
+// semantic clip (for example IDLE/DEATH) is not authored for this sprite set.
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,

@@ -7,78 +7,80 @@
 // Default specs for each (SpriteType, AnimationType) pair.
 // Frame counts are NOT stored here — they live in SpriteSheet and are
 // resolved at draw time. Only timing and behavior policy is here.
+// Some troop sets intentionally lack authored IDLE/RUN/DEATH sheets; the
+// renderer resolves those semantic requests onto fallback art when needed.
 //
 // SYNC REQUIREMENT: hitNormalized values are tuned per-sprite. If a sprite's
 // attack sheet changes frame count, hitNormalized may need retuning.
 static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
     // SPRITE_TYPE_KNIGHT
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
     // SPRITE_TYPE_HEALER
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.00f,  0.5f, true,  false }, // 10 frames
     },
     // SPRITE_TYPE_ASSASSIN
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
     // SPRITE_TYPE_BRUTE
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.40f,  0.6f, true,  false }, // 4 frames, hit later
     },
     // SPRITE_TYPE_FARMER
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
     // SPRITE_TYPE_BIRD
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
     // SPRITE_TYPE_FISHFING
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.50f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 0.00f, -1.0f, false, false },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
-        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true  },
+        [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f,  0.5f, true,  false }, // 6 frames
     },
     // SPRITE_TYPE_BASE (King art — real attack one-shot for play_king trigger)
     {
         [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
-        [ANIM_RUN]    = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
-        [ANIM_WALK]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 1.00f, -1.0f, false, true  },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.60f, -1.0f, true,  false },

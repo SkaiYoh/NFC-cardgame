@@ -12,13 +12,55 @@
 typedef struct {
     const char *path;
     int frameCount;
+    int sourceRowCount;
     const Rectangle *visibleBounds;
 } SpriteSheetAtlasEntry;
 
+typedef struct {
+    bool isBaseFallback;
+    SpriteType spriteType;
+    AnimationType anim;
+    const char *path;
+    int frameCount;
+    int sourceRowCount;
+    bool required;
+} SpriteSheetManifestEntry;
+
 #include "sprite_frame_atlas.h"
+
+static const SpriteSheetManifestEntry kSpriteSheetManifest[] = {
+#define SPRITE_SHEET(name, isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, required) \
+    { isBaseFallback, spriteType, anim, path, frameCount, sourceRowCount, required },
+#include "sprite_sheet_manifest.def"
+#undef SPRITE_SHEET
+};
+
+static const int kSpriteSheetManifestCount =
+    (int) (sizeof(kSpriteSheetManifest) / sizeof(kSpriteSheetManifest[0]));
 
 static int sheet_bounds_index(const SpriteSheet *sheet, SpriteDirection dir, int frame) {
     return dir * sheet->frameCount + frame;
+}
+
+static bool sheet_has_content(const SpriteSheet *sheet) {
+    if (!sheet) return false;
+    return sheet->texture.id != 0 ||
+           sheet->frameCount > 0 ||
+           sheet->frameWidth > 0 ||
+           sheet->frameHeight > 0 ||
+           sheet->visibleBounds != NULL;
+}
+
+static int sheet_source_row(const SpriteSheet *sheet, SpriteDirection dir) {
+    if (!sheet) return 0;
+
+    int sourceRowCount = (sheet->sourceRowCount > 0) ? sheet->sourceRowCount : DIR_COUNT;
+    if (sourceRowCount <= 1) return 0;
+
+    int row = (int) dir;
+    if (row < 0) return 0;
+    if (row >= sourceRowCount) return sourceRowCount - 1;
+    return row;
 }
 
 static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
@@ -53,10 +95,13 @@ static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
     };
 }
 
-static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount) {
+static const SpriteSheetAtlasEntry *find_sheet_atlas_entry(const char *path, int frameCount,
+                                                           int sourceRowCount) {
     for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
         const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
-        if (entry->frameCount == frameCount && strcmp(entry->path, path) == 0) {
+        if (entry->frameCount == frameCount &&
+            entry->sourceRowCount == sourceRowCount &&
+            strcmp(entry->path, path) == 0) {
             return entry;
         }
     }
@@ -78,7 +123,7 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
         for (int dir = 0; dir < DIR_COUNT; dir++) {
             for (int frame = 0; frame < sheet->frameCount; frame++) {
                 int frameX = frame * sheet->frameWidth;
-                int frameY = dir * sheet->frameHeight;
+                int frameY = sheet_source_row(sheet, (SpriteDirection) dir) * sheet->frameHeight;
                 sheet->visibleBounds[sheet_bounds_index(sheet, (SpriteDirection) dir, frame)] =
                     compute_visible_bounds(pixels, image.width, frameX, frameY,
                                            sheet->frameWidth, sheet->frameHeight);
@@ -91,22 +136,44 @@ static void populate_visible_bounds_from_image(SpriteSheet *sheet, const char *p
 }
 
 // Helper: load one animation sheet and compute frame dimensions
-static SpriteSheet load_sheet(const char *path, int frameCount) {
+static SpriteSheet load_sheet_with_rows(const char *path, int frameCount, int sourceRowCount,
+                                        bool required) {
     SpriteSheet s = {0};
+    const char *sheetKind = required ? "required" : "optional";
+
+    if (!path || frameCount < 1 || sourceRowCount < 1) {
+        fprintf(stderr,
+                "[sprite] Invalid %s sheet manifest entry: path=%s frames=%d rows=%d\n",
+                sheetKind, path ? path : "(null)", frameCount, sourceRowCount);
+        return s;
+    }
+
     s.texture = LoadTexture(path);
-    if (s.texture.id == 0) return s;
+    if (s.texture.id == 0) {
+        fprintf(stderr, "[sprite] Failed to load %s sheet: %s\n", sheetKind, path);
+        return s;
+    }
 
     SetTextureFilter(s.texture, TEXTURE_FILTER_POINT);
 
+    if (s.texture.width <= 0 || s.texture.height <= 0 ||
+        s.texture.width % frameCount != 0 ||
+        s.texture.height % sourceRowCount != 0) {
+        fprintf(stderr,
+                "[sprite] Invalid %s sheet dimensions for %s "
+                "(got %dx%d, frames=%d, rows=%d)\n",
+                sheetKind, path, s.texture.width, s.texture.height, frameCount, sourceRowCount);
+        UnloadTexture(s.texture);
+        return (SpriteSheet){0};
+    }
+
     s.frameCount = frameCount;
     s.frameWidth = s.texture.width / frameCount;
-    // TODO: frameHeight assumes exactly DIR_COUNT (3) rows in the sheet (SIDE, DOWN, UP).
-    // TODO: If any sprite sheet has a different row layout this silently produces wrong frame heights.
-    // TODO: Validate texture.height % DIR_COUNT == 0 and log a warning if not.
-    s.frameHeight = s.texture.height / DIR_COUNT;
+    s.sourceRowCount = sourceRowCount;
+    s.frameHeight = s.texture.height / s.sourceRowCount;
     s.visibleBounds = alloc_visible_bounds(s.frameCount);
 
-    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount);
+    const SpriteSheetAtlasEntry *entry = find_sheet_atlas_entry(path, frameCount, sourceRowCount);
     if (s.visibleBounds && entry) {
         memcpy(s.visibleBounds, entry->visibleBounds,
                (size_t) (s.frameCount * DIR_COUNT) * sizeof(Rectangle));
@@ -117,91 +184,29 @@ static SpriteSheet load_sheet(const char *path, int frameCount) {
     return s;
 }
 
-// TODO: ANIM_RUN sheets are loaded for every character type but no code ever sets ANIM_RUN on
-// TODO: an entity. These textures are loaded into VRAM and never used. Remove the load_sheet calls
-// TODO: for ANIM_RUN or add run-state transitions to entity_update / entity_set_state.
+static SpriteSheet load_sheet_manifest(const SpriteSheetManifestEntry *entry) {
+    if (!entry) return (SpriteSheet){0};
+    return load_sheet_with_rows(entry->path, entry->frameCount, entry->sourceRowCount,
+                                entry->required);
+}
+
 void sprite_atlas_init(SpriteAtlas *atlas) {
-    CharacterSprite *b = &atlas->base;
-    b->anims[ANIM_IDLE] = load_sheet(CHAR_BASE_PATH "Basic/idle.png", 4);
-    b->anims[ANIM_RUN] = load_sheet(CHAR_BASE_PATH "Basic/run.png", 8);
-    b->anims[ANIM_WALK] = load_sheet(CHAR_BASE_PATH "Basic/walk.png", 8);
-    b->anims[ANIM_HURT] = load_sheet(CHAR_BASE_PATH "Basic/hurt.png", 4);
-    b->anims[ANIM_DEATH] = load_sheet(CHAR_BASE_PATH "Basic/death.png", 6);
-    b->anims[ANIM_ATTACK] = load_sheet(CHAR_BASE_PATH "Attack/sword.png", 6);
+    if (!atlas) return;
+    memset(atlas, 0, sizeof(*atlas));
 
-    CharacterSprite *base = &atlas->types[SPRITE_TYPE_BASE];
-    base->anims[ANIM_IDLE] = load_sheet(CHAR_KING_PATH "idle.png", 4);
-    base->anims[ANIM_WALK] = load_sheet(CHAR_KING_PATH "walk.png", 8);
-    base->anims[ANIM_RUN] = load_sheet(CHAR_KING_PATH "run.png", 8);
-    base->anims[ANIM_HURT] = load_sheet(CHAR_KING_PATH "hurt.png", 4);
-    base->anims[ANIM_DEATH] = load_sheet(CHAR_KING_PATH "death.png", 6);
-    base->anims[ANIM_ATTACK] = load_sheet(CHAR_KING_PATH "sword.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_BASE] = true;
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        CharacterSprite *target = entry->isBaseFallback
+            ? &atlas->base
+            : &atlas->types[entry->spriteType];
+        target->anims[entry->anim] = load_sheet_manifest(entry);
 
-    CharacterSprite *knight = &atlas->types[SPRITE_TYPE_KNIGHT];
-    knight->anims[ANIM_IDLE] = load_sheet(CHAR_KNIGHT_PATH "idle.png", 4);
-    knight->anims[ANIM_WALK] = load_sheet(CHAR_KNIGHT_PATH "walk.png", 8);
-    knight->anims[ANIM_RUN] = load_sheet(CHAR_KNIGHT_PATH "run.png", 8);
-    knight->anims[ANIM_HURT] = load_sheet(CHAR_KNIGHT_PATH "hurt.png", 4);
-    knight->anims[ANIM_DEATH] = load_sheet(CHAR_KNIGHT_PATH "death.png", 6);
-    knight->anims[ANIM_ATTACK] = load_sheet(CHAR_KNIGHT_PATH "sword.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_KNIGHT] = true;
-
-    CharacterSprite *healer = &atlas->types[SPRITE_TYPE_HEALER];
-    healer->anims[ANIM_IDLE] = load_sheet(CHAR_HEALER_PATH "idle.png", 4);
-    healer->anims[ANIM_WALK] = load_sheet(CHAR_HEALER_PATH "walk.png", 8);
-    healer->anims[ANIM_RUN] = load_sheet(CHAR_HEALER_PATH "run.png", 8);
-    healer->anims[ANIM_HURT] = load_sheet(CHAR_HEALER_PATH "hurt.png", 4);
-    healer->anims[ANIM_DEATH] = load_sheet(CHAR_HEALER_PATH "death.png", 6);
-    healer->anims[ANIM_ATTACK] = load_sheet(CHAR_HEALER_PATH "staff.png", 10);
-    atlas->typeLoaded[SPRITE_TYPE_HEALER] = true;
-
-    CharacterSprite *assassin = &atlas->types[SPRITE_TYPE_ASSASSIN];
-    assassin->anims[ANIM_IDLE] = load_sheet(CHAR_ASSASSIN_PATH "idle.png", 4);
-    assassin->anims[ANIM_WALK] = load_sheet(CHAR_ASSASSIN_PATH "walk.png", 8);
-    assassin->anims[ANIM_RUN] = load_sheet(CHAR_ASSASSIN_PATH "run.png", 8);
-    assassin->anims[ANIM_HURT] = load_sheet(CHAR_ASSASSIN_PATH "hurt.png", 4);
-    assassin->anims[ANIM_DEATH] = load_sheet(CHAR_ASSASSIN_PATH "death.png", 6);
-    assassin->anims[ANIM_ATTACK] = load_sheet(CHAR_ASSASSIN_PATH "sword 2.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_ASSASSIN] = true;
-
-    CharacterSprite *brute = &atlas->types[SPRITE_TYPE_BRUTE];
-    brute->anims[ANIM_IDLE] = load_sheet(CHAR_BRUTE_PATH "idle.png", 4);
-    brute->anims[ANIM_WALK] = load_sheet(CHAR_BRUTE_PATH "walk.png", 8);
-    brute->anims[ANIM_RUN] = load_sheet(CHAR_BRUTE_PATH "run.png", 8);
-    brute->anims[ANIM_HURT] = load_sheet(CHAR_BRUTE_PATH "hurt.png", 4);
-    brute->anims[ANIM_DEATH] = load_sheet(CHAR_BRUTE_PATH "death.png", 6);
-    // TODO: Brute uses "block.png" (4 frames) as its ANIM_ATTACK — likely a "block" animation
-    // TODO: repurposed as attack. Verify this is intentional or replace with an actual attack sheet.
-    brute->anims[ANIM_ATTACK] = load_sheet(CHAR_BRUTE_PATH "block.png", 4);
-    atlas->typeLoaded[SPRITE_TYPE_BRUTE] = true;
-
-    CharacterSprite *farmer = &atlas->types[SPRITE_TYPE_FARMER];
-    farmer->anims[ANIM_IDLE] = load_sheet(CHAR_FARMER_PATH "idle.png", 4);
-    farmer->anims[ANIM_WALK] = load_sheet(CHAR_FARMER_PATH "walk.png", 8);
-    farmer->anims[ANIM_RUN] = load_sheet(CHAR_FARMER_PATH "run.png", 8);
-    farmer->anims[ANIM_HURT] = load_sheet(CHAR_FARMER_PATH "hurt.png", 4);
-    farmer->anims[ANIM_DEATH] = load_sheet(CHAR_FARMER_PATH "death.png", 6);
-    farmer->anims[ANIM_ATTACK] = load_sheet(CHAR_FARMER_PATH "pickaxe.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_FARMER] = true;
-
-    CharacterSprite *bird = &atlas->types[SPRITE_TYPE_BIRD];
-    bird->anims[ANIM_IDLE] = load_sheet(CHAR_BIRD_PATH "idle.png", 4);
-    bird->anims[ANIM_WALK] = load_sheet(CHAR_BIRD_PATH "walk.png", 8);
-    bird->anims[ANIM_RUN] = load_sheet(CHAR_BIRD_PATH "run.png", 8);
-    bird->anims[ANIM_HURT] = load_sheet(CHAR_BIRD_PATH "hurt.png", 4);
-    bird->anims[ANIM_DEATH] = load_sheet(CHAR_BIRD_PATH "death.png", 6);
-    bird->anims[ANIM_ATTACK] = load_sheet(CHAR_BIRD_PATH "sword.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_BIRD] = true;
-
-    CharacterSprite *fishfing = &atlas->types[SPRITE_TYPE_FISHFING];
-    fishfing->anims[ANIM_IDLE] = load_sheet(CHAR_FISHFING_PATH "idle.png", 4);
-    fishfing->anims[ANIM_WALK] = load_sheet(CHAR_FISHFING_PATH "walk.png", 8);
-    fishfing->anims[ANIM_RUN] = load_sheet(CHAR_FISHFING_PATH "run.png", 8);
-    fishfing->anims[ANIM_HURT] = load_sheet(CHAR_FISHFING_PATH "hurt.png", 4);
-    fishfing->anims[ANIM_DEATH] = load_sheet(CHAR_FISHFING_PATH "death.png", 6);
-    fishfing->anims[ANIM_ATTACK] = load_sheet(CHAR_FISHFING_PATH "sword.png", 6);
-    atlas->typeLoaded[SPRITE_TYPE_FISHFING] = true;
+        if (!entry->isBaseFallback &&
+            entry->spriteType >= 0 &&
+            entry->spriteType < SPRITE_TYPE_COUNT) {
+            atlas->typeLoaded[entry->spriteType] = true;
+        }
+    }
 }
 
 void sprite_atlas_free(SpriteAtlas *atlas) {
@@ -230,6 +235,24 @@ void sprite_atlas_free(SpriteAtlas *atlas) {
 
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {
     if (!cs || anim < 0 || anim >= ANIM_COUNT) return NULL;
+
+    static const AnimationType kFallbacks[ANIM_COUNT][3] = {
+        [ANIM_IDLE] = { ANIM_IDLE, ANIM_WALK, ANIM_RUN },
+        [ANIM_RUN] = { ANIM_RUN, ANIM_WALK, ANIM_IDLE },
+        [ANIM_WALK] = { ANIM_WALK, ANIM_RUN, ANIM_IDLE },
+        [ANIM_HURT] = { ANIM_HURT, ANIM_DEATH, ANIM_HURT },
+        [ANIM_DEATH] = { ANIM_DEATH, ANIM_HURT, ANIM_DEATH },
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_ATTACK, ANIM_ATTACK },
+    };
+
+    for (int i = 0; i < 3; i++) {
+        AnimationType candidate = kFallbacks[anim][i];
+        const SpriteSheet *sheet = &cs->anims[candidate];
+        if (sheet_has_content(sheet)) {
+            return sheet;
+        }
+    }
+
     return &cs->anims[anim];
 }
 
@@ -307,7 +330,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     int col = (int)(state->normalizedTime * (float)sheet->frameCount);
     if (col >= sheet->frameCount) col = sheet->frameCount - 1;
     if (col < 0) col = 0;
-    int row = state->dir;
+    int row = sheet_source_row(sheet, state->dir);
 
     float fw = (float) sheet->frameWidth;
     float fh = (float) sheet->frameHeight;

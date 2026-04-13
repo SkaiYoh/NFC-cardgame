@@ -19,33 +19,6 @@ static const Rectangle s_base_basic_idle_bounds[] = {
     { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
-static const Rectangle s_base_basic_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_base_basic_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 26.0f, 13.0f, 14.0f },
@@ -130,7 +103,7 @@ static const Rectangle s_base_attack_sword_bounds[] = {
     { 33.0f, 25.0f, 15.0f, 15.0f },
 };
 
-static const Rectangle s_knight_idle_bounds[] = {
+static const Rectangle s_king_idle_bounds[] = {
     { 34.0f, 25.0f, 11.0f, 15.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
     { 34.0f, 26.0f, 11.0f, 14.0f },
@@ -145,61 +118,7 @@ static const Rectangle s_knight_idle_bounds[] = {
     { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
-static const Rectangle s_knight_walk_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-};
-
-static const Rectangle s_knight_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
-static const Rectangle s_knight_hurt_bounds[] = {
+static const Rectangle s_king_hurt_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
     { 34.0f, 26.0f, 11.0f, 14.0f },
@@ -214,7 +133,7 @@ static const Rectangle s_knight_hurt_bounds[] = {
     { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
-static const Rectangle s_knight_death_bounds[] = {
+static const Rectangle s_king_death_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 12.0f, 15.0f },
     { 36.0f, 26.0f, 14.0f, 14.0f },
@@ -233,6 +152,69 @@ static const Rectangle s_knight_death_bounds[] = {
     { 31.0f, 28.0f, 17.0f, 12.0f },
     { 30.0f, 27.0f, 19.0f, 13.0f },
     { 30.0f, 28.0f, 19.0f, 12.0f },
+};
+
+static const Rectangle s_king_attack_bounds[] = {
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 29.0f, 26.0f, 28.0f, 16.0f },
+    { 32.0f, 26.0f, 25.0f, 16.0f },
+    { 34.0f, 25.0f, 22.0f, 15.0f },
+    { 34.0f, 25.0f, 16.0f, 15.0f },
+    { 28.0f, 24.0f, 18.0f, 16.0f },
+    { 22.0f, 24.0f, 24.0f, 16.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 33.0f, 25.0f, 19.0f, 17.0f },
+    { 30.0f, 25.0f, 16.0f, 16.0f },
+    { 33.0f, 25.0f, 18.0f, 16.0f },
+    { 33.0f, 25.0f, 23.0f, 16.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 26.0f, 26.0f, 20.0f, 14.0f },
+    { 33.0f, 25.0f, 15.0f, 15.0f },
+};
+
+static const Rectangle s_knight_walk_bounds[] = {
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 25.0f, 18.0f, 15.0f },
+    { 30.0f, 26.0f, 18.0f, 14.0f },
+};
+
+static const Rectangle s_knight_hurt_bounds[] = {
+    { 32.0f, 24.0f, 13.0f, 16.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
 static const Rectangle s_knight_attack_bounds[] = {
@@ -254,21 +236,6 @@ static const Rectangle s_knight_attack_bounds[] = {
     { 30.0f, 21.0f, 27.0f, 19.0f },
     { 26.0f, 26.0f, 20.0f, 14.0f },
     { 33.0f, 25.0f, 15.0f, 15.0f },
-};
-
-static const Rectangle s_healer_idle_bounds[] = {
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
 static const Rectangle s_healer_walk_bounds[] = {
@@ -298,33 +265,6 @@ static const Rectangle s_healer_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
 };
 
-static const Rectangle s_healer_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_healer_hurt_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
@@ -338,27 +278,6 @@ static const Rectangle s_healer_hurt_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
-static const Rectangle s_healer_death_bounds[] = {
-    { 32.0f, 24.0f, 13.0f, 16.0f },
-    { 34.0f, 25.0f, 12.0f, 15.0f },
-    { 36.0f, 26.0f, 14.0f, 14.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 36.0f, 29.0f, 19.0f, 11.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 33.0f, 24.0f, 13.0f, 16.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 34.0f, 17.0f, 10.0f },
-    { 30.0f, 33.0f, 19.0f, 11.0f },
-    { 30.0f, 34.0f, 19.0f, 10.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 28.0f, 17.0f, 12.0f },
-    { 30.0f, 27.0f, 19.0f, 13.0f },
-    { 30.0f, 28.0f, 19.0f, 12.0f },
 };
 
 static const Rectangle s_healer_attack_bounds[] = {
@@ -394,21 +313,6 @@ static const Rectangle s_healer_attack_bounds[] = {
     { 27.0f, 22.0f, 19.0f, 18.0f },
 };
 
-static const Rectangle s_assassin_idle_bounds[] = {
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_assassin_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 26.0f, 13.0f, 14.0f },
@@ -436,33 +340,6 @@ static const Rectangle s_assassin_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
 };
 
-static const Rectangle s_assassin_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_assassin_hurt_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
@@ -476,27 +353,6 @@ static const Rectangle s_assassin_hurt_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
-static const Rectangle s_assassin_death_bounds[] = {
-    { 32.0f, 24.0f, 13.0f, 16.0f },
-    { 34.0f, 25.0f, 12.0f, 15.0f },
-    { 36.0f, 26.0f, 14.0f, 14.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 36.0f, 29.0f, 19.0f, 11.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 33.0f, 24.0f, 13.0f, 16.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 34.0f, 17.0f, 10.0f },
-    { 30.0f, 33.0f, 19.0f, 11.0f },
-    { 30.0f, 34.0f, 19.0f, 10.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 28.0f, 17.0f, 12.0f },
-    { 30.0f, 27.0f, 19.0f, 13.0f },
-    { 30.0f, 28.0f, 19.0f, 12.0f },
 };
 
 static const Rectangle s_assassin_attack_bounds[] = {
@@ -518,21 +374,6 @@ static const Rectangle s_assassin_attack_bounds[] = {
     { 33.0f, 16.0f, 14.0f, 24.0f },
     { 33.0f, 19.0f, 13.0f, 21.0f },
     { 33.0f, 25.0f, 15.0f, 15.0f },
-};
-
-static const Rectangle s_brute_idle_bounds[] = {
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
 static const Rectangle s_brute_walk_bounds[] = {
@@ -562,33 +403,6 @@ static const Rectangle s_brute_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
 };
 
-static const Rectangle s_brute_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_brute_hurt_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
@@ -604,27 +418,6 @@ static const Rectangle s_brute_hurt_bounds[] = {
     { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
-static const Rectangle s_brute_death_bounds[] = {
-    { 32.0f, 24.0f, 13.0f, 16.0f },
-    { 34.0f, 25.0f, 12.0f, 15.0f },
-    { 36.0f, 26.0f, 14.0f, 14.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 36.0f, 29.0f, 19.0f, 11.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 33.0f, 24.0f, 13.0f, 16.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 34.0f, 17.0f, 10.0f },
-    { 30.0f, 33.0f, 19.0f, 11.0f },
-    { 30.0f, 34.0f, 19.0f, 10.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 28.0f, 17.0f, 12.0f },
-    { 30.0f, 27.0f, 19.0f, 13.0f },
-    { 30.0f, 28.0f, 19.0f, 12.0f },
-};
-
 static const Rectangle s_brute_attack_bounds[] = {
     { 35.0f, 26.0f, 15.0f, 16.0f },
     { 35.0f, 26.0f, 16.0f, 16.0f },
@@ -638,21 +431,6 @@ static const Rectangle s_brute_attack_bounds[] = {
     { 33.0f, 23.0f, 15.0f, 18.0f },
     { 33.0f, 24.0f, 15.0f, 17.0f },
     { 31.0f, 25.0f, 15.0f, 15.0f },
-};
-
-static const Rectangle s_farmer_idle_bounds[] = {
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
 static const Rectangle s_farmer_walk_bounds[] = {
@@ -682,33 +460,6 @@ static const Rectangle s_farmer_walk_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
 };
 
-static const Rectangle s_farmer_run_bounds[] = {
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 23.0f, 15.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 34.0f, 25.0f, 11.0f, 15.0f },
-    { 34.0f, 23.0f, 11.0f, 15.0f },
-    { 34.0f, 24.0f, 11.0f, 15.0f },
-    { 34.0f, 26.0f, 11.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 33.0f, 23.0f, 13.0f, 15.0f },
-    { 33.0f, 24.0f, 13.0f, 15.0f },
-    { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
 static const Rectangle s_farmer_hurt_bounds[] = {
     { 32.0f, 24.0f, 13.0f, 16.0f },
     { 34.0f, 25.0f, 11.0f, 15.0f },
@@ -722,27 +473,6 @@ static const Rectangle s_farmer_hurt_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 25.0f, 13.0f, 15.0f },
     { 33.0f, 26.0f, 13.0f, 14.0f },
-};
-
-static const Rectangle s_farmer_death_bounds[] = {
-    { 32.0f, 24.0f, 13.0f, 16.0f },
-    { 34.0f, 25.0f, 12.0f, 15.0f },
-    { 36.0f, 26.0f, 14.0f, 14.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 36.0f, 29.0f, 19.0f, 11.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 33.0f, 24.0f, 13.0f, 16.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 34.0f, 17.0f, 10.0f },
-    { 30.0f, 33.0f, 19.0f, 11.0f },
-    { 30.0f, 34.0f, 19.0f, 10.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 28.0f, 17.0f, 12.0f },
-    { 30.0f, 27.0f, 19.0f, 13.0f },
-    { 30.0f, 28.0f, 19.0f, 12.0f },
 };
 
 static const Rectangle s_farmer_attack_bounds[] = {
@@ -766,43 +496,163 @@ static const Rectangle s_farmer_attack_bounds[] = {
     { 33.0f, 25.0f, 13.0f, 16.0f },
 };
 
+static const Rectangle s_bird_walk_bounds[] = {
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+};
+
+static const Rectangle s_bird_hurt_bounds[] = {
+    { 32.0f, 24.0f, 13.0f, 16.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+};
+
+static const Rectangle s_bird_attack_bounds[] = {
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 29.0f, 26.0f, 28.0f, 16.0f },
+    { 32.0f, 26.0f, 25.0f, 16.0f },
+    { 34.0f, 25.0f, 22.0f, 15.0f },
+    { 34.0f, 25.0f, 16.0f, 15.0f },
+    { 28.0f, 24.0f, 18.0f, 16.0f },
+    { 22.0f, 24.0f, 24.0f, 16.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 33.0f, 25.0f, 19.0f, 17.0f },
+    { 30.0f, 25.0f, 16.0f, 16.0f },
+    { 33.0f, 25.0f, 18.0f, 16.0f },
+    { 33.0f, 25.0f, 23.0f, 16.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 26.0f, 26.0f, 20.0f, 14.0f },
+    { 33.0f, 25.0f, 15.0f, 15.0f },
+};
+
+static const Rectangle s_fishfing_walk_bounds[] = {
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+};
+
+static const Rectangle s_fishfing_hurt_bounds[] = {
+    { 32.0f, 24.0f, 13.0f, 16.0f },
+    { 34.0f, 25.0f, 11.0f, 15.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 34.0f, 26.0f, 11.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+    { 32.0f, 24.0f, 15.0f, 16.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 25.0f, 13.0f, 15.0f },
+    { 33.0f, 26.0f, 13.0f, 14.0f },
+};
+
+static const Rectangle s_fishfing_attack_bounds[] = {
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 25.0f, 25.0f, 19.0f, 15.0f },
+    { 29.0f, 26.0f, 28.0f, 16.0f },
+    { 32.0f, 26.0f, 25.0f, 16.0f },
+    { 34.0f, 25.0f, 22.0f, 15.0f },
+    { 34.0f, 25.0f, 16.0f, 15.0f },
+    { 28.0f, 24.0f, 18.0f, 16.0f },
+    { 22.0f, 24.0f, 24.0f, 16.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 21.0f, 26.0f, 27.0f, 26.0f },
+    { 33.0f, 25.0f, 19.0f, 17.0f },
+    { 30.0f, 25.0f, 16.0f, 16.0f },
+    { 33.0f, 25.0f, 18.0f, 16.0f },
+    { 33.0f, 25.0f, 23.0f, 16.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 30.0f, 21.0f, 27.0f, 19.0f },
+    { 26.0f, 26.0f, 20.0f, 14.0f },
+    { 33.0f, 25.0f, 15.0f, 15.0f },
+};
+
 static const SpriteSheetAtlasEntry kSpriteSheetAtlas[] = {
-    { "src/assets/characters/Base/Basic/idle.png", 4, s_base_basic_idle_bounds },
-    { "src/assets/characters/Base/Basic/run.png", 8, s_base_basic_run_bounds },
-    { "src/assets/characters/Base/Basic/walk.png", 8, s_base_basic_walk_bounds },
-    { "src/assets/characters/Base/Basic/hurt.png", 4, s_base_basic_hurt_bounds },
-    { "src/assets/characters/Base/Basic/death.png", 6, s_base_basic_death_bounds },
-    { "src/assets/characters/Base/Attack/sword.png", 6, s_base_attack_sword_bounds },
-    { "src/assets/characters/Knight/idle.png", 4, s_knight_idle_bounds },
-    { "src/assets/characters/Knight/walk.png", 8, s_knight_walk_bounds },
-    { "src/assets/characters/Knight/run.png", 8, s_knight_run_bounds },
-    { "src/assets/characters/Knight/hurt.png", 4, s_knight_hurt_bounds },
-    { "src/assets/characters/Knight/death.png", 6, s_knight_death_bounds },
-    { "src/assets/characters/Knight/sword.png", 6, s_knight_attack_bounds },
-    { "src/assets/characters/Healer/idle.png", 4, s_healer_idle_bounds },
-    { "src/assets/characters/Healer/walk.png", 8, s_healer_walk_bounds },
-    { "src/assets/characters/Healer/run.png", 8, s_healer_run_bounds },
-    { "src/assets/characters/Healer/hurt.png", 4, s_healer_hurt_bounds },
-    { "src/assets/characters/Healer/death.png", 6, s_healer_death_bounds },
-    { "src/assets/characters/Healer/staff.png", 10, s_healer_attack_bounds },
-    { "src/assets/characters/Assassin/idle.png", 4, s_assassin_idle_bounds },
-    { "src/assets/characters/Assassin/walk.png", 8, s_assassin_walk_bounds },
-    { "src/assets/characters/Assassin/run.png", 8, s_assassin_run_bounds },
-    { "src/assets/characters/Assassin/hurt.png", 4, s_assassin_hurt_bounds },
-    { "src/assets/characters/Assassin/death.png", 6, s_assassin_death_bounds },
-    { "src/assets/characters/Assassin/sword 2.png", 6, s_assassin_attack_bounds },
-    { "src/assets/characters/Brute/idle.png", 4, s_brute_idle_bounds },
-    { "src/assets/characters/Brute/walk.png", 8, s_brute_walk_bounds },
-    { "src/assets/characters/Brute/run.png", 8, s_brute_run_bounds },
-    { "src/assets/characters/Brute/hurt.png", 4, s_brute_hurt_bounds },
-    { "src/assets/characters/Brute/death.png", 6, s_brute_death_bounds },
-    { "src/assets/characters/Brute/block.png", 4, s_brute_attack_bounds },
-    { "src/assets/characters/Farmer/idle.png", 4, s_farmer_idle_bounds },
-    { "src/assets/characters/Farmer/walk.png", 8, s_farmer_walk_bounds },
-    { "src/assets/characters/Farmer/run.png", 8, s_farmer_run_bounds },
-    { "src/assets/characters/Farmer/hurt.png", 4, s_farmer_hurt_bounds },
-    { "src/assets/characters/Farmer/death.png", 6, s_farmer_death_bounds },
-    { "src/assets/characters/Farmer/pickaxe.png", 6, s_farmer_attack_bounds },
+    { "src/assets/characters/Base/Basic/idle.png", 4, 3, s_base_basic_idle_bounds },
+    { "src/assets/characters/Base/Basic/walk.png", 8, 3, s_base_basic_walk_bounds },
+    { "src/assets/characters/Base/Basic/hurt.png", 4, 3, s_base_basic_hurt_bounds },
+    { "src/assets/characters/Base/Basic/death.png", 6, 3, s_base_basic_death_bounds },
+    { "src/assets/characters/Base/Attack/sword.png", 6, 3, s_base_attack_sword_bounds },
+    { "src/assets/characters/King/idle.png", 4, 3, s_king_idle_bounds },
+    { "src/assets/characters/King/hurt.png", 4, 3, s_king_hurt_bounds },
+    { "src/assets/characters/King/death.png", 6, 3, s_king_death_bounds },
+    { "src/assets/characters/King/sword.png", 6, 3, s_king_attack_bounds },
+    { "src/assets/characters/Knight/uvulite_walk.png", 8, 1, s_knight_walk_bounds },
+    { "src/assets/characters/Knight/hurt.png", 4, 3, s_knight_hurt_bounds },
+    { "src/assets/characters/Knight/sword.png", 6, 3, s_knight_attack_bounds },
+    { "src/assets/characters/Healer/walk.png", 8, 3, s_healer_walk_bounds },
+    { "src/assets/characters/Healer/hurt.png", 4, 3, s_healer_hurt_bounds },
+    { "src/assets/characters/Healer/staff.png", 10, 3, s_healer_attack_bounds },
+    { "src/assets/characters/Assassin/walk.png", 8, 3, s_assassin_walk_bounds },
+    { "src/assets/characters/Assassin/hurt.png", 4, 3, s_assassin_hurt_bounds },
+    { "src/assets/characters/Assassin/sword 2.png", 6, 3, s_assassin_attack_bounds },
+    { "src/assets/characters/Brute/walk.png", 8, 3, s_brute_walk_bounds },
+    { "src/assets/characters/Brute/hurt.png", 4, 3, s_brute_hurt_bounds },
+    { "src/assets/characters/Brute/block.png", 4, 3, s_brute_attack_bounds },
+    { "src/assets/characters/Farmer/walk.png", 8, 3, s_farmer_walk_bounds },
+    { "src/assets/characters/Farmer/hurt.png", 4, 3, s_farmer_hurt_bounds },
+    { "src/assets/characters/Farmer/pickaxe.png", 6, 3, s_farmer_attack_bounds },
+    { "src/assets/characters/Bird/walk.png", 8, 3, s_bird_walk_bounds },
+    { "src/assets/characters/Bird/hurt.png", 4, 3, s_bird_hurt_bounds },
+    { "src/assets/characters/Bird/sword.png", 6, 3, s_bird_attack_bounds },
+    { "src/assets/characters/Fishfing/walk.png", 8, 3, s_fishfing_walk_bounds },
+    { "src/assets/characters/Fishfing/hurt.png", 4, 3, s_fishfing_hurt_bounds },
+    { "src/assets/characters/Fishfing/sword.png", 6, 3, s_fishfing_attack_bounds },
 };
 
 static const int kSpriteSheetAtlasCount = (int) (sizeof(kSpriteSheetAtlas) / sizeof(kSpriteSheetAtlas[0]));

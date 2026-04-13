@@ -259,7 +259,7 @@ static void test_spec_lookup_knight_idle(void) {
     assert(spec != NULL);
     assert(spec->anim == ANIM_IDLE);
     assert(spec->mode == ANIM_PLAY_LOOP);
-    assert(approx_eq(spec->cycleSeconds, 0.5f, 0.01f));
+    assert(approx_eq(spec->cycleSeconds, 0.0f, 0.01f));
     assert(spec->hitNormalized < 0.0f); // -1.0
 }
 
@@ -281,6 +281,7 @@ static void test_spec_lookup_brute_attack(void) {
 static void test_spec_lookup_death_oneshot(void) {
     for (int t = 0; t < SPRITE_TYPE_COUNT; t++) {
         const EntityAnimSpec *spec = anim_spec_get((SpriteType)t, ANIM_DEATH);
+        assert(spec->anim == ANIM_DEATH);
         assert(spec->mode == ANIM_PLAY_ONCE);
         assert(spec->removeOnFinish == true);
     }
@@ -294,6 +295,47 @@ static void test_spec_lookup_out_of_bounds(void) {
 
     const EntityAnimSpec *spec2 = anim_spec_get(SPRITE_TYPE_KNIGHT, (AnimationType)999);
     assert(spec2 != NULL);
+}
+
+static void test_sheet_lookup_resolves_idle_and_run_to_walk(void) {
+    CharacterSprite cs = {0};
+    cs.anims[ANIM_WALK].frameCount = 8;
+    cs.anims[ANIM_WALK].frameWidth = 79;
+    cs.anims[ANIM_WALK].frameHeight = 79;
+
+    assert(sprite_sheet_get(&cs, ANIM_IDLE) == &cs.anims[ANIM_WALK]);
+    assert(sprite_sheet_get(&cs, ANIM_RUN) == &cs.anims[ANIM_WALK]);
+}
+
+static void test_sheet_lookup_resolves_death_to_hurt(void) {
+    CharacterSprite cs = {0};
+    cs.anims[ANIM_HURT].frameCount = 4;
+    cs.anims[ANIM_HURT].frameWidth = 79;
+    cs.anims[ANIM_HURT].frameHeight = 79;
+
+    assert(sprite_sheet_get(&cs, ANIM_DEATH) == &cs.anims[ANIM_HURT]);
+}
+
+static void test_sheet_lookup_prefers_authored_clip(void) {
+    CharacterSprite cs = {0};
+    cs.anims[ANIM_IDLE].frameCount = 4;
+    cs.anims[ANIM_IDLE].frameWidth = 79;
+    cs.anims[ANIM_IDLE].frameHeight = 79;
+    cs.anims[ANIM_WALK].frameCount = 8;
+    cs.anims[ANIM_WALK].frameWidth = 79;
+    cs.anims[ANIM_WALK].frameHeight = 79;
+
+    assert(sprite_sheet_get(&cs, ANIM_IDLE) == &cs.anims[ANIM_IDLE]);
+}
+
+static void test_sheet_lookup_resolves_walk_to_idle_when_needed(void) {
+    CharacterSprite cs = {0};
+    cs.anims[ANIM_IDLE].frameCount = 4;
+    cs.anims[ANIM_IDLE].frameWidth = 79;
+    cs.anims[ANIM_IDLE].frameHeight = 79;
+
+    assert(sprite_sheet_get(&cs, ANIM_WALK) == &cs.anims[ANIM_IDLE]);
+    assert(sprite_sheet_get(&cs, ANIM_RUN) == &cs.anims[ANIM_IDLE]);
 }
 
 /* ==== Cycle calculation tests ==== */
@@ -596,6 +638,10 @@ int main(void) {
     RUN_TEST(test_spec_lookup_brute_attack);
     RUN_TEST(test_spec_lookup_death_oneshot);
     RUN_TEST(test_spec_lookup_out_of_bounds);
+    RUN_TEST(test_sheet_lookup_resolves_idle_and_run_to_walk);
+    RUN_TEST(test_sheet_lookup_resolves_death_to_hurt);
+    RUN_TEST(test_sheet_lookup_prefers_authored_clip);
+    RUN_TEST(test_sheet_lookup_resolves_walk_to_idle_when_needed);
 
     // Cycle calculations
     RUN_TEST(test_walk_cycle_calculation);
