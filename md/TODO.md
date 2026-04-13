@@ -1,91 +1,157 @@
 # NFC Card Game - TODO
 
-Last verified: 2026-04-09
+Last verified: 2026-04-13
 
-## Verification Snapshot
+## Current Baseline
 
-- `make test` passes:
-  - pathfinding: 6 tests
-  - combat: 29 tests
-  - battlefield_math: 12 tests
-  - battlefield: 12 tests
-  - animation: 28 tests
-  - debug_events: 8 tests
-  - win_condition: 15 tests
-- `make cardgame` builds successfully
-- `make preview`, `make biome_preview`, and `make card_enroll` build successfully
-- `pkg-config --modversion raylib` reports `5.5.0`
-- `Makefile` and `CMakeLists.txt` list the same main source groups by inspection
-- CMake was not build-verified in this environment because `cmake` is not installed
-
----
-
-## Implemented and Verified
-
-| Feature | Files | Notes |
-|---------|-------|-------|
-| Database connection and card loading | `src/data/db.c`, `src/data/cards.c` | Loads cards and NFC UID mappings from SQLite |
-| Card action registry and troop card dispatch | `src/logic/card_effects.c` | All current troop card types route through the play registry |
-| Troop spawn pipeline | `src/logic/card_effects.c`, `src/entities/troop.c`, `src/systems/energy.c` | Enforces energy, reads JSON stats, spawns into canonical battlefield lanes |
-| Base spawning and win latch | `src/entities/building.c`, `src/logic/win_condition.c`, `src/core/game.c` | Bases spawn at startup, lethal base hits latch `gameOver`/`winnerID`, and the match result overlay renders in-game |
-| Entity lifecycle and state machine | `src/entities/entities.c` | Create, update, draw, destroy, idle/walk/attack/dead states |
-| Canonical battlefield model | `src/core/battlefield.c`, `src/core/battlefield_math.c` | Shared world space, territory layout, spawn anchors, lane waypoints |
-| Pathfinding and lane walking | `src/logic/pathfinding.c` | Troops walk canonical waypoint paths and idle at the end |
-| Combat targeting and damage | `src/logic/combat.c` | Nearest/building targeting, range checks, hit-synced damage, base-kill latching |
-| Split-screen viewport model | `src/rendering/viewport.c`, `src/systems/player.c` | Shared battlefield rendered from both player perspectives |
-| Sprite animation loading/rendering | `src/rendering/sprite_renderer.c` | Base plus current troop sprite sets and all animation slots are loaded |
-| Card visual rendering | `src/rendering/card_renderer.c` | Atlas-driven card frame/background/icon composition |
-| Biome-aware tilemap rendering | `src/rendering/tilemap_renderer.c`, `src/rendering/biome.c` | Procedural territory tilemaps with biome definitions |
-| Core game loop and NFC event handling | `src/core/game.c`, `src/hardware/nfc_reader.c`, `src/hardware/arduino_protocol.c` | Init, update, render, cleanup, keyboard test input, NFC polling |
-| HUD basics | `src/rendering/ui.c` | Viewport labels, sustenance counters, and match-result overlays are implemented |
-| Build/test maintenance | `Makefile`, `CMakeLists.txt`, `tests/*.c` | Main source lists are aligned; unit tests cover battlefield, math, pathfinding, combat, animation, debug events, and win conditions |
-
----
-
-## Stubbed or Partial
-
-| Feature | Files | Current state |
-|---------|-------|---------------|
-| Pregame / match flow | `src/systems/match.c`, `src/systems/match.h` | Header is empty; source contains declarations/comments only |
-| Projectile system | `src/entities/projectile.c`, `src/entities/projectile.h` | Header is empty; source is comment-only |
-| Health and energy status bars | `src/rendering/status_bars.c`, `src/core/game.c`, `src/entities/building.c`, `src/systems/energy.c` | New world-anchored bars render for troops and bases, but base bars are too coarse to reliably reflect common gameplay changes, there is no fallback if the atlas fails to load, and the feature still needs a manual in-game visual smoke test |
-| Base health and hand UI | `src/rendering/status_bars.c`, `src/rendering/ui.c`, `src/rendering/card_renderer.c` | Base HP and energy now have sprite-anchored world bars, but there is still no card/hand UI and no non-text fallback HUD for those resources |
-| Specific-target combat | `src/logic/combat.c`, `src/entities/troop.c` | `targetType` is parsed, but `TARGET_SPECIFIC_TYPE` still falls back to nearest-target behavior |
-| Snow and swamp biome identity | `src/rendering/biome.c` | Both are still placeholders built from the grass tileset |
-| Spawn system ownership | `src/systems/spawn.c` | File exists, but actual spawn logic still lives in `card_effects.c` and `troop.c` |
-| Slot cooldown ownership | `src/systems/player.c`, `src/logic/card_effects.c` | Cooldowns tick down, but no play path sets them non-zero |
-
----
+- `make test` passes all 15 standalone test executables.
+- `make cardgame` is build-valid in the current environment.
+- The current character-only card set is:
+  - `knight`
+  - `healer`
+  - `assassin`
+  - `farmer`
+  - `brute`
+  - `fishfing`
+  - `bird`
+  - `king`
+- Demo hands and keyboard smoke paths already expose all 8 cards.
+- In-game hand UI exists, but some cards still reuse placeholder rows from the shared `card_sheet.png`.
+- Bases now render with King art, and `KING_01` triggers the owning base attack animation only.
+- Sustenance placement, claiming, respawn, rendering, and farmer delivery all exist and are test-covered.
+- Hurt sprite sheets are loaded for every current character/base set, but runtime damage feedback still does not use a true hurt-state path.
 
 ## Highest Priority
 
-1. Fix the new health/energy bar feature before treating it as complete.
-   - Increase base-bar granularity or change the mapping so common costs and hits visibly move the bar.
-   - Add a fallback render path when `health_energy_bars.png` fails to load.
-   - Run a manual in-game smoke test for placement, clipping, and orientation in both viewports.
+- [ ] Finalize walking and attacking art for every current character kit:
+  - Knight
+  - Healer
+  - Assassin
+  - Brute
+  - Farmer
+  - Bird
+  - Fishfing
+  - King/Base
+- [ ] Add real hurt reactions/effects for all damageable entities instead of relying mostly on hit-flash style feedback.
+- [ ] Finalize sustenance art and presentation so resources no longer read as placeholder blobs.
+- [ ] Complete unique gameplay logic for each character so the roster stops behaving like stat-only variants of the shared troop pipeline.
+- [ ] Review clearly unreferenced asset files and decide what should be kept, moved, or deleted.
 
-2. Add remaining base/hand HUD work.
-   - Decide whether card/hand rendering should live in the same HUD pass.
-   - Decide whether bases still need a screen-space fallback HUD in addition to world bars.
+## Character Backlog
 
-3. Build the projectile system if ranged attacks are part of the near-term plan.
-   - Define the header API first.
-   - Decide whether projectiles live in the battlefield entity list or in a dedicated pool.
+### Knight
 
-4. Add a real pregame/match phase.
-   - Replace the declarations in `match.c` with real state and transitions.
-   - Gate gameplay start on player readiness / deck confirmation.
+- Current state: baseline melee troop using the shared spawn/combat pipeline.
+- [ ] Finalize walk and sword-attack sheets and verify attack timing still matches the current hit marker.
+- [ ] Decide whether Knight stays the plain control/baseline melee unit or gains one small identity hook.
+- [ ] Add/verify Knight-specific hurt reaction timing and screen readability.
+- [ ] Smoke check: spawn from the demo hand and verify idle, walk, attack, hurt, death, and hand-card row all read cleanly in both viewports.
 
-5. Normalize database reset behavior.
-   - Decide whether `nfc_tags` should stay user-managed or get optional seed data.
-   - Make `init-db` recreate a clean database shape when a full reset is intended.
+### Healer
 
----
+- Current state: already has heal-first combat targeting, but presentation and gameplay identity are still thin.
+- [ ] Finalize walk and staff-attack art and verify the hit/heal moment reads correctly.
+- [ ] Decide the final healer gameplay hook beyond raw heal-on-hit stats if needed.
+- [ ] Add healer-specific hurt reaction polish so support units are visually distinct under pressure.
+- [ ] Smoke check: verify ally-heal priority, fallback-to-enemy behavior, and hurt readability in live play.
 
-## Secondary Cleanup
+### Assassin
 
-- Fix the macro redefinition warning in `src/rendering/biome.c` (`R` is defined twice).
-- Add the new status-bar files to git before handing off the feature (`src/rendering/status_bars.c`, `src/rendering/status_bars.h`).
-- Move shared spawn orchestration out of `card_effects.c` if `src/systems/spawn.c` is meant to own it.
-- Fill out the empty public headers for `match` and `projectile`.
-- Decide whether `CardSlot.activeCard` should become real state or be removed.
+- Current state: shared troop pipeline only; no unique assassin logic yet.
+- [ ] Finalize walk and attack sheets for fast melee readability.
+- [ ] Implement assassin-specific gameplay behavior instead of leaving it as a stat variant.
+- [ ] Add a hurt reaction that fits a fast/light unit without losing readability.
+- [ ] Smoke check: verify the assassin reads differently from Knight in motion, attack cadence, and damage response.
+
+### Brute
+
+- Current state: gameplay difference is mostly stats/targeting; current attack art is still wired to `block.png`.
+- [ ] Replace or validate `block.png` as the final brute attack animation.
+- [ ] Finalize brute walk/attack readability so it feels heavy and deliberate.
+- [ ] Add brute-specific logic if its final design needs more than building-priority targeting and heavier stats.
+- [ ] Add a hurt reaction that sells impact without making the unit unreadable.
+- [ ] Smoke check: verify targeting, attack timing, and animation readability against bases and troops.
+
+### Farmer
+
+- Current state: has real sustenance seek/gather/return/deposit logic, but still reuses attack clips as work/deposit animation.
+- [ ] Finalize farmer walk and attack/work art so harvesting no longer reads like placeholder combat.
+- [ ] Decide whether Farmer needs separate work/deposit animation assets or a dedicated work state.
+- [ ] Add proper hurt feedback while preserving gather/return readability.
+- [ ] Smoke check: verify full gather loop, deposit loop, death while carrying sustenance, and hurt readability during non-combat states.
+
+### Bird
+
+- Current state: shared troop pipeline only; no unique bird logic yet.
+- [ ] Finalize walk and attack art and make sure the movement language fits the intended Bird role.
+- [ ] Implement Bird-specific gameplay behavior so it is not just another melee clone.
+- [ ] Add a hurt reaction that still reads clearly at Bird scale/speed.
+- [ ] Replace temporary hand-card row reuse once final card-sheet art exists.
+- [ ] Smoke check: verify Bird feels visually and mechanically distinct from Knight/Assassin.
+
+### Fishfing
+
+- Current state: shared troop pipeline only; no unique Fishfing logic yet.
+- [ ] Finalize walk and attack art and make sure its silhouette/motion reads clearly on the battlefield.
+- [ ] Implement Fishfing-specific gameplay behavior instead of leaving it as a stat clone.
+- [ ] Add a hurt reaction that supports its final identity.
+- [ ] Replace temporary hand-card row reuse once final card-sheet art exists.
+- [ ] Smoke check: verify Fishfing reads differently from the rest of the melee roster in motion and on hit.
+
+### King / Base
+
+- Current state: bases use King art from match start; `KING_01` only triggers a base attack animation and does not spawn a unit.
+- [ ] Finalize King walk/attack/hurt presentation as the base/boss art set.
+- [ ] Decide the final gameplay effect for `KING_01` beyond animation-only feedback.
+- [ ] Add proper hurt feedback for the base itself, not just death/attack/idle transitions.
+- [ ] Replace temporary hand-card row reuse once final King hand art exists.
+- [ ] Smoke check: verify base idle, attack trigger, hurt reaction, death, and card activation all read cleanly.
+
+## Shared Combat / Presentation Work
+
+- [ ] Add a real damage-response path that can drive `ANIM_HURT` without breaking attack chaining, farmer work loops, or base attack playback.
+- [ ] Decide whether hurt feedback should be:
+  - animation-only
+  - animation + flash
+  - animation + FX burst
+- [ ] Make hurt behavior consistent across troops and bases.
+- [ ] Add focused tests or smoke coverage for “damage taken but not dead” presentation behavior.
+- [ ] Review attack marker timing after any final attack-sheet replacement so gameplay timing still matches the visuals.
+
+## Sustenance Art
+
+- Current state: sustenance gameplay logic is implemented, but rendering still uses one placeholder-style texture from `uvulite_blob.png`.
+- [ ] Replace the current sustenance blob with final production art.
+- [ ] Verify the final sustenance art reads clearly at current world scale and in both player orientations.
+- [ ] Decide whether sustenance should stay as one visual type or expand later through `sustenanceType`.
+- [ ] If multiple sustenance looks are desired later, add that only after the single final baseline asset is stable.
+- [ ] Smoke check: verify gather readability, resource visibility against each biome, and no clipping/confusion near lanes/base anchors.
+
+## Art / Asset Review
+
+- Review before delete. Do not remove files blindly just because they are currently unreferenced.
+- Candidate unreferenced assets to review:
+  - `src/assets/cards/assassin_card.png`
+  - `src/assets/cards/uvulite_card.png`
+  - `src/assets/cards/uvulite_card_sheet.png`
+  - `src/assets/characters/Base/color palette.png`
+  - `src/assets/environment/Objects/uvulite_lettering.png`
+  - `src/assets/environment/Pixel Art Top Down - Basic v1.2.3/Scene Overview.png`
+- Keep these in place unless intentionally replaced:
+  - `src/assets/cards/ModularCardsRPG/modularCardsRPGSheet.png`
+  - `src/assets/cards/card_sheet.png`
+  - `src/assets/environment/Objects/health_energy_bars.png`
+  - `src/assets/environment/Objects/uvulite_blob.png`
+  - current live character sprite sheets
+- [ ] After final art is chosen, do one cleanup pass that removes only confirmed-dead assets.
+
+## Secondary Game Gaps
+
+- [ ] Implement final character-specific gameplay for the roster that still behaves as shared-pipeline placeholders.
+- [ ] Finish `TARGET_SPECIFIC_TYPE` if any character design depends on species/class targeting.
+- [ ] Decide whether slot cooldowns should become real gameplay or be removed as dead complexity.
+- [ ] Finalize in-game hand art so Bird/Fishfing/King stop reusing placeholder shared-sheet rows.
+- [ ] Polish status-bar readability and final HUD art once the character and sustenance visuals are stable.
+- [ ] Replace placeholder biome identity if visual differentiation between territories matters for the final presentation.
+- [ ] Implement projectiles only if a finalized character design actually requires ranged entities/effects.
+- [ ] Add pregame / match-flow work only after the core character roster, art, and gameplay loop feel final.
