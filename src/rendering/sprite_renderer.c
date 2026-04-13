@@ -63,6 +63,29 @@ static int sheet_source_row(const SpriteSheet *sheet, SpriteDirection dir) {
     return row;
 }
 
+static int anim_visual_loops(const AnimState *state) {
+    if (!state || state->visualLoops < 1) return 1;
+    return state->visualLoops;
+}
+
+static int anim_frame_index(const AnimState *state, const SpriteSheet *sheet) {
+    if (!sheet || sheet->frameCount <= 0) return 0;
+
+    float normalized = state ? state->normalizedTime : 0.0f;
+    if (normalized < 0.0f) normalized = 0.0f;
+
+    if (state && state->oneShot && normalized >= 1.0f) {
+        return sheet->frameCount - 1;
+    }
+
+    float phase = normalized * (float)anim_visual_loops(state);
+    float localPhase = phase - floorf(phase);
+    int frame = (int)(localPhase * (float)sheet->frameCount);
+    if (frame >= sheet->frameCount) frame = sheet->frameCount - 1;
+    if (frame < 0) frame = 0;
+    return frame;
+}
+
 static Rectangle compute_visible_bounds(const Color *pixels, int imageWidth,
                                         int frameX, int frameY,
                                         int frameWidth, int frameHeight) {
@@ -263,9 +286,7 @@ Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *stat
     const SpriteSheet *sheet = sprite_sheet_get(cs, state->anim);
     if (!sheet) return (Rectangle){pos.x, pos.y, 0.0f, 0.0f};
 
-    int frame = (int)(state->normalizedTime * (float)sheet->frameCount);
-    if (frame >= sheet->frameCount) frame = sheet->frameCount - 1;
-    if (frame < 0) frame = 0;
+    int frame = anim_frame_index(state, sheet);
     Rectangle bounds = {0.0f, 0.0f, (float) sheet->frameWidth, (float) sheet->frameHeight};
     if (sheet->visibleBounds) {
         bounds = sheet->visibleBounds[sheet_bounds_index(sheet, state->dir, frame)];
@@ -327,9 +348,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     // TODO: This is safe but gives no indication of why nothing appears. Log a warning at load time.
     if (!sheet || sheet->texture.id == 0) return;
 
-    int col = (int)(state->normalizedTime * (float)sheet->frameCount);
-    if (col >= sheet->frameCount) col = sheet->frameCount - 1;
-    if (col < 0) col = 0;
+    int col = anim_frame_index(state, sheet);
     int row = sheet_source_row(sheet, state->dir);
 
     float fw = (float) sheet->frameWidth;
@@ -362,6 +381,11 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot) {
+    anim_state_init_with_loops(state, anim, dir, cycleDuration, oneShot, 1);
+}
+
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops) {
     state->anim = anim;
     state->dir = dir;
     state->elapsed = 0.0f;
@@ -370,6 +394,7 @@ void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
     state->oneShot = oneShot;
     state->finished = false;
     state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
 }
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {

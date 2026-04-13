@@ -163,6 +163,7 @@ typedef struct {
     bool oneShot;
     bool finished;
     bool flipH;
+    int visualLoops;
 } AnimState;
 
 static const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {

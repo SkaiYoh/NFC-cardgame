@@ -71,6 +71,7 @@ typedef struct {
     bool oneShot;
     bool finished;        // true when one-shot clip completes
     bool flipH;
+    int visualLoops;      // how many times to traverse the sheet during one cycle
 } AnimState;
 
 // Playback events returned by anim_state_update
@@ -97,6 +98,9 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot);
+
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops);
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt);
 

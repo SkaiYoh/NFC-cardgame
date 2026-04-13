@@ -88,6 +88,7 @@ typedef struct {
     bool oneShot;
     bool finished;
     bool flipH;
+    int visualLoops;
 } AnimState;
 
 typedef struct {

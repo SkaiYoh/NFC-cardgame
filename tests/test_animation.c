@@ -57,10 +57,14 @@ static Image LoadImage(const char *fileName) {
 static void UnloadImage(Image image) { (void)image; }
 static Color *LoadImageColors(Image image) { (void)image; return NULL; }
 static void UnloadImageColors(Color *colors) { (void)colors; }
+static Rectangle g_lastDrawSource;
+static int g_drawTextureProCalls = 0;
 static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
                            Vector2 origin, float rotation, Color tint) {
-    (void)texture; (void)source; (void)dest;
+    (void)texture; (void)dest;
     (void)origin; (void)rotation; (void)tint;
+    g_lastDrawSource = source;
+    g_drawTextureProCalls++;
 }
 
 /* ---- Config stub (needed by sprite_renderer.c) ---- */
@@ -92,6 +96,7 @@ typedef struct {
     float hitNormalized;
     bool lockFacing;
     bool removeOnFinish;
+    int visualLoops;
 } EntityAnimSpec;
 
 #define WALK_PIXELS_PER_CYCLE 64.0f
@@ -505,9 +510,11 @@ static void test_spec_farmer_attack_is_gather_one_shot(void) {
     assert(empty->mode == ANIM_PLAY_ONCE);
     assert(empty->cycleSeconds > 0.0f);
     assert(empty->lockFacing == true);
+    assert(empty->visualLoops == 2);
     assert(full->mode == ANIM_PLAY_ONCE);
     assert(full->cycleSeconds > 0.0f);
     assert(full->lockFacing == true);
+    assert(full->visualLoops == 2);
 }
 
 /* ==== Visible-bounds rotation tests ==== */
@@ -526,6 +533,16 @@ static CharacterSprite make_test_sprite(void) {
     for (int d = 0; d < DIR_COUNT; d++) {
         sheet->visibleBounds[d] = (Rectangle){10.0f, 8.0f, 20.0f, 40.0f};
     }
+    return cs;
+}
+
+static CharacterSprite make_draw_test_sprite(AnimationType anim, int frameCount) {
+    CharacterSprite cs = {0};
+    SpriteSheet *sheet = &cs.anims[anim];
+    sheet->texture = (Texture2D){ .id = 1, .width = frameCount * 10, .height = 10 };
+    sheet->frameWidth = 10;
+    sheet->frameHeight = 10;
+    sheet->frameCount = frameCount;
     return cs;
 }
 
@@ -642,6 +659,40 @@ static void test_bounds_flipped_plus_rotated(void) {
     free_test_sprite(&cs);
 }
 
+static void test_visual_loops_repeat_frames_within_one_shot(void) {
+    CharacterSprite cs = make_draw_test_sprite(ANIM_ATTACK, 4);
+    AnimState s;
+    anim_state_init_with_loops(&s, ANIM_ATTACK, DIR_SIDE, 0.8f, true, 2);
+
+    g_drawTextureProCalls = 0;
+
+    s.normalizedTime = 0.10f;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(g_drawTextureProCalls == 1);
+    assert(approx_eq(g_lastDrawSource.x, 0.0f, 0.001f));
+
+    s.normalizedTime = 0.15f;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(approx_eq(g_lastDrawSource.x, 10.0f, 0.001f));
+
+    s.normalizedTime = 0.40f;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(approx_eq(g_lastDrawSource.x, 30.0f, 0.001f));
+
+    s.normalizedTime = 0.55f;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(approx_eq(g_lastDrawSource.x, 0.0f, 0.001f));
+
+    s.normalizedTime = 0.65f;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(approx_eq(g_lastDrawSource.x, 10.0f, 0.001f));
+
+    s.normalizedTime = 1.0f;
+    s.finished = true;
+    sprite_draw(&cs, &s, (Vector2){0.0f, 0.0f}, 1.0f, 0.0f);
+    assert(approx_eq(g_lastDrawSource.x, 30.0f, 0.001f));
+}
+
 /* ---- Main ---- */
 int main(void) {
     printf("Running animation tests...\n");
@@ -691,6 +742,7 @@ int main(void) {
     RUN_TEST(test_bounds_180_rotation);
     RUN_TEST(test_bounds_90_rotation);
     RUN_TEST(test_bounds_flipped_plus_rotated);
+    RUN_TEST(test_visual_loops_repeat_frames_within_one_shot);
 
     printf("\nAll %d tests passed!\n", tests_passed);
     return 0;

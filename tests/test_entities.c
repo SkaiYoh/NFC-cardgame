@@ -91,6 +91,7 @@ typedef struct {
     bool oneShot;
     bool finished;
     bool flipH;
+    int visualLoops;
 } AnimState;
 
 typedef struct {
@@ -107,6 +108,7 @@ typedef struct {
     float hitNormalized;
     bool lockFacing;
     bool removeOnFinish;
+    int visualLoops;
 } EntityAnimSpec;
 
 #define WALK_PIXELS_PER_CYCLE 64.0f
@@ -371,10 +373,10 @@ Entity *bf_find_entity(const Battlefield *bf, int id) {
 
 const EntityAnimSpec *anim_spec_get(SpriteType spriteType, AnimationType animType) {
     (void)spriteType;
-    static const EntityAnimSpec s_idle = { ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false };
-    static const EntityAnimSpec s_walk = { ANIM_WALK, ANIM_PLAY_LOOP, 0.8f, -1.0f, false, false };
-    static const EntityAnimSpec s_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.0f, 0.5f, true, false };
-    static const EntityAnimSpec s_death = { ANIM_DEATH, ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true };
+    static const EntityAnimSpec s_idle = { ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1 };
+    static const EntityAnimSpec s_walk = { ANIM_WALK, ANIM_PLAY_LOOP, 0.8f, -1.0f, false, false, 1 };
+    static const EntityAnimSpec s_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.0f, 0.5f, true, false, 1 };
+    static const EntityAnimSpec s_death = { ANIM_DEATH, ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true, 1 };
 
     switch (animType) {
         case ANIM_ATTACK: return &s_attack;
@@ -399,8 +401,16 @@ float anim_attack_cycle_seconds(float attackSpeed) {
     return 1.0f / attackSpeed;
 }
 
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops);
+
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot) {
+    anim_state_init_with_loops(state, anim, dir, cycleDuration, oneShot, 1);
+}
+
+void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, bool oneShot, int visualLoops) {
     state->anim = anim;
     state->dir = dir;
     state->elapsed = 0.0f;
@@ -409,6 +419,7 @@ void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
     state->oneShot = oneShot;
     state->finished = false;
     state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
 }
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {

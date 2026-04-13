@@ -19,6 +19,7 @@ typedef struct {
     float hitNormalized;    // 0.0-1.0 for when damage fires; -1.0 if N/A
     bool lockFacing;
     bool removeOnFinish;
+    int visualLoops;        // 0/1 => one traversal per cycle; >1 repeats within the same cycle
 } EntityAnimSpec;
 
 // Walk tuning: world pixels covered per full walk cycle (8 frames * ~8px stride)

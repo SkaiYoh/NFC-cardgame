@@ -43,6 +43,7 @@ typedef struct {
     bool oneShot;
     bool finished;
     bool flipH;
+    int visualLoops;
 } AnimState;
 
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; } AnimSheet;

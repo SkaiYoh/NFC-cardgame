@@ -57,7 +57,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
-        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.80f,  0.5f, true,  false },
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.80f,  0.5f, true,  false, 2 },
     },
     // SPRITE_TYPE_FARMER_FULL (carrying Cheffy: return/queue-wait/deposit)
     {
@@ -66,7 +66,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 0.80f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
         [ANIM_DEATH]  = { ANIM_DEATH,  ANIM_PLAY_ONCE, 0.50f, -1.0f, false, true  },
-        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.80f,  0.5f, true,  false },
+        [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_PLAY_ONCE, 0.80f,  0.5f, true,  false, 2 },
     },
     // SPRITE_TYPE_BIRD
     {
@@ -99,7 +99,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
 
 // Fallback spec for out-of-bounds lookups
 static const EntityAnimSpec s_fallback = {
-    ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false
+    ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1
 };
 
 const EntityAnimSpec *anim_spec_get(SpriteType spriteType, AnimationType animType) {

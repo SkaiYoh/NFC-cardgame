@@ -325,6 +325,7 @@ void entity_set_state(Entity *e, EntityState newState) {
     const EntityAnimSpec *spec = anim_spec_get(e->spriteType, animType);
     float duration = spec->cycleSeconds;
     bool oneShot = (spec->mode == ANIM_PLAY_ONCE);
+    int visualLoops = (spec->visualLoops > 0) ? spec->visualLoops : 1;
 
     // Death is always one-shot regardless of spec (prevents fallback-spec death trap)
     if (newState == ESTATE_DEAD) oneShot = true;
@@ -336,7 +337,7 @@ void entity_set_state(Entity *e, EntityState newState) {
         duration = anim_attack_cycle_seconds(e->attackSpeed);
     }
 
-    anim_state_init(&e->anim, spec->anim, dir, duration, oneShot);
+    anim_state_init_with_loops(&e->anim, spec->anim, dir, duration, oneShot, visualLoops);
 
     // Preserve facing from previous state, unless the new clip locks facing
     // (lockFacing states have facing set explicitly by the caller after this)
