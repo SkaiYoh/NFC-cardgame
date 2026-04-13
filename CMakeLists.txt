@@ -36,7 +36,8 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
                    src/rendering/sustenance_renderer.c
-                   src/rendering/hand_ui.c)
+                   src/rendering/hand_ui.c
+                   src/rendering/uvulite_font.c)
 set(SRC_ENTITIES   src/entities/entities.c
                    src/entities/entity_animation.c
                    src/entities/troop.c
@@ -166,6 +167,11 @@ add_executable(test_hand_ui
     tests/test_hand_ui.c)
 target_link_libraries(test_hand_ui ${MATH_LIB})
 add_test(NAME hand_ui COMMAND test_hand_ui)
+
+add_executable(test_uvulite_font
+    tests/test_uvulite_font.c)
+target_link_libraries(test_uvulite_font ${MATH_LIB})
+add_test(NAME uvulite_font COMMAND test_uvulite_font)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

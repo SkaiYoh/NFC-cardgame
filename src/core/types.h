@@ -252,10 +252,14 @@ struct GameState {
     // Sustenance node texture (shared by sustenance_renderer)
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
+    Texture2D troopHealthBarTexture;
 
     // Shared hand UI textures (shared by hand_ui)
     Texture2D handBarBackgroundTexture;
     Texture2D handCardSheetTexture;
+
+    // Bitmap font sheet for HUD and match-result overlays
+    Texture2D uvuliteLetteringTexture;
 
     // Screen layout
     int halfWidth; // Half screen width for split screen

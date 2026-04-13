@@ -11,18 +11,22 @@
 #define STATUS_BAR_ROW_HEIGHT             16.0f
 #define STATUS_BAR_CELL_STRIDE           144.0f
 #define STATUS_BAR_FRAME_X_OFFSET          3.0f
-#define STATUS_BAR_TROOP_WIDTH            42.0f
+#define STATUS_BAR_TROOP_DRAW_WIDTH       42.0f
+#define STATUS_BAR_TROOP_DRAW_HEIGHT      16.0f
 #define STATUS_BAR_BASE_SRC_WIDTH        138.0f
 #define STATUS_BAR_BASE_DRAW_WIDTH       180.0f
 #define STATUS_BAR_BASE_DRAW_HEIGHT       24.0f
-#define STATUS_BAR_TROOP_FRAMES           20
 #define STATUS_BAR_BASE_FRAMES            24
-#define STATUS_BAR_TROOP_ROW_Y             0.0f
 #define STATUS_BAR_BASE_HEALTH_ROW_Y      16.0f
 #define STATUS_BAR_BASE_ENERGY_ROW_Y      32.0f
 #define STATUS_BAR_TOP_GAP                 6.0f
 #define STATUS_BAR_BASE_TOP_GAP            8.0f
 #define STATUS_BAR_BASE_STACK_GAP          6.0f
+#define TROOP_HEALTH_BAR_FRAME_X_OFFSET    1.0f
+#define TROOP_HEALTH_BAR_CELL_STRIDE      14.0f
+#define TROOP_HEALTH_BAR_SRC_WIDTH        13.0f
+#define TROOP_HEALTH_BAR_SRC_HEIGHT        5.0f
+#define TROOP_HEALTH_BAR_FRAMES             8
 
 // Label placement mode for base-bar numeric labels.
 // INSIDE  — overlay label centered on the bar (compact, may be cramped).
@@ -59,6 +63,16 @@ static Rectangle status_bar_src(int frameIndex, float rowY, float width) {
     };
 }
 
+static Rectangle troop_health_bar_src(int frameIndex) {
+    return (Rectangle){
+        TROOP_HEALTH_BAR_FRAME_X_OFFSET +
+            TROOP_HEALTH_BAR_CELL_STRIDE * (float)frameIndex,
+        0.0f,
+        TROOP_HEALTH_BAR_SRC_WIDTH,
+        TROOP_HEALTH_BAR_SRC_HEIGHT
+    };
+}
+
 static int troop_health_frame(const Entity *troop) {
     if (!troop || troop->hp <= 0 || troop->maxHP <= 0) return -1;
 
@@ -66,10 +80,9 @@ static int troop_health_frame(const Entity *troop) {
     if (troop->hp >= troop->maxHP) return -1;
 
     float ratio = clamp01((float)troop->hp / (float)troop->maxHP);
-
-    int frame = (int)floorf((1.0f - ratio) * (float)STATUS_BAR_TROOP_FRAMES);
-    if (frame < 0) frame = 0;
-    if (frame >= STATUS_BAR_TROOP_FRAMES) frame = STATUS_BAR_TROOP_FRAMES - 1;
+    int frame = (int)ceilf(ratio * (float)(TROOP_HEALTH_BAR_FRAMES - 1));
+    if (frame < 1) frame = 1;
+    if (frame >= TROOP_HEALTH_BAR_FRAMES) frame = TROOP_HEALTH_BAR_FRAMES - 1;
     return frame;
 }
 
@@ -277,14 +290,16 @@ static void draw_troop_health_bar(const GameState *gs, const Entity *troop,
     Vector2 anchor = screen_anchor_from_bounds(
         troopScreenBounds, troop, camera, headDirection
     );
-    Rectangle src = status_bar_src(frame, STATUS_BAR_TROOP_ROW_Y, STATUS_BAR_TROOP_WIDTH);
+    Rectangle src = troop_health_bar_src(frame);
     Vector2 center = {
-        anchor.x + headDirection.x * (STATUS_BAR_TOP_GAP + src.height * 0.5f),
-        anchor.y + headDirection.y * (STATUS_BAR_TOP_GAP + src.height * 0.5f)
+        anchor.x + headDirection.x * (STATUS_BAR_TOP_GAP + STATUS_BAR_TROOP_DRAW_HEIGHT * 0.5f),
+        anchor.y + headDirection.y * (STATUS_BAR_TOP_GAP + STATUS_BAR_TROOP_DRAW_HEIGHT * 0.5f)
     };
 
-    draw_status_bar(gs->statusBarsTexture, src, center,
-                    src.width, src.height, rotationDegrees);
+    draw_status_bar(gs->troopHealthBarTexture, src, center,
+                    STATUS_BAR_TROOP_DRAW_WIDTH,
+                    STATUS_BAR_TROOP_DRAW_HEIGHT,
+                    rotationDegrees);
 }
 
 // Continuous base-bar fill via a two-frame blend.
@@ -477,14 +492,15 @@ static void draw_troop_health_bar_fallback(const Entity *troop, Camera2D camera,
     Vector2 anchor = screen_anchor_from_bounds(
         troopScreenBounds, troop, camera, headDirection
     );
-    float offset = STATUS_BAR_TOP_GAP + STATUS_BAR_ROW_HEIGHT * 0.5f;
+    float offset = STATUS_BAR_TOP_GAP + STATUS_BAR_TROOP_DRAW_HEIGHT * 0.5f;
     Vector2 center = {
         anchor.x + headDirection.x * offset,
         anchor.y + headDirection.y * offset
     };
 
     float ratio = (float)troop->hp / (float)troop->maxHP;
-    draw_bar_rect_fallback(center, STATUS_BAR_TROOP_WIDTH, STATUS_BAR_ROW_HEIGHT, ratio,
+    draw_bar_rect_fallback(center, STATUS_BAR_TROOP_DRAW_WIDTH,
+                           STATUS_BAR_TROOP_DRAW_HEIGHT, ratio,
                            HP_BAR_FILL_COLOR, rotationDegrees);
 }
 
@@ -599,7 +615,24 @@ Texture2D status_bars_load(void) {
     return texture;
 }
 
+Texture2D troop_health_bar_load(void) {
+    Texture2D texture = LoadTexture(TROOP_HEALTH_BAR_PATH);
+    if (texture.id == 0) {
+        printf("[STATUS_BARS] Failed to load %s\n", TROOP_HEALTH_BAR_PATH);
+        return texture;
+    }
+
+    SetTextureFilter(texture, TEXTURE_FILTER_POINT);
+    return texture;
+}
+
 void status_bars_unload(Texture2D texture) {
+    if (texture.id > 0) {
+        UnloadTexture(texture);
+    }
+}
+
+void troop_health_bar_unload(Texture2D texture) {
     if (texture.id > 0) {
         UnloadTexture(texture);
     }
@@ -610,14 +643,15 @@ void status_bars_draw_screen(const GameState *gs, Camera2D camera,
                              float labelRotationDegrees) {
     if (!gs) return;
 
-    bool hasTexture = (gs->statusBarsTexture.id != 0);
+    bool hasBaseTexture = (gs->statusBarsTexture.id != 0);
+    bool hasTroopTexture = (gs->troopHealthBarTexture.id != 0);
     const Battlefield *bf = &gs->battlefield;
 
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
         if (!e || e->markedForRemoval || e->type != ENTITY_TROOP) continue;
         if (!e->alive || e->hp <= 0) continue;
-        if (hasTexture) {
+        if (hasTroopTexture) {
             draw_troop_health_bar(gs, e, camera, rotationDegrees);
         } else {
             draw_troop_health_bar_fallback(e, camera, rotationDegrees);
@@ -628,7 +662,7 @@ void status_bars_draw_screen(const GameState *gs, Camera2D camera,
         const Player *player = &gs->players[i];
         const Entity *base = player->base;
         if (!base || base->markedForRemoval) continue;
-        if (hasTexture) {
+        if (hasBaseTexture) {
             draw_base_bars(gs, base, player, camera,
                            rotationDegrees, labelRotationDegrees);
         } else {

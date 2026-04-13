@@ -8,7 +8,9 @@
 #include "../core/types.h"
 
 Texture2D status_bars_load(void);
+Texture2D troop_health_bar_load(void);
 void status_bars_unload(Texture2D texture);
+void troop_health_bar_unload(Texture2D texture);
 void status_bars_draw_screen(const GameState *gs, Camera2D camera,
                              float rotationDegrees,
                              float labelRotationDegrees);

@@ -121,6 +121,7 @@ static Vector2 GetWorldToScreen2D(Vector2 position, Camera2D camera) {
 
 /* ---- Config stubs ---- */
 #define STATUS_BARS_PATH "src/assets/environment/Objects/health_energy_bars.png"
+#define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
 #define PI_F 3.14159265f
 #define MAX_ENTITIES 64
 
@@ -244,6 +245,7 @@ typedef struct GameState {
     Player players[2];
     Battlefield battlefield;
     Texture2D statusBarsTexture;
+    Texture2D troopHealthBarTexture;
 } GameState;
 
 /* ---- Include production code ---- */
@@ -300,6 +302,7 @@ static Entity make_base(int hp, int maxHP) {
 static GameState make_game_state(void) {
     GameState gs = {0};
     gs.statusBarsTexture = (Texture2D){ .id = 1, .width = 2048, .height = 64, .mipmaps = 1, .format = 7 };
+    gs.troopHealthBarTexture = (Texture2D){ .id = 2, .width = 113, .height = 5, .mipmaps = 1, .format = 7 };
     gs.players[0].maxEnergy = 10.0f;
     gs.players[1].maxEnergy = 10.0f;
     return gs;
@@ -316,8 +319,8 @@ static void test_damaged_troop_frame_visible(void) {
     Entity troop = make_troop(75, 100);
     int frame = troop_health_frame(&troop);
 
-    assert(frame >= 0);
-    assert(frame < STATUS_BAR_TROOP_FRAMES);
+    assert(frame >= 1);
+    assert(frame < TROOP_HEALTH_BAR_FRAMES);
 }
 
 static void test_status_bars_draw_skips_undamaged_troops(void) {
@@ -345,9 +348,26 @@ static void test_status_bars_draws_damaged_troop_bar(void) {
 
     assert(g_drawCalls == 1);
     assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].width, 42.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].x, 85.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].width, 13.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].height, 5.0f, 0.001f));
     assert(approx_eq(g_drawDsts[0].width, 42.0f, 0.001f));
     assert(approx_eq(g_drawDsts[0].height, 16.0f, 0.001f));
+}
+
+static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
+    GameState gs = make_game_state();
+    Entity troop = make_troop(80, 100);
+    Camera2D camera = {0};
+
+    gs.troopHealthBarTexture.id = 0;
+    gs.battlefield.entities[0] = &troop;
+    gs.battlefield.entityCount = 1;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+
+    assert(g_drawCalls == 0);
+    assert(g_rectCalls == 3);
 }
 
 /* Base bars: 4500/5000 HP and 7/10 energy → blended renderer (neither
@@ -536,6 +556,7 @@ int main(void) {
     RUN_TEST(test_damaged_troop_frame_visible);
     RUN_TEST(test_status_bars_draw_skips_undamaged_troops);
     RUN_TEST(test_status_bars_draws_damaged_troop_bar);
+    RUN_TEST(test_damaged_troop_uses_fallback_when_troop_texture_missing);
     RUN_TEST(test_base_bars_continuous_blend_draws_two_halves_per_bar);
     RUN_TEST(test_base_bar_full_draws_single_full_frame);
     RUN_TEST(test_base_bar_empty_draws_single_empty_frame);

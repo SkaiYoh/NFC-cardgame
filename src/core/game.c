@@ -17,6 +17,7 @@
 #include "../rendering/status_bars.h"
 #include "../rendering/ui.h"
 #include "../rendering/hand_ui.h"
+#include "../rendering/uvulite_font.h"
 #include "../systems/player.h"
 #include "../entities/entities.h"
 #include "../entities/building.h"
@@ -102,10 +103,12 @@ bool game_init(GameState *g) {
     // Load sustenance texture
     g->sustenanceTexture = sustenance_renderer_load();
     g->statusBarsTexture = status_bars_load();
+    g->troopHealthBarTexture = troop_health_bar_load();
 
     // Load the shared hand UI textures.
     g->handBarBackgroundTexture = hand_ui_load_bar_background();
     g->handCardSheetTexture = hand_ui_load_card_sheet();
+    g->uvuliteLetteringTexture = uvulite_font_load();
 
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
@@ -365,8 +368,10 @@ void game_render(GameState *g) {
 
     // HUD — screen space, drawn after all viewports. Use battlefieldArea so
     // the counter stays on the battlefield sub-rect, not the hand bar.
-    ui_draw_sustenance_counter(&g->players[0], g->players[0].battlefieldArea, 90.0f, DARKGREEN);
-    ui_draw_sustenance_counter(&g->players[1], g->players[1].battlefieldArea, 270.0f, MAROON);
+    ui_draw_sustenance_counter(&g->players[0], g->players[0].battlefieldArea, 90.0f,
+                               g->uvuliteLetteringTexture);
+    ui_draw_sustenance_counter(&g->players[1], g->players[1].battlefieldArea, 270.0f,
+                               g->uvuliteLetteringTexture);
 
     // Hand bars — drawn last so they always cover the outer strip, regardless
     // of any earlier draws that may have bled past the battlefield scissor.
@@ -379,9 +384,9 @@ void game_render(GameState *g) {
             const bool drawnMatch = (g->winnerID < 0);
             const bool playerWon = (g->winnerID == g->players[i].id);
             const char *text = drawnMatch ? "DRAW" : (playerWon ? "VICTORY" : "DEFEAT");
-            Color color = drawnMatch ? LIGHTGRAY : (playerWon ? GOLD : RED);
             float rotation = (i == 0) ? 90.0f : 270.0f;
-            ui_draw_match_result(&g->players[i], text, rotation, color);
+            ui_draw_match_result(&g->players[i], text, rotation,
+                                 g->uvuliteLetteringTexture);
         }
     }
 
@@ -407,8 +412,10 @@ void game_cleanup(GameState *g) {
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);
     status_bars_unload(g->statusBarsTexture);
+    troop_health_bar_unload(g->troopHealthBarTexture);
     hand_ui_unload_texture(g->handBarBackgroundTexture);
     hand_ui_unload_texture(g->handCardSheetTexture);
+    uvulite_font_unload(g->uvuliteLetteringTexture);
 
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
