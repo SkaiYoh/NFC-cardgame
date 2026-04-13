@@ -9,7 +9,7 @@
 
 // Bitmap-font layout constants. Inter-glyph spacing is expressed in source
 // pixels; the bitmap renderer scales it with the glyph size.
-#define UI_SUSTENANCE_SCALE   4.0f
+#define UI_SUSTENANCE_SCALE   2.0f
 #define UI_SUSTENANCE_SPACING 1.0f
 #define UI_SUSTENANCE_PADDING 40.0f
 #define UI_MATCH_RESULT_SCALE   8.0f
