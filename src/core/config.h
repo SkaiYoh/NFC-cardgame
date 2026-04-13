@@ -15,7 +15,7 @@
 #define UNDEAD_TILESET_PATH "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Ground_rocks.png"
 #define UNDEAD_DETAIL_PATH  "src/assets/environment/Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/details.png"
 #define FX_SMOKE_PATH       "src/assets/fx/smoke.png"
-#define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars.png"
+#define STATUS_BARS_PATH    "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
 
 // Character sprites

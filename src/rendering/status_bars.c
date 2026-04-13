@@ -8,17 +8,8 @@
 #include <math.h>
 #include <stdio.h>
 
-#define STATUS_BAR_ROW_HEIGHT             16.0f
-#define STATUS_BAR_CELL_STRIDE           144.0f
-#define STATUS_BAR_FRAME_X_OFFSET          3.0f
 #define STATUS_BAR_TROOP_DRAW_WIDTH       42.0f
 #define STATUS_BAR_TROOP_DRAW_HEIGHT      16.0f
-#define STATUS_BAR_BASE_SRC_WIDTH        138.0f
-#define STATUS_BAR_BASE_DRAW_WIDTH       180.0f
-#define STATUS_BAR_BASE_DRAW_HEIGHT       24.0f
-#define STATUS_BAR_BASE_FRAMES            24
-#define STATUS_BAR_BASE_HEALTH_ROW_Y      16.0f
-#define STATUS_BAR_BASE_ENERGY_ROW_Y      32.0f
 #define STATUS_BAR_TOP_GAP                 6.0f
 #define STATUS_BAR_BASE_TOP_GAP            8.0f
 #define STATUS_BAR_BASE_STACK_GAP          6.0f
@@ -28,39 +19,55 @@
 #define TROOP_HEALTH_BAR_SRC_HEIGHT        5.0f
 #define TROOP_HEALTH_BAR_FRAMES             8
 
-// Label placement mode for base-bar numeric labels.
-// INSIDE  — overlay label centered on the bar (compact, may be cramped).
-// OUTSIDE — place label past the far end of the bar in its length direction.
-// Toggle and rebuild to compare during playtest.
-#define STATUS_BAR_LABEL_MODE_INSIDE  0
-#define STATUS_BAR_LABEL_MODE_OUTSIDE 1
-#define STATUS_BAR_LABEL_MODE         STATUS_BAR_LABEL_MODE_INSIDE
+// Base-bar atlas layout: 2x2 grid of 188x20 cells on a 376x40 sheet.
+// Column 0 = empty shell, column 1 = full shell. Row 0 = health, row 1 = energy.
+#define STATUS_BAR_BASE_CELL_WIDTH         188.0f
+#define STATUS_BAR_BASE_CELL_HEIGHT         20.0f
+#define STATUS_BAR_HEALTH_EMPTY_CELL_X       0.0f
+#define STATUS_BAR_HEALTH_EMPTY_CELL_Y       0.0f
+#define STATUS_BAR_HEALTH_FULL_CELL_X      188.0f
+#define STATUS_BAR_HEALTH_FULL_CELL_Y        0.0f
+#define STATUS_BAR_ENERGY_EMPTY_CELL_X       0.0f
+#define STATUS_BAR_ENERGY_EMPTY_CELL_Y      20.0f
+#define STATUS_BAR_ENERGY_FULL_CELL_X      188.0f
+#define STATUS_BAR_ENERGY_FULL_CELL_Y       20.0f
+
+// Health interior painted region within each 188x20 cell: x=6..183, y=6..15.
+#define STATUS_BAR_HEALTH_INTERIOR_LEFT_INSET   6.0f
+#define STATUS_BAR_HEALTH_INTERIOR_TOP_INSET    6.0f
+#define STATUS_BAR_HEALTH_INTERIOR_WIDTH      178.0f
+#define STATUS_BAR_HEALTH_INTERIOR_HEIGHT      10.0f
+
+// Energy pip geometry within each 188x20 cell: 10 pips, 16x10 each, 18px stride,
+// first pip at local (6, 4).
+#define STATUS_BAR_ENERGY_PIP_COUNT           10
+#define STATUS_BAR_ENERGY_PIP_WIDTH         16.0f
+#define STATUS_BAR_ENERGY_PIP_HEIGHT        10.0f
+#define STATUS_BAR_ENERGY_PIP_STRIDE        18.0f
+#define STATUS_BAR_ENERGY_PIP_LEFT_INSET     6.0f
+#define STATUS_BAR_ENERGY_PIP_TOP_INSET      4.0f
 
 #define STATUS_BAR_LABEL_SPACING           1.0f
 #define STATUS_BAR_LABEL_GAP               2.0f
 #define STATUS_BAR_BASE_LABEL_FONT_SIZE   16.0f
 
-// Colors matched to health_energy_bars.png by pixel sampling at load time.
-// Used directly by the fallback renderer when the atlas fails to load, and as
-// a source-of-truth for any future code that needs to match the atlas palette.
-static const Color HP_BAR_FILL_COLOR     = { 255,  10,  18, 255 };
-static const Color ENERGY_BAR_FILL_COLOR = { 255, 157,  24, 255 };
-static const Color BAR_EMPTY_COLOR       = {  53,  53,  53, 255 };
-static const Color BAR_BORDER_COLOR      = {   0,   0,   0, 255 };
+typedef enum {
+    LABEL_INSIDE,
+    LABEL_OUTSIDE
+} LabelPlacement;
+
+// Colors sampled from health_energy_bars_sheet.png. The fallback renderer is
+// intentionally flat-shaded, so these are representative shell/fill tones from
+// the authored art rather than every highlight/shadow color in the sheet.
+static const Color HP_BAR_FILL_COLOR     = { 232,  74,  66, 255 };
+static const Color ENERGY_BAR_FILL_COLOR = { 255, 197,  75, 255 };
+static const Color BAR_EMPTY_COLOR       = {  44,  27,  43, 255 };
+static const Color BAR_BORDER_COLOR      = {  34,  12,  33, 255 };
 
 static float clamp01(float value) {
     if (value < 0.0f) return 0.0f;
     if (value > 1.0f) return 1.0f;
     return value;
-}
-
-static Rectangle status_bar_src(int frameIndex, float rowY, float width) {
-    return (Rectangle){
-        STATUS_BAR_FRAME_X_OFFSET + STATUS_BAR_CELL_STRIDE * (float)frameIndex,
-        rowY,
-        width,
-        STATUS_BAR_ROW_HEIGHT
-    };
 }
 
 static Rectangle troop_health_bar_src(int frameIndex) {
@@ -302,91 +309,123 @@ static void draw_troop_health_bar(const GameState *gs, const Entity *troop,
                     rotationDegrees);
 }
 
-// Continuous base-bar fill via a two-frame blend.
-//
-// The atlas was pre-built by rendering 24 discrete cut points over a fill
-// interior that is flat-shaded in the full frame (frame 0) and flat gray in
-// the empty frame (frame N-1). The top/bottom shell rows and the left/right
-// border columns are provably identical across every frame (verified by
-// pixel sampling at planning time), so cutting frame 0 on the left and
-// frame N-1 on the right at any integer pixel boundary produces the same
-// visual output as a hypothetical frame with that exact fill level.
-//
-// Granularity is 1 atlas pixel: for a 138-pixel-wide bar that is 139
-// levels (vs the previous 24), which is effectively continuous for this
-// bar size.
-static void draw_base_bar_continuous(Texture2D texture, float rowY, float ratio,
-                                     Vector2 screenCenter, float rotationDegrees) {
+// Draw a sub-rect overlay at a local (dx, dy) offset from a rotated bar center.
+// Local +X is the bar's length axis; +Y is its thickness axis, both measured
+// in bar-local (pre-rotation) pixels.
+static void draw_base_overlay(Texture2D texture, Rectangle src,
+                              Vector2 screenCenter, float dx, float dy,
+                              float dstWidth, float dstHeight,
+                              float rotationDegrees) {
     if (texture.id == 0) return;
 
-    float clamped = clamp01(ratio);
-    int fillPixels = (int)roundf(clamped * STATUS_BAR_BASE_SRC_WIDTH);
-    if (fillPixels < 0) fillPixels = 0;
-    if (fillPixels > (int)STATUS_BAR_BASE_SRC_WIDTH) fillPixels = (int)STATUS_BAR_BASE_SRC_WIDTH;
-
-    // Degenerate: single frame (avoids zero-width DrawTexturePro calls).
-    if (fillPixels == 0) {
-        Rectangle src = status_bar_src(STATUS_BAR_BASE_FRAMES - 1, rowY,
-                                       STATUS_BAR_BASE_SRC_WIDTH);
-        draw_status_bar(texture, src, screenCenter,
-                        STATUS_BAR_BASE_DRAW_WIDTH, STATUS_BAR_BASE_DRAW_HEIGHT,
-                        rotationDegrees);
-        return;
-    }
-    if (fillPixels == (int)STATUS_BAR_BASE_SRC_WIDTH) {
-        Rectangle src = status_bar_src(0, rowY, STATUS_BAR_BASE_SRC_WIDTH);
-        draw_status_bar(texture, src, screenCenter,
-                        STATUS_BAR_BASE_DRAW_WIDTH, STATUS_BAR_BASE_DRAW_HEIGHT,
-                        rotationDegrees);
-        return;
-    }
-
-    // Blended case: draw two halves, each rotating around its own center.
-    // Offsets are along the bar's local +X axis, which in screen space is
-    // (cos(rot), sin(rot)).
     float rad = rotationDegrees * (PI_F / 180.0f);
     float cosA = cosf(rad);
     float sinA = sinf(rad);
 
-    float fillRatio = (float)fillPixels / STATUS_BAR_BASE_SRC_WIDTH;
-    float leftWidth = STATUS_BAR_BASE_DRAW_WIDTH * fillRatio;
-    float rightWidth = STATUS_BAR_BASE_DRAW_WIDTH - leftWidth;
-    float leftOffset  = (leftWidth - STATUS_BAR_BASE_DRAW_WIDTH) * 0.5f;
-    float rightOffset = leftWidth * 0.5f;
+    Rectangle dst = {
+        screenCenter.x + dx * cosA - dy * sinA,
+        screenCenter.y + dx * sinA + dy * cosA,
+        dstWidth,
+        dstHeight
+    };
+    Vector2 origin = { dstWidth * 0.5f, dstHeight * 0.5f };
+    DrawTexturePro(texture, src, dst, origin, rotationDegrees, WHITE);
+}
 
-    // Left half: frame 0, source columns [0, fillPixels).
-    Rectangle leftSrc = {
-        STATUS_BAR_FRAME_X_OFFSET,
-        rowY,
+// Quantize a continuous energy value into whole-pip units. Partial-pip fills
+// are out of scope; energy displays as 0..10 discrete segments matching the
+// authored pip geometry on the atlas.
+static int base_energy_filled_pips(float energy) {
+    if (energy <= 0.0f) return 0;
+    int pips = (int)floorf(energy);
+    if (pips < 0) pips = 0;
+    if (pips > STATUS_BAR_ENERGY_PIP_COUNT) pips = STATUS_BAR_ENERGY_PIP_COUNT;
+    return pips;
+}
+
+// Health bar: empty shell (whole 188x20 cell) + continuous fill overlay sourced
+// from the full-shell interior band. Granularity is 1 atlas pixel across 178
+// fillable columns.
+static void draw_base_health_continuous(Texture2D texture, float ratio,
+                                        Vector2 screenCenter, float rotationDegrees) {
+    if (texture.id == 0) return;
+
+    Rectangle shellSrc = {
+        STATUS_BAR_HEALTH_EMPTY_CELL_X, STATUS_BAR_HEALTH_EMPTY_CELL_Y,
+        STATUS_BAR_BASE_CELL_WIDTH, STATUS_BAR_BASE_CELL_HEIGHT
+    };
+    draw_status_bar(texture, shellSrc, screenCenter,
+                    STATUS_BAR_BASE_CELL_WIDTH, STATUS_BAR_BASE_CELL_HEIGHT,
+                    rotationDegrees);
+
+    float clamped = clamp01(ratio);
+    int fillPixels = (int)roundf(clamped * STATUS_BAR_HEALTH_INTERIOR_WIDTH);
+    if (fillPixels <= 0) return;
+    if (fillPixels > (int)STATUS_BAR_HEALTH_INTERIOR_WIDTH) {
+        fillPixels = (int)STATUS_BAR_HEALTH_INTERIOR_WIDTH;
+    }
+
+    Rectangle fillSrc = {
+        STATUS_BAR_HEALTH_FULL_CELL_X + STATUS_BAR_HEALTH_INTERIOR_LEFT_INSET,
+        STATUS_BAR_HEALTH_FULL_CELL_Y + STATUS_BAR_HEALTH_INTERIOR_TOP_INSET,
         (float)fillPixels,
-        STATUS_BAR_ROW_HEIGHT
+        STATUS_BAR_HEALTH_INTERIOR_HEIGHT
     };
-    Rectangle leftDst = {
-        screenCenter.x + cosA * leftOffset,
-        screenCenter.y + sinA * leftOffset,
-        leftWidth,
-        STATUS_BAR_BASE_DRAW_HEIGHT
-    };
-    Vector2 leftOrigin = { leftWidth * 0.5f, STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f };
-    DrawTexturePro(texture, leftSrc, leftDst, leftOrigin, rotationDegrees, WHITE);
+    // Interior left edge sits at cell_center.x - 88; its center is offset by
+    // half the filled width. Interior center Y is 11 vs cell center 10 → +1.
+    float dx = -(STATUS_BAR_BASE_CELL_WIDTH * 0.5f
+                 - STATUS_BAR_HEALTH_INTERIOR_LEFT_INSET)
+               + (float)fillPixels * 0.5f;
+    float dy = STATUS_BAR_HEALTH_INTERIOR_TOP_INSET
+               + STATUS_BAR_HEALTH_INTERIOR_HEIGHT * 0.5f
+               - STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
+    draw_base_overlay(texture, fillSrc, screenCenter, dx, dy,
+                      (float)fillPixels, STATUS_BAR_HEALTH_INTERIOR_HEIGHT,
+                      rotationDegrees);
+}
 
-    // Right half: frame N-1, source columns [fillPixels, BASE_WIDTH).
-    Rectangle rightSrc = {
-        STATUS_BAR_FRAME_X_OFFSET +
-            STATUS_BAR_CELL_STRIDE * (float)(STATUS_BAR_BASE_FRAMES - 1) +
-            (float)fillPixels,
-        rowY,
-        STATUS_BAR_BASE_SRC_WIDTH - (float)fillPixels,
-        STATUS_BAR_ROW_HEIGHT
+// Energy bar: empty shell (whole 188x20 cell) + one full-pip overlay per filled
+// unit, sampled from the authored pip geometry so the 9 separators are
+// preserved and never painted over.
+static void draw_base_energy_pips(Texture2D texture, float energy,
+                                  Vector2 screenCenter, float rotationDegrees,
+                                  bool reverseFillDirection) {
+    if (texture.id == 0) return;
+
+    Rectangle shellSrc = {
+        STATUS_BAR_ENERGY_EMPTY_CELL_X, STATUS_BAR_ENERGY_EMPTY_CELL_Y,
+        STATUS_BAR_BASE_CELL_WIDTH, STATUS_BAR_BASE_CELL_HEIGHT
     };
-    Rectangle rightDst = {
-        screenCenter.x + cosA * rightOffset,
-        screenCenter.y + sinA * rightOffset,
-        rightWidth,
-        STATUS_BAR_BASE_DRAW_HEIGHT
-    };
-    Vector2 rightOrigin = { rightWidth * 0.5f, STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f };
-    DrawTexturePro(texture, rightSrc, rightDst, rightOrigin, rotationDegrees, WHITE);
+    draw_status_bar(texture, shellSrc, screenCenter,
+                    STATUS_BAR_BASE_CELL_WIDTH, STATUS_BAR_BASE_CELL_HEIGHT,
+                    rotationDegrees);
+
+    int filled = base_energy_filled_pips(energy);
+    // Pip i center X in cell coords: 6 + 18*i + 8 = 14 + 18i.
+    // Relative to cell center (94, 10): dx = -80 + 18i, dy = -1.
+    float dyPip = STATUS_BAR_ENERGY_PIP_TOP_INSET
+                  + STATUS_BAR_ENERGY_PIP_HEIGHT * 0.5f
+                  - STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
+    for (int i = 0; i < filled; i++) {
+        int slotIndex = reverseFillDirection
+            ? (STATUS_BAR_ENERGY_PIP_COUNT - 1 - i)
+            : i;
+        Rectangle pipSrc = {
+            STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_LEFT_INSET
+                + STATUS_BAR_ENERGY_PIP_STRIDE * (float)slotIndex,
+            STATUS_BAR_ENERGY_FULL_CELL_Y + STATUS_BAR_ENERGY_PIP_TOP_INSET,
+            STATUS_BAR_ENERGY_PIP_WIDTH,
+            STATUS_BAR_ENERGY_PIP_HEIGHT
+        };
+        float dx = -(STATUS_BAR_BASE_CELL_WIDTH * 0.5f
+                     - STATUS_BAR_ENERGY_PIP_LEFT_INSET)
+                   + STATUS_BAR_ENERGY_PIP_WIDTH * 0.5f
+                   + STATUS_BAR_ENERGY_PIP_STRIDE * (float)slotIndex;
+        draw_base_overlay(texture, pipSrc, screenCenter, dx, dyPip,
+                          STATUS_BAR_ENERGY_PIP_WIDTH,
+                          STATUS_BAR_ENERGY_PIP_HEIGHT,
+                          rotationDegrees);
+    }
 }
 
 // Draws a numeric label anchored to a bar center, rotated to match the bar.
@@ -395,36 +434,39 @@ static void draw_base_bar_continuous(Texture2D texture, float rowY, float ratio,
 // region of the bar.
 static void draw_bar_numeric_label(const char *text, Vector2 barCenter,
                                    float barWidth, float fontSize,
-                                   float rotationDegrees) {
+                                   float textRotationDegrees,
+                                   float axisRotationDegrees,
+                                   LabelPlacement placement,
+                                   float outsideDirectionSign) {
     if (!text || text[0] == '\0') return;
-    (void)barWidth;
 
     Font font = GetFontDefault();
     Vector2 textSize = MeasureTextEx(font, text, fontSize, STATUS_BAR_LABEL_SPACING);
 
     Vector2 center = barCenter;
 
-#if STATUS_BAR_LABEL_MODE == STATUS_BAR_LABEL_MODE_OUTSIDE
-    // Push the label past the far end of the bar in its length direction.
-    // In the rotated player view this reads as "to the side of" the bar.
-    float rad = rotationDegrees * (PI_F / 180.0f);
-    float cosA = cosf(rad);
-    float sinA = sinf(rad);
-    float outsideOffset =
-        barWidth * 0.5f + STATUS_BAR_LABEL_GAP + textSize.x * 0.5f;
-    center.x += cosA * outsideOffset;
-    center.y += sinA * outsideOffset;
-#endif
+    if (placement == LABEL_OUTSIDE) {
+        // Push the label past the far end of the bar in its length direction.
+        // Keep the offset aligned to the bar's axis, even when the glyphs use a
+        // different rotation (P2 labels are rotated 270 while bars are drawn 90).
+        float rad = axisRotationDegrees * (PI_F / 180.0f);
+        float cosA = cosf(rad);
+        float sinA = sinf(rad);
+        float outsideOffset =
+            barWidth * 0.5f + STATUS_BAR_LABEL_GAP + textSize.x * 0.5f;
+        center.x += cosA * outsideOffset * outsideDirectionSign;
+        center.y += sinA * outsideOffset * outsideDirectionSign;
+    }
 
     Vector2 origin = { textSize.x * 0.5f, textSize.y * 0.5f };
 
     // Drop shadow (+1,+1 in screen space) then main text.
     DrawTextPro(font, text,
                 (Vector2){ center.x + 1.0f, center.y + 1.0f },
-                origin, rotationDegrees,
+                origin, textRotationDegrees,
                 fontSize,
                 STATUS_BAR_LABEL_SPACING, BLACK);
-    DrawTextPro(font, text, center, origin, rotationDegrees,
+    DrawTextPro(font, text, center, origin, textRotationDegrees,
                 fontSize,
                 STATUS_BAR_LABEL_SPACING, WHITE);
 }
@@ -519,9 +561,9 @@ static void base_bar_centers(const Entity *base, Camera2D camera,
         anchor = screen_anchor_from_bounds(baseScreenBounds, base, camera, headDirection);
     }
 
-    float firstOffset  = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
-    float secondOffset = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT +
-                         STATUS_BAR_BASE_STACK_GAP + STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
+    float firstOffset  = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
+    float secondOffset = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_CELL_HEIGHT +
+                         STATUS_BAR_BASE_STACK_GAP + STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
     outHealth->x = anchor.x + headDirection.x * firstOffset;
     outHealth->y = anchor.y + headDirection.y * firstOffset;
     outEnergy->x = anchor.x + headDirection.x * secondOffset;
@@ -538,7 +580,8 @@ static void format_bar_label(char *buf, size_t bufSize, int cur, int max) {
 static void draw_base_bars(const GameState *gs, const Entity *base, const Player *owner,
                            Camera2D camera,
                            float rotationDegrees,
-                           float labelRotationDegrees) {
+                           float labelRotationDegrees,
+                           bool reverseEnergyFillDirection) {
     if (!base || !owner) return;
 
     Vector2 healthCenter, energyCenter;
@@ -547,31 +590,125 @@ static void draw_base_bars(const GameState *gs, const Entity *base, const Player
     float hpRatio = (base->maxHP > 0)
         ? ((float)base->hp / (float)base->maxHP)
         : 0.0f;
-    float energyRatio = (owner->maxEnergy > 0.0f)
-        ? (owner->energy / owner->maxEnergy)
-        : 0.0f;
 
-    draw_base_bar_continuous(gs->statusBarsTexture, STATUS_BAR_BASE_HEALTH_ROW_Y,
-                             hpRatio, healthCenter, rotationDegrees);
-    draw_base_bar_continuous(gs->statusBarsTexture, STATUS_BAR_BASE_ENERGY_ROW_Y,
-                             energyRatio, energyCenter, rotationDegrees);
+    draw_base_health_continuous(gs->statusBarsTexture, hpRatio,
+                                healthCenter, rotationDegrees);
+    draw_base_energy_pips(gs->statusBarsTexture, owner->energy,
+                          energyCenter, rotationDegrees,
+                          reverseEnergyFillDirection);
 
     char hpLabel[32];
     char energyLabel[32];
+    int filledPips = base_energy_filled_pips(owner->energy);
+    // The top player's viewport is vertically flipped during composite, so its
+    // raw RT-space outside offset stays positive while the unflipped P1 path
+    // needs the opposite sign to land on the same authored side on screen.
+    float energyLabelDirection = reverseEnergyFillDirection ? 1.0f : -1.0f;
     format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
-                     (int)roundf(owner->energy),
-                     (int)roundf(owner->maxEnergy));
+                     filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
 
-    draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_LABEL_FONT_SIZE, labelRotationDegrees);
-    draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_LABEL_FONT_SIZE, labelRotationDegrees);
+    draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_CELL_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
+                           1.0f);
+    draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_CELL_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection);
+}
+
+// Draw the 188x20 base-bar shell border + empty interior used by both fallback
+// bars. Matches the atlas shell's on-screen footprint so fallback placement
+// stays in sync with atlas placement.
+static void draw_base_fallback_shell(Vector2 screenCenter, float rotationDegrees) {
+    Rectangle borderDst = {
+        screenCenter.x, screenCenter.y,
+        STATUS_BAR_BASE_CELL_WIDTH + 2.0f, STATUS_BAR_BASE_CELL_HEIGHT + 2.0f
+    };
+    Vector2 borderOrigin = { borderDst.width * 0.5f, borderDst.height * 0.5f };
+    DrawRectanglePro(borderDst, borderOrigin, rotationDegrees, BAR_BORDER_COLOR);
+
+    Rectangle bgDst = {
+        screenCenter.x, screenCenter.y,
+        STATUS_BAR_BASE_CELL_WIDTH, STATUS_BAR_BASE_CELL_HEIGHT
+    };
+    Vector2 bgOrigin = { bgDst.width * 0.5f, bgDst.height * 0.5f };
+    DrawRectanglePro(bgDst, bgOrigin, rotationDegrees, BAR_EMPTY_COLOR);
+}
+
+// Fallback health: shell + continuous fill.
+static void draw_base_health_fallback(Vector2 screenCenter, float ratio,
+                                      float rotationDegrees) {
+    draw_base_fallback_shell(screenCenter, rotationDegrees);
+
+    float clamped = clamp01(ratio);
+    int fillPixels = (int)roundf(clamped * STATUS_BAR_HEALTH_INTERIOR_WIDTH);
+    if (fillPixels <= 0) return;
+    if (fillPixels > (int)STATUS_BAR_HEALTH_INTERIOR_WIDTH) {
+        fillPixels = (int)STATUS_BAR_HEALTH_INTERIOR_WIDTH;
+    }
+
+    float rad = rotationDegrees * (PI_F / 180.0f);
+    float cosA = cosf(rad);
+    float sinA = sinf(rad);
+    float dx = -(STATUS_BAR_BASE_CELL_WIDTH * 0.5f
+                 - STATUS_BAR_HEALTH_INTERIOR_LEFT_INSET)
+               + (float)fillPixels * 0.5f;
+    float dy = STATUS_BAR_HEALTH_INTERIOR_TOP_INSET
+               + STATUS_BAR_HEALTH_INTERIOR_HEIGHT * 0.5f
+               - STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
+
+    Rectangle fillDst = {
+        screenCenter.x + dx * cosA - dy * sinA,
+        screenCenter.y + dx * sinA + dy * cosA,
+        (float)fillPixels,
+        STATUS_BAR_HEALTH_INTERIOR_HEIGHT
+    };
+    Vector2 fillOrigin = { fillDst.width * 0.5f, fillDst.height * 0.5f };
+    DrawRectanglePro(fillDst, fillOrigin, rotationDegrees, HP_BAR_FILL_COLOR);
+}
+
+// Fallback energy: shell + one pip rect per filled unit (authored pip geometry).
+static void draw_base_energy_fallback(Vector2 screenCenter, float energy,
+                                      float rotationDegrees,
+                                      bool reverseFillDirection) {
+    draw_base_fallback_shell(screenCenter, rotationDegrees);
+
+    int filled = base_energy_filled_pips(energy);
+    if (filled <= 0) return;
+
+    float rad = rotationDegrees * (PI_F / 180.0f);
+    float cosA = cosf(rad);
+    float sinA = sinf(rad);
+    float dy = STATUS_BAR_ENERGY_PIP_TOP_INSET
+               + STATUS_BAR_ENERGY_PIP_HEIGHT * 0.5f
+               - STATUS_BAR_BASE_CELL_HEIGHT * 0.5f;
+
+    for (int i = 0; i < filled; i++) {
+        int slotIndex = reverseFillDirection
+            ? (STATUS_BAR_ENERGY_PIP_COUNT - 1 - i)
+            : i;
+        float dx = -(STATUS_BAR_BASE_CELL_WIDTH * 0.5f
+                     - STATUS_BAR_ENERGY_PIP_LEFT_INSET)
+                   + STATUS_BAR_ENERGY_PIP_WIDTH * 0.5f
+                   + STATUS_BAR_ENERGY_PIP_STRIDE * (float)slotIndex;
+        Rectangle pipDst = {
+            screenCenter.x + dx * cosA - dy * sinA,
+            screenCenter.y + dx * sinA + dy * cosA,
+            STATUS_BAR_ENERGY_PIP_WIDTH,
+            STATUS_BAR_ENERGY_PIP_HEIGHT
+        };
+        Vector2 pipOrigin = { pipDst.width * 0.5f, pipDst.height * 0.5f };
+        DrawRectanglePro(pipDst, pipOrigin, rotationDegrees,
+                         ENERGY_BAR_FILL_COLOR);
+    }
 }
 
 static void draw_base_bars_fallback(const Entity *base, const Player *owner,
                                     Camera2D camera, float rotationDegrees,
-                                    float labelRotationDegrees) {
+                                    float labelRotationDegrees,
+                                    bool reverseEnergyFillDirection) {
     if (!base || !owner) return;
 
     Vector2 healthCenter, energyCenter;
@@ -580,28 +717,28 @@ static void draw_base_bars_fallback(const Entity *base, const Player *owner,
     float hpRatio = (base->maxHP > 0)
         ? ((float)base->hp / (float)base->maxHP)
         : 0.0f;
-    float energyRatio = (owner->maxEnergy > 0.0f)
-        ? (owner->energy / owner->maxEnergy)
-        : 0.0f;
 
-    draw_bar_rect_fallback(healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_DRAW_HEIGHT, hpRatio,
-                           HP_BAR_FILL_COLOR, rotationDegrees);
-    draw_bar_rect_fallback(energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_DRAW_HEIGHT, energyRatio,
-                           ENERGY_BAR_FILL_COLOR, rotationDegrees);
+    draw_base_health_fallback(healthCenter, hpRatio, rotationDegrees);
+    draw_base_energy_fallback(energyCenter, owner->energy, rotationDegrees,
+                              reverseEnergyFillDirection);
 
     char hpLabel[32];
     char energyLabel[32];
+    int filledPips = base_energy_filled_pips(owner->energy);
+    // Keep fallback label placement aligned with the textured path.
+    float energyLabelDirection = reverseEnergyFillDirection ? 1.0f : -1.0f;
     format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
-                     (int)roundf(owner->energy),
-                     (int)roundf(owner->maxEnergy));
+                     filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
 
-    draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_LABEL_FONT_SIZE, labelRotationDegrees);
-    draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_DRAW_WIDTH,
-                           STATUS_BAR_BASE_LABEL_FONT_SIZE, labelRotationDegrees);
+    draw_bar_numeric_label(hpLabel, healthCenter, STATUS_BAR_BASE_CELL_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_INSIDE,
+                           1.0f);
+    draw_bar_numeric_label(energyLabel, energyCenter, STATUS_BAR_BASE_CELL_WIDTH,
+                           STATUS_BAR_BASE_LABEL_FONT_SIZE,
+                           labelRotationDegrees, rotationDegrees, LABEL_OUTSIDE,
+                           energyLabelDirection);
 }
 
 Texture2D status_bars_load(void) {
@@ -640,7 +777,8 @@ void troop_health_bar_unload(Texture2D texture) {
 
 void status_bars_draw_screen(const GameState *gs, Camera2D camera,
                              float rotationDegrees,
-                             float labelRotationDegrees) {
+                             float labelRotationDegrees,
+                             bool reverseEnergyFillDirection) {
     if (!gs) return;
 
     bool hasBaseTexture = (gs->statusBarsTexture.id != 0);
@@ -664,10 +802,12 @@ void status_bars_draw_screen(const GameState *gs, Camera2D camera,
         if (!base || base->markedForRemoval) continue;
         if (hasBaseTexture) {
             draw_base_bars(gs, base, player, camera,
-                           rotationDegrees, labelRotationDegrees);
+                           rotationDegrees, labelRotationDegrees,
+                           reverseEnergyFillDirection);
         } else {
             draw_base_bars_fallback(base, player, camera,
-                                    rotationDegrees, labelRotationDegrees);
+                                    rotationDegrees, labelRotationDegrees,
+                                    reverseEnergyFillDirection);
         }
     }
 }

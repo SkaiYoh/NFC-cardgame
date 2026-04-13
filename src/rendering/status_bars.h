@@ -13,6 +13,7 @@ void status_bars_unload(Texture2D texture);
 void troop_health_bar_unload(Texture2D texture);
 void status_bars_draw_screen(const GameState *gs, Camera2D camera,
                              float rotationDegrees,
-                             float labelRotationDegrees);
+                             float labelRotationDegrees,
+                             bool reverseEnergyFillDirection);
 
 #endif //NFC_CARDGAME_STATUS_BARS_H

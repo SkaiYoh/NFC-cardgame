@@ -42,12 +42,18 @@ typedef struct { int _unused; } Font;
 #define BLACK (Color){  0,   0,   0, 255}
 #define TEXTURE_FILTER_POINT 0
 
+#define MAX_CAPTURED_DRAWS 64
+
 static int g_drawCalls = 0;          /* DrawTexturePro */
 static int g_rectCalls = 0;          /* DrawRectanglePro */
 static int g_textCalls = 0;          /* DrawTextPro */
-static Rectangle g_drawSrcs[16];
-static Rectangle g_drawDsts[16];
-static Rectangle g_rectDsts[16];
+static Rectangle g_drawSrcs[MAX_CAPTURED_DRAWS];
+static Rectangle g_drawDsts[MAX_CAPTURED_DRAWS];
+static Rectangle g_rectDsts[MAX_CAPTURED_DRAWS];
+static Color     g_rectColors[MAX_CAPTURED_DRAWS];
+static char      g_textStrings[MAX_CAPTURED_DRAWS][32];
+static Vector2   g_textPositions[MAX_CAPTURED_DRAWS];
+static float     g_textRotations[MAX_CAPTURED_DRAWS];
 
 static Texture2D LoadTexture(const char *fileName) {
     (void)fileName;
@@ -70,7 +76,7 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
     (void)rotation;
     (void)tint;
 
-    if (g_drawCalls < (int)(sizeof(g_drawSrcs) / sizeof(g_drawSrcs[0]))) {
+    if (g_drawCalls < MAX_CAPTURED_DRAWS) {
         g_drawSrcs[g_drawCalls] = source;
         g_drawDsts[g_drawCalls] = dest;
     }
@@ -78,12 +84,11 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
 }
 
 static void DrawRectanglePro(Rectangle rec, Vector2 origin, float rotation, Color color) {
-    (void)rec;
     (void)origin;
     (void)rotation;
-    (void)color;
-    if (g_rectCalls < (int)(sizeof(g_rectDsts) / sizeof(g_rectDsts[0]))) {
+    if (g_rectCalls < MAX_CAPTURED_DRAWS) {
         g_rectDsts[g_rectCalls] = rec;
+        g_rectColors[g_rectCalls] = color;
     }
     g_rectCalls++;
 }
@@ -104,13 +109,22 @@ static Vector2 MeasureTextEx(Font font, const char *text, float fontSize, float 
 static void DrawTextPro(Font font, const char *text, Vector2 position, Vector2 origin,
                         float rotation, float fontSize, float spacing, Color tint) {
     (void)font;
-    (void)text;
-    (void)position;
     (void)origin;
-    (void)rotation;
     (void)fontSize;
     (void)spacing;
     (void)tint;
+    if (g_textCalls < MAX_CAPTURED_DRAWS) {
+        if (text) {
+            size_t n = strlen(text);
+            if (n >= sizeof(g_textStrings[0])) n = sizeof(g_textStrings[0]) - 1;
+            memcpy(g_textStrings[g_textCalls], text, n);
+            g_textStrings[g_textCalls][n] = '\0';
+        } else {
+            g_textStrings[g_textCalls][0] = '\0';
+        }
+        g_textPositions[g_textCalls] = position;
+        g_textRotations[g_textCalls] = rotation;
+    }
     g_textCalls++;
 }
 
@@ -120,7 +134,7 @@ static Vector2 GetWorldToScreen2D(Vector2 position, Camera2D camera) {
 }
 
 /* ---- Config stubs ---- */
-#define STATUS_BARS_PATH "src/assets/environment/Objects/health_energy_bars.png"
+#define STATUS_BARS_PATH "src/assets/environment/Objects/health_energy_bars_sheet.png"
 #define TROOP_HEALTH_BAR_PATH "src/assets/environment/Objects/troop_health_bar_sheet.png"
 #define PI_F 3.14159265f
 #define MAX_ENTITIES 64
@@ -268,14 +282,22 @@ static bool approx_eq(float a, float b, float eps) {
     return fabsf(a - b) < eps;
 }
 
+static bool color_eq(Color a, Color b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
 static void reset_draw_state(void) {
     g_drawCalls = 0;
     g_rectCalls = 0;
     g_textCalls = 0;
-    for (int i = 0; i < (int)(sizeof(g_drawSrcs) / sizeof(g_drawSrcs[0])); i++) {
+    for (int i = 0; i < MAX_CAPTURED_DRAWS; i++) {
         g_drawSrcs[i] = (Rectangle){0};
         g_drawDsts[i] = (Rectangle){0};
         g_rectDsts[i] = (Rectangle){0};
+        g_rectColors[i] = (Color){0};
+        g_textStrings[i][0] = '\0';
+        g_textPositions[i] = (Vector2){0};
+        g_textRotations[i] = 0.0f;
     }
 }
 
@@ -331,7 +353,7 @@ static void test_status_bars_draw_skips_undamaged_troops(void) {
     gs.battlefield.entities[0] = &troop;
     gs.battlefield.entityCount = 1;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
     assert(g_drawCalls == 0);
 }
@@ -344,7 +366,7 @@ static void test_status_bars_draws_damaged_troop_bar(void) {
     gs.battlefield.entities[0] = &troop;
     gs.battlefield.entityCount = 1;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
     assert(g_drawCalls == 1);
     assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));
@@ -364,189 +386,345 @@ static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
     gs.battlefield.entities[0] = &troop;
     gs.battlefield.entityCount = 1;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
     assert(g_drawCalls == 0);
     assert(g_rectCalls == 3);
 }
 
-/* Base bars: 4500/5000 HP and 7/10 energy → blended renderer (neither
- * degenerate case). Each bar issues two DrawTexturePro calls (left half from
- * the full frame, right half from the empty frame), and each label emits
- * two DrawTextPro calls (shadow + main). */
-static void test_base_bars_continuous_blend_draws_two_halves_per_bar(void) {
+/* Base bars: 4500/5000 HP (0.9) and 7/10 energy.
+ *
+ * Expected draws per bar:
+ *   - Health: 1 empty shell (188x20) + 1 interior fill overlay
+ *             fillPixels = round(0.9 * 178) = 160
+ *   - Energy: 1 empty shell (188x20) + 7 pip overlays (one per filled unit)
+ *
+ * Each label emits 2 DrawTextPro calls (shadow + main). */
+static void test_base_bars_health_fill_and_energy_pips(void) {
     GameState gs = make_game_state();
     Entity base = make_base(4500, 5000);
     Camera2D camera = {0};
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
-    gs.players[0].maxEnergy = 10.0f;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* 2 bars * 2 halves per bar = 4 texture draws. */
-    assert(g_drawCalls == 4);
+    /* 1 health shell + 1 health fill + 1 energy shell + 7 energy pips = 10. */
+    assert(g_drawCalls == 10);
     /* 2 labels * (shadow + main) = 4 text draws. */
     assert(g_textCalls == 4);
 
-    /* Per-bar row Y matches HP (16) / Energy (32). Row Y stays consistent
-     * across both halves of a single bar. */
-    assert(approx_eq(g_drawSrcs[0].y, 16.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].y, 16.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[2].y, 32.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[3].y, 32.0f, 0.001f));
+    /* Health shell: empty cell at (0, 0, 188, 20). */
+    assert(approx_eq(g_drawSrcs[0].x, 0.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].width, 188.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].height, 20.0f, 0.001f));
 
-    /* HP bar source halves must sum to BASE_SRC_WIDTH. 0.9 * 138 rounds to 124.
-     * Left half width = 124, right half width = 14. */
-    float hpLeftW  = g_drawSrcs[0].width;
-    float hpRightW = g_drawSrcs[1].width;
-    assert(approx_eq(hpLeftW + hpRightW, 138.0f, 0.5f));
-    assert(approx_eq(hpLeftW, 124.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[0].width + g_drawDsts[1].width, 180.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[0].height, 24.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].height, 24.0f, 0.001f));
+    /* Health fill: full cell interior at (194, 6, 160, 10). */
+    assert(approx_eq(g_drawSrcs[1].x, 194.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[1].y, 6.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[1].width, 160.0f, 0.5f));
+    assert(approx_eq(g_drawSrcs[1].height, 10.0f, 0.001f));
+    assert(approx_eq(g_drawDsts[1].width, 160.0f, 0.5f));
+    assert(approx_eq(g_drawDsts[1].height, 10.0f, 0.001f));
 
-    /* Energy: 0.7 * 138 ≈ 96.6 → rounds to 97. */
-    float enLeftW  = g_drawSrcs[2].width;
-    float enRightW = g_drawSrcs[3].width;
-    assert(approx_eq(enLeftW + enRightW, 138.0f, 0.5f));
-    assert(approx_eq(enLeftW, 97.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[2].width + g_drawDsts[3].width, 180.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[2].height, 24.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[3].height, 24.0f, 0.001f));
+    /* Energy shell: empty cell at (0, 20, 188, 20). */
+    assert(approx_eq(g_drawSrcs[2].x, 0.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].y, 20.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].width, 188.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].height, 20.0f, 0.001f));
+
+    /* Energy pips: source X = 194 + 18*i, Y = 24, 16x10. */
+    for (int i = 0; i < 7; i++) {
+        int idx = 3 + i;
+        float expectedX = 194.0f + 18.0f * (float)i;
+        assert(approx_eq(g_drawSrcs[idx].x, expectedX, 0.001f));
+        assert(approx_eq(g_drawSrcs[idx].y, 24.0f, 0.001f));
+        assert(approx_eq(g_drawSrcs[idx].width, 16.0f, 0.001f));
+        assert(approx_eq(g_drawSrcs[idx].height, 10.0f, 0.001f));
+    }
 }
 
-/* Full bar short-circuits to a single DrawTexturePro call at frame 0 with
- * the full atlas width, rendered larger on screen. */
-static void test_base_bar_full_draws_single_full_frame(void) {
+/* Full bar: health fill spans the entire 178px interior, energy draws all
+ * 10 pips. */
+static void test_base_bar_full_health_and_energy(void) {
     GameState gs = make_game_state();
     Entity base = make_base(5000, 5000);
     Camera2D camera = {0};
 
     gs.players[0].base = &base;
     gs.players[0].energy = 10.0f;
-    gs.players[0].maxEnergy = 10.0f;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* 1 call per bar (full-frame short-circuit), 2 bars = 2 calls. */
-    assert(g_drawCalls == 2);
+    /* 1 health shell + 1 health fill + 1 energy shell + 10 pips = 13. */
+    assert(g_drawCalls == 13);
 
-    /* HP bar: frame 0, full width, row y = 16. Frame 0 X offset = 3. */
-    assert(approx_eq(g_drawSrcs[0].x, 3.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].y, 16.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].width, 138.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[0].width, 180.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[0].height, 24.0f, 0.001f));
+    /* Health fill spans the full 178-pixel interior. */
+    assert(approx_eq(g_drawSrcs[1].width, 178.0f, 0.001f));
+    assert(approx_eq(g_drawDsts[1].width, 178.0f, 0.001f));
 
-    /* Energy bar: frame 0 (same X offset), row y = 32. */
-    assert(approx_eq(g_drawSrcs[1].x, 3.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].y, 32.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].width, 138.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].width, 180.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].height, 24.0f, 0.001f));
+    /* Energy pip 0 source at (194, 24); pip 9 source at (194 + 18*9, 24). */
+    assert(approx_eq(g_drawSrcs[3].x, 194.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[12].x, 194.0f + 18.0f * 9.0f, 0.001f));
 }
 
-/* Empty bar short-circuits to a single DrawTexturePro call at the last
- * frame (N-1). Frame 23 X offset = 3 + 144*23 = 3315. */
-static void test_base_bar_empty_draws_single_empty_frame(void) {
+/* Near-empty bar: health fill rounds to 0 so only the shell draws; energy
+ * at 0 also draws only the shell. */
+static void test_base_bar_empty_draws_shell_only(void) {
     GameState gs = make_game_state();
     Entity base = make_base(0, 5000);
     Camera2D camera = {0};
 
-    /* hp == 0 makes the base "dead" in the battlefield filter; set a tiny
-     * positive HP so the bar still renders. Since fillPixels rounds to 0
-     * for any ratio < 0.5/138 ≈ 0.00362, use 1/5000 = 0.0002. */
+    /* hp=0 marks base as dead in the filter; tiny HP keeps it rendered but
+     * at a ratio where round(ratio * 178) = 0. 1/5000 = 0.0002 → 0.036 → 0. */
     base.hp = 1;
 
     gs.players[0].base = &base;
     gs.players[0].energy = 0.0f;
-    gs.players[0].maxEnergy = 10.0f;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* Both bars degenerate to empty-frame single draw. */
+    /* Only shells, no fills and no pips. */
     assert(g_drawCalls == 2);
-
-    const float lastFrameX = 3.0f + 144.0f * 23.0f;
-    assert(approx_eq(g_drawSrcs[0].x, lastFrameX, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].x, lastFrameX, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].width, 138.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].width, 138.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[0].width, 180.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[0].height, 24.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].width, 180.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].height, 24.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));    /* health shell */
+    assert(approx_eq(g_drawSrcs[1].y, 20.0f, 0.001f));   /* energy shell */
 }
 
 /* Core motivating requirement: small HP damage must visibly move the bar.
- * 28 HP out of 5000 is 0.56% of full — with 138-pixel granularity, that's
- * 0.773 fill pixels which rounds to 1 fill pixel of movement. */
+ * 28 HP out of 5000 is 0.56% — with 178-pixel granularity that's 0.997
+ * fill pixels which rounds to 1. */
 static void test_base_bar_granularity_moves_on_small_hit(void) {
     GameState gs = make_game_state();
     Camera2D camera = {0};
     gs.players[0].energy = 10.0f;
-    gs.players[0].maxEnergy = 10.0f;
 
-    /* Sample 1: 5000/5000 HP (full). */
+    /* Sample 1: full. Fill width = 178. */
     Entity baseFull = make_base(5000, 5000);
     gs.players[0].base = &baseFull;
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
-    /* Full-frame short-circuit → 1 call, the HP bar's first draw. */
-    int fullCalls = g_drawCalls;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    float fullFillWidth = g_drawSrcs[1].width;
 
-    /* Sample 2: 4972/5000 HP (damaged by 28). */
+    /* Sample 2: 4972/5000. round(4972/5000 * 178) = round(177.00) = 177. */
     reset_draw_state();
     Entity baseHit = make_base(4972, 5000);
     gs.players[0].base = &baseHit;
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    float hitFillWidth = g_drawSrcs[1].width;
 
-    /* After a 28 HP hit, the HP bar should no longer short-circuit to the
-     * full frame — it must go through the blended path (2 draws for the HP
-     * bar) or fall back to empty frame short-circuit if rounding pushes it
-     * all the way down. In either case, HP bar behavior changes from the
-     * full case. */
-    assert(fullCalls == 2);      /* full case: 1 HP draw + 1 energy draw */
-    assert(g_drawCalls == 3);    /* hit case: 2 HP halves + 1 full-energy draw */
-
-    /* HP left half width represents the filled portion: round(4972/5000 *
-     * 138) = round(137.227) = 137 pixels. So the HP bar has shrunk by 1
-     * visible pixel. */
-    assert(approx_eq(g_drawSrcs[0].width, 137.0f, 0.5f));
-    assert(approx_eq(g_drawSrcs[1].width, 1.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[0].width + g_drawDsts[1].width, 180.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[0].height, 24.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].height, 24.0f, 0.001f));
+    assert(approx_eq(fullFillWidth, 178.0f, 0.001f));
+    assert(approx_eq(hitFillWidth, 177.0f, 0.5f));
+    assert(fullFillWidth - hitFillWidth >= 1.0f);
 }
 
-/* Atlas load failure routes to the fallback path, which must still draw
- * both base bars AND their numeric labels. */
+/* Fractional energy quantizes down to whole pips: 6.9 → 6 drawn + "6/10"
+ * label text. Prevents the previous 7/10 round-up from showing energy the
+ * player cannot yet spend. */
+static void test_fractional_energy_shows_whole_pips(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 6.9f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    /* 1 health shell + 1 health fill + 1 energy shell + 6 pips = 9. */
+    assert(g_drawCalls == 9);
+
+    /* Energy label text (shadow at index 2, main at index 3 in draw order).
+     * Health label: draws 0-1. Energy label: draws 2-3. */
+    assert(strcmp(g_textStrings[2], "6/10") == 0);
+    assert(strcmp(g_textStrings[3], "6/10") == 0);
+    /* Health label still shows raw HP. */
+    assert(strcmp(g_textStrings[0], "5000/5000") == 0);
+}
+
+/* Per-bar label placement: health label sits at the bar center; energy
+ * label is pushed OUTSIDE along the bar's length axis. */
+static void test_label_placement_health_inside_energy_outside(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+
+    /* Use rotation 0 so OUTSIDE offset shows up purely in X. */
+    status_bars_draw_screen(&gs, camera, 0.0f, 0.0f, false);
+
+    /* Label order: health shadow, health main, energy shadow, energy main. */
+    assert(g_textCalls == 4);
+
+    /* Health label shadow is at (healthCenter + (1,1)); main is at
+     * healthCenter. The shadow/main pair sit within 2px of each other. */
+    float healthDx = g_textPositions[1].x - g_textPositions[0].x;
+    float healthDy = g_textPositions[1].y - g_textPositions[0].y;
+    assert(approx_eq(healthDx, -1.0f, 0.001f));
+    assert(approx_eq(healthDy, -1.0f, 0.001f));
+
+    /* For the non-flipped P1 path, the energy label sits on the left side of
+     * the bar, so the offset is along -X. */
+    float energyOffsetX = g_textPositions[3].x - g_textPositions[1].x;
+    assert(energyOffsetX < -100.0f);
+
+    /* Energy and health labels sit on separate bars stacked along the base's
+     * head direction. At rotation 0 the head direction is -Y, so the two
+     * bar centers differ in Y by (cellHeight + stackGap) = 20 + 6 = 26. */
+    float energyY = g_textPositions[3].y;
+    float healthY = g_textPositions[1].y;
+    assert(fabsf(energyY - healthY) > 20.0f);
+}
+
+/* Live P1 path: bars rotate 90 and labels rotate 90, with the energy label
+ * placed on the left-side/"before" end of the bar. In raw screen-space that
+ * is -Y for the non-flipped viewport. */
+static void test_live_p1_energy_label_uses_bar_axis_for_outside_offset(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    Vector2 healthCenter, energyCenter;
+    base_bar_centers(&base, camera, &healthCenter, &energyCenter);
+
+    Vector2 energyLabel = g_textPositions[3];
+    float dx = energyLabel.x - energyCenter.x;
+    float dy = energyLabel.y - energyCenter.y;
+
+    assert(approx_eq(g_textRotations[1], 90.0f, 0.001f));
+    assert(approx_eq(g_textRotations[3], 90.0f, 0.001f));
+    assert(fabsf(dx) < 0.01f);
+    assert(dy < -100.0f);
+}
+
+/* Live P2 path: bars still rotate 90, but labels rotate 270. Outside offset
+ * must still follow the bar axis (+Y in RT space), not the text rotation. */
+static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(4500, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+
+    Vector2 healthCenter, energyCenter;
+    base_bar_centers(&base, camera, &healthCenter, &energyCenter);
+
+    Vector2 healthLabel = g_textPositions[1];
+    Vector2 energyLabel = g_textPositions[3];
+    float energyDx = energyLabel.x - energyCenter.x;
+    float energyDy = energyLabel.y - energyCenter.y;
+    float healthDx = healthLabel.x - healthCenter.x;
+    float healthDy = healthLabel.y - healthCenter.y;
+
+    assert(approx_eq(g_textRotations[1], 270.0f, 0.001f));
+    assert(approx_eq(g_textRotations[3], 270.0f, 0.001f));
+    assert(fabsf(healthDx) < 0.01f);
+    assert(fabsf(healthDy) < 0.01f);
+    assert(fabsf(energyDx) < 0.01f);
+    assert(energyDy > 100.0f);
+}
+
+/* Atlas load failure → fallback path draws both base bars plus labels.
+ * Health fallback = shell (border + bg) + 1 fill rect = 3 rects.
+ * Energy fallback = shell (border + bg) + filledPips pip rects.
+ * For 7 energy: 3 + 2 + 7 = 12 rect draws total. */
 static void test_fallback_renders_bars_and_labels(void) {
     GameState gs = make_game_state();
-    gs.statusBarsTexture.id = 0;  /* simulate load failure */
+    gs.statusBarsTexture.id = 0;
     Entity base = make_base(3420, 5000);
     Camera2D camera = {0};
 
     gs.players[0].base = &base;
     gs.players[0].energy = 7.0f;
-    gs.players[0].maxEnergy = 10.0f;
 
-    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f);
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
     /* No texture draws in the fallback path. */
     assert(g_drawCalls == 0);
 
-    /* Each bar emits: 1 border rect + 1 empty bg rect + 1 fill rect = 3
-     * rect draws per bar. 2 bars → 6 rect draws. */
-    assert(g_rectCalls == 6);
-    assert(approx_eq(g_rectDsts[1].width, 180.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[1].height, 24.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[4].width, 180.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[4].height, 24.0f, 0.001f));
+    /* Health shell (2 rects) + health fill (1 rect) + energy shell (2 rects)
+     * + 7 pip rects = 12. */
+    assert(g_rectCalls == 12);
+
+    /* Health shell bg: full 188x20 cell footprint. */
+    assert(approx_eq(g_rectDsts[1].width, 188.0f, 0.001f));
+    assert(approx_eq(g_rectDsts[1].height, 20.0f, 0.001f));
+
+    /* Health fill rect: round(0.684 * 178) = 122. */
+    assert(approx_eq(g_rectDsts[2].width, 122.0f, 0.5f));
+    assert(approx_eq(g_rectDsts[2].height, 10.0f, 0.001f));
+
+    /* Energy shell bg: full 188x20. */
+    assert(approx_eq(g_rectDsts[4].width, 188.0f, 0.001f));
+    assert(approx_eq(g_rectDsts[4].height, 20.0f, 0.001f));
+
+    /* First energy pip rect: 16x10. */
+    assert(approx_eq(g_rectDsts[5].width, 16.0f, 0.001f));
+    assert(approx_eq(g_rectDsts[5].height, 10.0f, 0.001f));
+
+    /* Fallback colors track the new authored sheet palette. */
+    assert(color_eq(g_rectColors[0], BAR_BORDER_COLOR));
+    assert(color_eq(g_rectColors[1], BAR_EMPTY_COLOR));
+    assert(color_eq(g_rectColors[2], HP_BAR_FILL_COLOR));
+    assert(color_eq(g_rectColors[3], BAR_BORDER_COLOR));
+    assert(color_eq(g_rectColors[4], BAR_EMPTY_COLOR));
+    assert(color_eq(g_rectColors[5], ENERGY_BAR_FILL_COLOR));
 
     /* Labels still render: 2 bars * (shadow + main) = 4 text draws. */
     assert(g_textCalls == 4);
+    assert(strcmp(g_textStrings[0], "3420/5000") == 0);
+    assert(strcmp(g_textStrings[2], "7/10") == 0);
+}
+
+/* Zero-energy fallback draws only the shell (2 rects): no pip rects. */
+static void test_fallback_zero_energy_draws_shell_only(void) {
+    GameState gs = make_game_state();
+    gs.statusBarsTexture.id = 0;
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 0.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    /* Health: border + bg + fill (178 wide) = 3. Energy: border + bg = 2.
+     * Total = 5. */
+    assert(g_rectCalls == 5);
+}
+
+/* Flipped P2 viewport draws filled pips in reverse raw RT order so the final
+ * vertically flipped composite reads left-to-right on screen. */
+static void test_reversed_energy_fill_direction_for_flipped_viewport(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(5000, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    float forwardShellY = g_drawDsts[2].y;
+    float forwardPipY = g_drawDsts[3].y;
+
+    reset_draw_state();
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+    float reversedShellY = g_drawDsts[2].y;
+    float reversedPipY = g_drawDsts[3].y;
+
+    assert(approx_eq(forwardShellY, reversedShellY, 0.001f));
+    assert(forwardPipY < forwardShellY);
+    assert(reversedPipY > reversedShellY);
 }
 
 int main(void) {
@@ -557,11 +735,17 @@ int main(void) {
     RUN_TEST(test_status_bars_draw_skips_undamaged_troops);
     RUN_TEST(test_status_bars_draws_damaged_troop_bar);
     RUN_TEST(test_damaged_troop_uses_fallback_when_troop_texture_missing);
-    RUN_TEST(test_base_bars_continuous_blend_draws_two_halves_per_bar);
-    RUN_TEST(test_base_bar_full_draws_single_full_frame);
-    RUN_TEST(test_base_bar_empty_draws_single_empty_frame);
+    RUN_TEST(test_base_bars_health_fill_and_energy_pips);
+    RUN_TEST(test_base_bar_full_health_and_energy);
+    RUN_TEST(test_base_bar_empty_draws_shell_only);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
+    RUN_TEST(test_fractional_energy_shows_whole_pips);
+    RUN_TEST(test_label_placement_health_inside_energy_outside);
+    RUN_TEST(test_live_p1_energy_label_uses_bar_axis_for_outside_offset);
+    RUN_TEST(test_live_p2_energy_label_uses_bar_axis_not_text_rotation);
     RUN_TEST(test_fallback_renders_bars_and_labels);
+    RUN_TEST(test_fallback_zero_energy_draws_shell_only);
+    RUN_TEST(test_reversed_energy_fill_direction_for_flipped_viewport);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return 0;
