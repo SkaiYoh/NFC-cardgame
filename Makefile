@@ -1,4 +1,4 @@
-.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui sprite-frame-atlas
+.PHONY: clean run preview-run biome-preview-run init-db test test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects sprite-frame-atlas
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
@@ -95,7 +95,10 @@ test_sustenance: tests/test_sustenance.c src/core/sustenance.c src/core/battlefi
 test_hand_ui: tests/test_hand_ui.c src/rendering/hand_ui.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_hand_ui.c -o test_hand_ui -lm
 
-test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui
+test_card_effects: tests/test_card_effects.c src/logic/card_effects.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) tests/test_card_effects.c -o test_card_effects -lm
+
+test: test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects
 	./test_pathfinding
 	./test_combat
 	./test_entities
@@ -111,9 +114,10 @@ test: test_pathfinding test_combat test_entities test_battlefield_math test_batt
 	./test_win_condition
 	./test_sustenance
 	./test_hand_ui
+	./test_card_effects
 
 sprite-frame-atlas:
 	python3 tools/generate_sprite_frame_atlas.py
 
 clean:
-	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_ore
+	rm -f cardgame card_preview biome_preview card_enroll test_pathfinding test_combat test_entities test_battlefield_math test_battlefield test_animation test_debug_events test_spawn_fx test_spawn_placement test_deposit_slots test_assault_slots test_status_bars test_win_condition test_sustenance test_hand_ui test_card_effects test_ore

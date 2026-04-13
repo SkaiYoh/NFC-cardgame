@@ -71,6 +71,9 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
 #define CHAR_ASSASSIN_PATH  "stub/"
 #define CHAR_BRUTE_PATH     "stub/"
 #define CHAR_FARMER_PATH    "stub/"
+#define CHAR_BIRD_PATH      "stub/"
+#define CHAR_FISHFING_PATH  "stub/"
+#define CHAR_KING_PATH      "stub/"
 #define SPRITE_FRAME_SIZE   79
 
 /* ---- Include production sprite_renderer.c (real playback code) ---- */

@@ -48,7 +48,6 @@ Last verified: 2026-04-09
 |---------|-------|---------------|
 | Pregame / match flow | `src/systems/match.c`, `src/systems/match.h` | Header is empty; source contains declarations/comments only |
 | Projectile system | `src/entities/projectile.c`, `src/entities/projectile.h` | Header is empty; source is comment-only |
-| Spell gameplay effects | `src/logic/card_effects.c` | `play_spell()` spends energy and prints parsed data, but applies no gameplay effect |
 | Health and energy status bars | `src/rendering/status_bars.c`, `src/core/game.c`, `src/entities/building.c`, `src/systems/energy.c` | New world-anchored bars render for troops and bases, but base bars are too coarse to reliably reflect common gameplay changes, there is no fallback if the atlas fails to load, and the feature still needs a manual in-game visual smoke test |
 | Base health and hand UI | `src/rendering/status_bars.c`, `src/rendering/ui.c`, `src/rendering/card_renderer.c` | Base HP and energy now have sprite-anchored world bars, but there is still no card/hand UI and no non-text fallback HUD for those resources |
 | Specific-target combat | `src/logic/combat.c`, `src/entities/troop.c` | `targetType` is parsed, but `TARGET_SPECIFIC_TYPE` still falls back to nearest-target behavior |
@@ -69,18 +68,15 @@ Last verified: 2026-04-09
    - Decide whether card/hand rendering should live in the same HUD pass.
    - Decide whether bases still need a screen-space fallback HUD in addition to world bars.
 
-3. Make spell cards do real gameplay work.
-   - Replace the current debug-print path with actual targeting/effect resolution.
-
-4. Build the projectile system if ranged attacks are part of the near-term plan.
+3. Build the projectile system if ranged attacks are part of the near-term plan.
    - Define the header API first.
    - Decide whether projectiles live in the battlefield entity list or in a dedicated pool.
 
-5. Add a real pregame/match phase.
+4. Add a real pregame/match phase.
    - Replace the declarations in `match.c` with real state and transitions.
    - Gate gameplay start on player readiness / deck confirmation.
 
-6. Normalize database reset behavior.
+5. Normalize database reset behavior.
    - Decide whether `nfc_tags` should stay user-managed or get optional seed data.
    - Make `init-db` recreate a clean database shape when a full reset is intended.
 

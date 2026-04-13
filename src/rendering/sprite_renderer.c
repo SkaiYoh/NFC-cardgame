@@ -4,6 +4,7 @@
 
 #include "sprite_renderer.h"
 #include "../core/config.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -128,6 +129,15 @@ void sprite_atlas_init(SpriteAtlas *atlas) {
     b->anims[ANIM_DEATH] = load_sheet(CHAR_BASE_PATH "Basic/death.png", 6);
     b->anims[ANIM_ATTACK] = load_sheet(CHAR_BASE_PATH "Attack/sword.png", 6);
 
+    CharacterSprite *base = &atlas->types[SPRITE_TYPE_BASE];
+    base->anims[ANIM_IDLE] = load_sheet(CHAR_KING_PATH "idle.png", 4);
+    base->anims[ANIM_WALK] = load_sheet(CHAR_KING_PATH "walk.png", 8);
+    base->anims[ANIM_RUN] = load_sheet(CHAR_KING_PATH "run.png", 8);
+    base->anims[ANIM_HURT] = load_sheet(CHAR_KING_PATH "hurt.png", 4);
+    base->anims[ANIM_DEATH] = load_sheet(CHAR_KING_PATH "death.png", 6);
+    base->anims[ANIM_ATTACK] = load_sheet(CHAR_KING_PATH "sword.png", 6);
+    atlas->typeLoaded[SPRITE_TYPE_BASE] = true;
+
     CharacterSprite *knight = &atlas->types[SPRITE_TYPE_KNIGHT];
     knight->anims[ANIM_IDLE] = load_sheet(CHAR_KNIGHT_PATH "idle.png", 4);
     knight->anims[ANIM_WALK] = load_sheet(CHAR_KNIGHT_PATH "walk.png", 8);
@@ -174,6 +184,24 @@ void sprite_atlas_init(SpriteAtlas *atlas) {
     farmer->anims[ANIM_DEATH] = load_sheet(CHAR_FARMER_PATH "death.png", 6);
     farmer->anims[ANIM_ATTACK] = load_sheet(CHAR_FARMER_PATH "pickaxe.png", 6);
     atlas->typeLoaded[SPRITE_TYPE_FARMER] = true;
+
+    CharacterSprite *bird = &atlas->types[SPRITE_TYPE_BIRD];
+    bird->anims[ANIM_IDLE] = load_sheet(CHAR_BIRD_PATH "idle.png", 4);
+    bird->anims[ANIM_WALK] = load_sheet(CHAR_BIRD_PATH "walk.png", 8);
+    bird->anims[ANIM_RUN] = load_sheet(CHAR_BIRD_PATH "run.png", 8);
+    bird->anims[ANIM_HURT] = load_sheet(CHAR_BIRD_PATH "hurt.png", 4);
+    bird->anims[ANIM_DEATH] = load_sheet(CHAR_BIRD_PATH "death.png", 6);
+    bird->anims[ANIM_ATTACK] = load_sheet(CHAR_BIRD_PATH "sword.png", 6);
+    atlas->typeLoaded[SPRITE_TYPE_BIRD] = true;
+
+    CharacterSprite *fishfing = &atlas->types[SPRITE_TYPE_FISHFING];
+    fishfing->anims[ANIM_IDLE] = load_sheet(CHAR_FISHFING_PATH "idle.png", 4);
+    fishfing->anims[ANIM_WALK] = load_sheet(CHAR_FISHFING_PATH "walk.png", 8);
+    fishfing->anims[ANIM_RUN] = load_sheet(CHAR_FISHFING_PATH "run.png", 8);
+    fishfing->anims[ANIM_HURT] = load_sheet(CHAR_FISHFING_PATH "hurt.png", 4);
+    fishfing->anims[ANIM_DEATH] = load_sheet(CHAR_FISHFING_PATH "death.png", 6);
+    fishfing->anims[ANIM_ATTACK] = load_sheet(CHAR_FISHFING_PATH "sword.png", 6);
+    atlas->typeLoaded[SPRITE_TYPE_FISHFING] = true;
 }
 
 void sprite_atlas_free(SpriteAtlas *atlas) {
@@ -372,7 +400,8 @@ SpriteType sprite_type_from_card(const char *cardType) {
     if (strcmp(cardType, "assassin") == 0) return SPRITE_TYPE_ASSASSIN;
     if (strcmp(cardType, "brute") == 0) return SPRITE_TYPE_BRUTE;
     if (strcmp(cardType, "farmer") == 0) return SPRITE_TYPE_FARMER;
-    // TODO: Unknown card types silently fall back to SPRITE_TYPE_KNIGHT. Log a warning so new card
-    // TODO: types that are missing a sprite mapping are caught during development.
-    return SPRITE_TYPE_KNIGHT; // default fallback
+    if (strcmp(cardType, "bird") == 0) return SPRITE_TYPE_BIRD;
+    if (strcmp(cardType, "fishfing") == 0) return SPRITE_TYPE_FISHFING;
+    fprintf(stderr, "[sprite] unknown card type '%s', falling back to KNIGHT\n", cardType);
+    return SPRITE_TYPE_KNIGHT;
 }

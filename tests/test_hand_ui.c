@@ -360,6 +360,75 @@ static void test_assassin_uses_mapped_sheet_row(void) {
     printf("  PASS: test_assassin_uses_mapped_sheet_row\n");
 }
 
+/* ---- Test: bird cards reuse row 0 in the shared sheet ---- */
+static void test_bird_uses_mapped_sheet_row(void) {
+    Player p = {0};
+    Card bird = { .card_id = "BIRD_01", .type = "bird" };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &bird;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, cardSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
+
+    printf("  PASS: test_bird_uses_mapped_sheet_row\n");
+}
+
+/* ---- Test: fishfing cards reuse row 2 in the shared sheet ---- */
+static void test_fishfing_uses_mapped_sheet_row(void) {
+    Player p = {0};
+    Card fishfing = { .card_id = "FISHFING_01", .type = "fishfing" };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &fishfing;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, cardSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
+
+    printf("  PASS: test_fishfing_uses_mapped_sheet_row\n");
+}
+
+/* ---- Test: king cards reuse row 4 in the shared sheet ---- */
+static void test_king_uses_mapped_sheet_row(void) {
+    Player p = {0};
+    Card king = { .card_id = "KING_01", .type = "king" };
+    Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
+
+    p.side = SIDE_BOTTOM;
+    p.handArea = (Rectangle){ 0.0f, 0.0f, 180.0f, 1080.0f };
+    p.handCards[0] = &king;
+
+    reset_draw_capture();
+    hand_ui_draw(&p, cardSheet);
+
+    assert(g_draw_texture_calls == 1);
+    assert(g_drawn_texture_id[0] == cardSheet.id);
+    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 640.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
+
+    printf("  PASS: test_king_uses_mapped_sheet_row\n");
+}
+
 /* ---- Test: animation helper follows 0->4->0 once, then clamps ---- */
 static void test_frame_sequence_once_then_static(void) {
     assert(hand_ui_frame_for_elapsed(0.00f) == 0);
@@ -497,11 +566,14 @@ int main(void) {
     test_sparse_hand_compacts_draw_positions();
     test_idle_knight_uses_sheet_row_zero();
     test_assassin_uses_mapped_sheet_row();
+    test_bird_uses_mapped_sheet_row();
+    test_fishfing_uses_mapped_sheet_row();
+    test_king_uses_mapped_sheet_row();
     test_frame_sequence_once_then_static();
     test_play_lift_scale_pulses_then_returns_to_rest();
     test_animating_mapped_card_scales_around_center();
     test_sparse_hand_uses_current_frame_and_mapped_rows();
     test_animating_knight_scales_around_center();
-    printf("\nAll 17 tests passed!\n");
+    printf("\nAll 20 tests passed!\n");
     return 0;
 }

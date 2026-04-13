@@ -11,7 +11,6 @@
 #include "../systems/spawn_placement.h"
 #include "../core/battlefield.h"
 #include "../core/config.h"
-#include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,89 +125,79 @@ static void spawn_troop_from_card(const Card *card, GameState *state, int player
     }
 }
 
-// TODO: play_spell only prints to the console — it has no in-game effect.
-// TODO: Implement actual spell logic: apply damage to targeted entities, trigger AOE effects, etc.
-static void play_spell(const Card *card, GameState *state, int playerIndex, int slotIndex) {
-    (void) slotIndex;
-    if (state && !energy_consume(&state->players[playerIndex], card->cost)) {
-        printf("[PLAY] Not enough energy for spell '%s' (need %d)\n", card->name, card->cost);
-        return;
-    }
-    printf("[SPELL] %s (cost %d): ", card->name, card->cost);
-
-    if (!card->data) {
-        printf("no data\n");
-        return;
-    }
-
-    cJSON *root = cJSON_Parse(card->data);
-    if (!root) {
-        printf("invalid data\n");
-        return;
-    }
-
-    cJSON *damage = cJSON_GetObjectItem(root, "damage");
-    cJSON *element = cJSON_GetObjectItem(root, "element");
-    cJSON *targets = cJSON_GetObjectItem(root, "targets");
-
-    if (damage && cJSON_IsNumber(damage)) {
-        printf("would deal %d", damage->valueint);
-        if (element && cJSON_IsString(element))
-            printf(" %s", element->valuestring);
-        printf(" damage");
-    }
-
-    if (targets && cJSON_IsArray(targets)) {
-        printf(" to [");
-        cJSON *t = NULL;
-        int first = 1;
-        cJSON_ArrayForEach(t, targets) {
-            if (cJSON_IsString(t)) {
-                printf("%s%s", first ? "" : ", ", t->valuestring);
-                first = 0;
-            }
-        }
-        printf("]");
-    }
-
-    printf("\n");
-    cJSON_Delete(root);
-}
-
 static void play_knight(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
-// TODO: play_healer has no unique healing behavior — it spawns a troop identically to play_knight.
-// TODO: Add healer-specific logic: passive HP regen aura, heal-on-attack, or targeted heal ability.
 static void play_healer(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
-// TODO: play_assassin has no unique stealth/burst behavior — it spawns identically to play_knight.
-// TODO: Add assassin-specific logic: target-priority override, crit chance, or spawn-behind-lines.
 static void play_assassin(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
-// TODO: play_brute has no unique tanking behavior — it spawns identically to play_knight.
-// TODO: Add brute-specific logic: taunt/aggro nearby enemies, damage reduction, or AoE cleave.
 static void play_brute(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
-// TODO: play_farmer has no unique behavior — it spawns identically to play_knight.
-// TODO: Add farmer-specific logic: resource generation, structure building, or passive energy bonus.
 static void play_farmer(const Card *card, GameState *state, int playerIndex, int slotIndex) {
     spawn_troop_from_card(card, state, playerIndex, slotIndex);
 }
 
+static void play_bird(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
+}
+
+static void play_fishfing(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    spawn_troop_from_card(card, state, playerIndex, slotIndex);
+}
+
+// King is animation-only in this pass: targets the owning player's base and
+// restarts the base sword clip. No spawn, no gameplay effect. Energy is
+// consumed only after the live-base check so failed plays are side-effect-free.
+static void play_king(const Card *card, GameState *state, int playerIndex, int slotIndex) {
+    if (!state) return;
+
+    Player *player = &state->players[playerIndex];
+    CardSlot *slot = player_get_slot(player, slotIndex);
+    if (!slot || slot->cooldownTimer > 0.0f) {
+        printf("[%s] slot %d unavailable for player %d\n", card->type, slotIndex, playerIndex);
+        return;
+    }
+
+    Entity *base = player->base;
+    if (!base || !base->alive || base->markedForRemoval) {
+        printf("[KING] no live base for player %d, skipping\n", playerIndex);
+        return;
+    }
+
+    if (!energy_can_afford(player, card->cost)) {
+        printf("[PLAY] Not enough energy for '%s' (need %d, have %.1f)\n",
+               card->name, card->cost, player->energy);
+        return;
+    }
+    if (!energy_consume(player, card->cost)) return;
+
+    if (base->state == ESTATE_ATTACKING) {
+        entity_restart_clip(base);
+    } else {
+        entity_set_state(base, ESTATE_ATTACKING);
+    }
+    base->attackTargetId = -1;
+
+    player_hand_restart_animation_for_card(player, card);
+    printf("[PLAY] king '%s' activated base attack for player %d\n", card->name, playerIndex);
+}
+
 void card_action_init(void) {
     handler_count = 0;
-    card_action_register("spell", play_spell);
     card_action_register("knight", play_knight);
     card_action_register("healer", play_healer);
     card_action_register("assassin", play_assassin);
     card_action_register("brute", play_brute);
     card_action_register("farmer", play_farmer);
+    card_action_register("bird", play_bird);
+    card_action_register("fishfing", play_fishfing);
+    card_action_register("king", play_king);
 }

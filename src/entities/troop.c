@@ -16,6 +16,8 @@ float troop_default_body_radius(SpriteType type) {
         case SPRITE_TYPE_HEALER:   return 14.0f;
         case SPRITE_TYPE_FARMER:   return 14.0f;
         case SPRITE_TYPE_BRUTE:    return 18.0f;
+        case SPRITE_TYPE_BIRD:     return 14.0f;
+        case SPRITE_TYPE_FISHFING: return 14.0f;
         case SPRITE_TYPE_BASE:     return 16.0f;
         default:                   return 14.0f;
     }

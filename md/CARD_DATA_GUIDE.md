@@ -30,10 +30,13 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 | `assassin` | Spawns a troop using the shared troop pipeline; no assassin-specific ability yet |
 | `brute` | Spawns a troop using the shared troop pipeline; gameplay difference currently comes from JSON stats and targeting |
 | `farmer` | Spawns a troop using the shared troop pipeline; no farmer-specific ability yet |
-| `spell` | Consumes energy and logs parsed spell metadata; no in-world effect yet |
+| `bird` | Spawns a troop using the shared troop pipeline; starts from Knight baseline stats |
+| `fishfing` | Spawns a troop using the shared troop pipeline; starts from Knight baseline stats |
+| `king` | Plays on the owning base and restarts its attack clip; no spawn, animation-only in this pass |
 
-All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`) read their
-stats from the same troop fields in the JSON `data` column.
+All troop types (`knight`, `healer`, `assassin`, `brute`, `farmer`, `bird`,
+`fishfing`) read their stats from the same troop fields in the JSON `data`
+column. `king` does not read troop stats — only the `visual` block is required.
 
 Lookups are case-sensitive: `cards_find()` uses `strcmp()` on `card_id`. Keep
 `cards.card_id` and `nfc_tags.card_id` casing consistent across your database.
@@ -142,19 +145,6 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `moveSpeed` | float | `60.0` | Movement speed in pixels per second |
 | `targeting` | string | `"nearest"` | `"nearest"`, `"building"`, or `"specific"` |
 | `targetType` | string | `null` | Parsed and stored when `targeting` is `"specific"`, but current combat code still falls back to nearest-target behavior |
-
----
-
-## Gameplay Fields — Spell Cards
-
-Applies to `type: "spell"`. Note: spell logic currently consumes energy and
-prints parsed metadata only.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `damage` | int | Damage amount |
-| `element` | string | Element type (e.g. `"fire"`, `"ice"`) |
-| `targets` | array of strings | Target categories (e.g. `["troops", "buildings"]`) |
 
 ---
 
@@ -298,24 +288,6 @@ VALUES (
 }
 ```
 
-### Fireball — Spell card
-
-```json
-{
-  "visual": {
-    "border_color": "red",
-    "bg_style": "black",
-    "banner_color": "red",
-    "gem_color": "red",
-    "show_energy_top": true,
-    "energy_top_color": "red"
-  },
-  "damage": 120,
-  "element": "fire",
-  "targets": ["troops", "buildings"]
-}
-```
-
 ---
 
 ## Quick Reference
@@ -336,4 +308,4 @@ VALUES (
 `nearest` `building` `specific` (+ `targetType` field)
 
 ### Registered card types
-`knight` `healer` `assassin` `brute` `farmer` `spell`
+`assassin` `bird` `brute` `farmer` `fishfing` `healer` `king` `knight`

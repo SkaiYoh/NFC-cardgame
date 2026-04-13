@@ -24,6 +24,9 @@
 #define CHAR_ASSASSIN_PATH  "src/assets/characters/Assassin/"
 #define CHAR_BRUTE_PATH     "src/assets/characters/Brute/"
 #define CHAR_FARMER_PATH     "src/assets/characters/Farmer/"
+#define CHAR_BIRD_PATH       "src/assets/characters/Bird/"
+#define CHAR_FISHFING_PATH   "src/assets/characters/Fishfing/"
+#define CHAR_KING_PATH       "src/assets/characters/King/"
 #define SPRITE_FRAME_SIZE 79
 
 // Gameplay tuning

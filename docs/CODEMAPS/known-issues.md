@@ -7,8 +7,6 @@ All items below were verified from current source or current database state on
 
 - Match/pregame flow is not implemented.
   - `match.c` contains declarations only
-- Spell cards do not affect gameplay.
-  - `play_spell()` only parses and prints metadata
 - Projectile gameplay is not implemented.
   - `projectile.c` is empty
 - There is no base HP UI and no in-game card/hand display.

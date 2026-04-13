@@ -56,16 +56,6 @@ The in-memory model is:
 `targetType` is currently parsed and stored, but `combat_find_target()` still
 falls back to nearest-target behavior for `TARGET_SPECIFIC_TYPE`.
 
-### Spell Metadata
-
-`play_spell()` reads these top-level keys:
-
-- `damage`
-- `element`
-- `targets`
-
-It currently logs them only. It does not apply in-world effects.
-
 ### Card Visual Fields
 
 `card_visual_from_json()` expects a nested `visual` object and reads:
@@ -85,27 +75,26 @@ It currently logs them only. It does not apply in-world effects.
 
 ## Checked-In Runtime Database
 
-The checked-in `cardgame.db` currently contains six cards with uppercase IDs:
+The checked-in `cardgame.db` currently contains eight cards with uppercase IDs:
 
 - `ASSASSIN_01`
+- `BIRD_01`
 - `BRUTE_01`
 - `FARMER_01`
-- `FIREBALL_01`
+- `FISHFING_01`
 - `HEALER_01`
+- `KING_01`
 - `KNIGHT_01`
 
-It also currently contains two NFC mappings:
-
-- `3B8143D6 -> KNIGHT_01`
-- `6B6650D6 -> FARMER_01`
+It also currently contains zero rows in `nfc_tags` on fresh regeneration.
 
 ## Fresh Seeded Database
 
 A fresh database created from `sqlite/schema.sql` and `sqlite/seed.sql`
 currently contains:
 
-- six cards
-- uppercase IDs (`ASSASSIN_01`, `BRUTE_01`, ..., `KNIGHT_01`)
+- eight cards
+- uppercase IDs (`ASSASSIN_01`, `BIRD_01`, ..., `KNIGHT_01`)
 - zero rows in `nfc_tags`
 
 ## Re-Seeding The Checked-In Database

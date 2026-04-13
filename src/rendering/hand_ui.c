@@ -59,7 +59,10 @@ static int hand_ui_sheet_row_for_card(const Card *card) {
     if (strcmp(card->card_id, "ASSASSIN_01") == 0) return 2;
     if (strcmp(card->card_id, "FARMER_01") == 0) return 3;
     if (strcmp(card->card_id, "BRUTE_01") == 0) return 4;
-    if (strcmp(card->card_id, "FIREBALL_01") == 0) return 5;
+    // BIRD/FISHFING/KING reuse existing rows until card_sheet.png is redrawn.
+    if (strcmp(card->card_id, "BIRD_01") == 0) return 0;
+    if (strcmp(card->card_id, "FISHFING_01") == 0) return 2;
+    if (strcmp(card->card_id, "KING_01") == 0) return 4;
 
     // Unimplemented or unknown cards reuse the knight art row.
     return 0;

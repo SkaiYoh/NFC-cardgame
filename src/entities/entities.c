@@ -436,6 +436,19 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
         case ESTATE_ATTACKING: {
             if (!e->alive) break;
 
+            // Buildings play a one-shot attack clip with no target / no combat
+            // application (e.g. play_king triggers the base sword swing for
+            // visual feedback only). Tick the clip and return to idle when it
+            // finishes so the normal troop-shaped attack path below can stay
+            // unchanged.
+            if (e->type == ENTITY_BUILDING) {
+                AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
+                if (evt.finishedThisTick) {
+                    entity_set_state(e, ESTATE_IDLE);
+                }
+                return;
+            }
+
             // Resolve locked target by ID
             Entity *target = bf_find_entity(&gs->battlefield, e->attackTargetId);
 

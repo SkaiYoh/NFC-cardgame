@@ -14,7 +14,7 @@ implementation supports spawning troops, spawning one base per player, moving
 units through canonical lane paths, finding targets, applying hit-synced combat
 damage, playing death animations, latching match results on base destruction,
 and rendering both players' views over the same battlefield. Pregame/match
-phases, projectile gameplay, spell world effects, base-health UI, and in-game
+phases, projectile gameplay, base-health UI, and in-game
 card rendering are still missing.
 
 ## Verified Working Now
@@ -68,10 +68,11 @@ card rendering are still missing.
 
 - The game starts directly in live play. There is no pregame/ready flow or
   game-over phase machine.
-- Spell cards consume energy and print effect metadata, but they do not change
-  game state.
-- Card-type handlers for healer, assassin, brute, and farmer do not add custom
-  behavior of their own.
+- Card-type handlers for healer, assassin, brute, farmer, bird, and fishfing
+  share the Knight spawn pipeline and do not add custom behavior of their own.
+- `king` is a character-only non-spawn card: it restarts the owning base's
+  attack clip and consumes energy, but applies no gameplay effect beyond the
+  animation in this pass.
   - Current gameplay differences come from per-card stats and targeting values
     parsed from card JSON.
   - `BRUTE_01` does already get building-priority targeting because its JSON
@@ -99,7 +100,6 @@ Because of those gaps, the repo does not currently support:
 - pregame readiness flow
 - match restart/rematch flow
 - projectile-driven units
-- spell effects that alter world state
 - visible base HP
 - in-game card/hand rendering
 

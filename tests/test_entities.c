@@ -4,7 +4,7 @@
  * Self-contained: redefines minimal type stubs and includes entities.c
  * directly to avoid the heavy types.h include chain.
  *
- * Focus: healer stale-target cancel/retarget behavior in ESTATE_ATTACKING.
+ * Focus: attack-state behavior for troops and building one-shot clips.
  */
 
 #include <assert.h>
@@ -71,6 +71,8 @@ typedef enum {
     SPRITE_TYPE_ASSASSIN,
     SPRITE_TYPE_BRUTE,
     SPRITE_TYPE_FARMER,
+    SPRITE_TYPE_BIRD,
+    SPRITE_TYPE_FISHFING,
     SPRITE_TYPE_BASE,
     SPRITE_TYPE_COUNT
 } SpriteType;
@@ -534,6 +536,14 @@ static Entity make_healer(int id, Vector2 pos) {
     return healer;
 }
 
+static Entity make_base_building(int id, int ownerID, Vector2 pos) {
+    Entity base = make_entity(id, ownerID, ENTITY_BUILDING, pos);
+    base.spriteType = SPRITE_TYPE_BASE;
+    base.state = ESTATE_IDLE;
+    anim_state_init(&base.anim, ANIM_IDLE, DIR_SIDE, 0.5f, false);
+    return base;
+}
+
 static void test_healer_cancels_stale_heal_and_retargets_enemy(void) {
     reset_globals();
     GameState gs = make_game_state();
@@ -975,12 +985,31 @@ static void test_non_healer_enemy_hit_flow_unchanged(void) {
     assert(g_lastApplyHitTarget == &enemy);
 }
 
+static void test_building_attack_clip_finishes_and_returns_to_idle(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity base = make_base_building(1, 0, (Vector2){540.0f, 1800.0f});
+    entity_set_state(&base, ESTATE_ATTACKING);
+    base.attackTargetId = -1;
+
+    entity_update(&base, &gs, 1.10f);
+
+    assert(base.state == ESTATE_IDLE);
+    assert(base.attackTargetId == -1);
+    assert(!base.markedForRemoval);
+    assert(base.anim.anim == ANIM_IDLE);
+    assert(!base.anim.oneShot);
+    assert(g_applyHitCalls == 0);
+}
+
 int main(void) {
     printf("Running entities tests...\n");
 
     RUN_TEST(test_healer_cancels_stale_heal_and_retargets_enemy);
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
+    RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
 
     RUN_TEST(test_walking_unit_acquires_movement_target_in_aggro_radius);
     RUN_TEST(test_idle_unit_acquires_enemy_pursuit_in_aggro_radius);

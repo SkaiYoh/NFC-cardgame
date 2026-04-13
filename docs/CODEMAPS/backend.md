@@ -44,13 +44,15 @@ Important caveat:
 
 ## Card Dispatch
 
-- `card_action_init()` registers six lower-case card types:
-  - `spell`
+- `card_action_init()` registers eight lower-case card types:
   - `knight`
   - `healer`
   - `assassin`
   - `brute`
   - `farmer`
+  - `bird`
+  - `fishfing`
+  - `king`
 - `card_action_play()` dispatches by `Card.type`.
 - `spawn_troop_from_card()` performs:
   - slot availability check
@@ -61,7 +63,9 @@ Important caveat:
   - lane assignment
   - `waypointIndex = 1`
   - `bf_add_entity()`
-- `play_spell()` consumes energy and logs parsed spell metadata only.
+- `play_king()` plays on the owning base: checks live base, consumes energy,
+  transitions the base into `ESTATE_ATTACKING`, and restarts the hand-card
+  animation. Does not spawn a new entity.
 
 ## Entity State Machine
 
@@ -121,7 +125,6 @@ Important caveat:
 
 ## Backend Gaps
 
-- `play_spell()` only logs its parsed spell data.
 - `match.c` is unimplemented.
 - `projectile.c` is unimplemented.
 - Slot cooldowns never activate because nothing sets `cooldownTimer > 0`.

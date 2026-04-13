@@ -28,22 +28,24 @@
 static bool s_showLaneDebug = false;
 static DebugOverlayFlags s_debugFlags = {0};
 
-static void game_seed_demo_hands(GameState *g) {
-    static const char *demoCardIDs[] = {
-        "KNIGHT_01",
-        "HEALER_01",
-        "ASSASSIN_01",
-        "FARMER_01",
-        "BRUTE_01",
-        "FIREBALL_01"
-    };
+static const char *const DEMO_HAND_CARD_IDS[HAND_MAX_CARDS] = {
+    "KNIGHT_01",
+    "HEALER_01",
+    "ASSASSIN_01",
+    "FARMER_01",
+    "BRUTE_01",
+    "FISHFING_01",
+    "BIRD_01",
+    "KING_01",
+};
 
+static void game_seed_demo_hands(GameState *g) {
     for (int playerIndex = 0; playerIndex < 2; playerIndex++) {
         int handIndex = 0;
-        for (int i = 0; i < (int)(sizeof(demoCardIDs) / sizeof(demoCardIDs[0])); i++) {
-            Card *card = cards_find(&g->deck, demoCardIDs[i]);
+        for (int i = 0; i < HAND_MAX_CARDS; i++) {
+            Card *card = cards_find(&g->deck, DEMO_HAND_CARD_IDS[i]);
             if (!card) {
-                printf("[HandUI] Demo hand missing card '%s'\n", demoCardIDs[i]);
+                printf("[HandUI] Demo hand missing card '%s'\n", DEMO_HAND_CARD_IDS[i]);
                 continue;
             }
 
@@ -154,12 +156,12 @@ bool game_init(GameState *g) {
     return true;
 }
 
-// Simulate a knight card play through the full production code path:
-// cards_find -> card_action_play -> play_knight -> spawn_troop_from_card -> troop_spawn
-static void game_test_play_knight(GameState *g, int playerIndex, int slotIndex) {
-    Card *card = cards_find(&g->deck, "KNIGHT_01");
+// Simulate a card play through the full production code path:
+// cards_find -> card_action_play -> play_<type> -> handler.
+static void game_test_play_card(GameState *g, int playerIndex, int slotIndex, const char *cardId) {
+    Card *card = cards_find(&g->deck, cardId);
     if (!card) {
-        printf("[TEST] KNIGHT_01 not found in deck\n");
+        printf("[TEST] %s not found in deck\n", cardId);
         return;
     }
     card_action_play(card, g, playerIndex, slotIndex);
@@ -191,38 +193,27 @@ static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F10)) s_debugFlags.crowdShells         = !s_debugFlags.crowdShells;
 }
 
-static void game_test_play_farmer(GameState *g, int playerIndex, int slotIndex) {
-    Card *card = cards_find(&g->deck, "FARMER_01");
-    if (!card) {
-        printf("[TEST] FARMER_01 not found in deck\n");
-        return;
-    }
-    card_action_play(card, g, playerIndex, slotIndex);
-}
-
-static void game_test_play_healer(GameState *g, int playerIndex, int slotIndex) {
-    Card *card = cards_find(&g->deck, "HEALER_01");
-    if (!card) {
-        printf("[TEST] HEALER_01 not found in deck\n");
-        return;
-    }
-    card_action_play(card, g, playerIndex, slotIndex);
-}
-
 static void game_handle_spawn_input(GameState *g) {
-    // Player 1: key 1/2/3 = knight, F = farmer, H = healer
-    if (IsKeyPressed(KEY_ONE)) game_test_play_knight(g, 0, 0);
-    if (IsKeyPressed(KEY_TWO)) game_test_play_knight(g, 0, 1);
-    if (IsKeyPressed(KEY_THREE)) game_test_play_knight(g, 0, 2);
-    if (IsKeyPressed(KEY_F)) game_test_play_farmer(g, 0, 0);
-    if (IsKeyPressed(KEY_H)) game_test_play_healer(g, 0, 0);
+    // Demo-hand smoke path: keys 1..8 fire P1's cards, keys Q W E R T Y U I
+    // fire P2's cards, in the same order as DEMO_HAND_CARD_IDS. Every card
+    // plays through slot 0 so they share one cooldown lane.
+    const int p1Keys[HAND_MAX_CARDS] = {
+        KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR,
+        KEY_FIVE, KEY_SIX, KEY_SEVEN, KEY_EIGHT,
+    };
+    const int p2Keys[HAND_MAX_CARDS] = {
+        KEY_Q, KEY_W, KEY_E, KEY_R,
+        KEY_T, KEY_Y, KEY_U, KEY_I,
+    };
 
-    // Player 2: key Q/W/E = knight, R = farmer, Y = healer
-    if (IsKeyPressed(KEY_Q)) game_test_play_knight(g, 1, 0);
-    if (IsKeyPressed(KEY_W)) game_test_play_knight(g, 1, 1);
-    if (IsKeyPressed(KEY_E)) game_test_play_knight(g, 1, 2);
-    if (IsKeyPressed(KEY_R)) game_test_play_farmer(g, 1, 0);
-    if (IsKeyPressed(KEY_Y)) game_test_play_healer(g, 1, 0);
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        if (IsKeyPressed(p1Keys[i])) {
+            game_test_play_card(g, 0, 0, DEMO_HAND_CARD_IDS[i]);
+        }
+        if (IsKeyPressed(p2Keys[i])) {
+            game_test_play_card(g, 1, 0, DEMO_HAND_CARD_IDS[i]);
+        }
+    }
 }
 
 void game_update(GameState *g) {
