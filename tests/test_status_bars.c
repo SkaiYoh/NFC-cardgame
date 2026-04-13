@@ -395,9 +395,8 @@ static void test_damaged_troop_uses_fallback_when_troop_texture_missing(void) {
 /* Base bars: 4500/5000 HP (0.9) and 7/10 energy.
  *
  * Expected draws per bar:
- *   - Health: 1 empty shell (188x20) + 1 interior fill overlay
- *             fillPixels = round(0.9 * 178) = 160
- *   - Energy: 1 empty shell (188x20) + 7 pip overlays (one per filled unit)
+ *   - Health: 1 empty shell (92x9 src -> 188x20 dst) + 1 scaled fill overlay
+ *   - Energy: 1 empty shell (92x9 src -> 188x20 dst) + 7 pip overlays
  *
  * Each label emits 2 DrawTextPro calls (shadow + main). */
 static void test_base_bars_health_fill_and_energy_pips(void) {
@@ -415,38 +414,52 @@ static void test_base_bars_health_fill_and_energy_pips(void) {
     /* 2 labels * (shadow + main) = 4 text draws. */
     assert(g_textCalls == 4);
 
-    /* Health shell: empty cell at (0, 0, 188, 20). */
+    float expectedHealthFillSrcWidth = 0.9f * STATUS_BAR_HEALTH_FILL_SRC_WIDTH;
+    float expectedHealthFillDstWidth =
+        expectedHealthFillSrcWidth * STATUS_BAR_BASE_DRAW_SCALE_X;
+
+    /* Health shell: empty cell at (0, 0, 92, 9). */
     assert(approx_eq(g_drawSrcs[0].x, 0.0f, 0.001f));
     assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].width, 188.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[0].height, 20.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].width, STATUS_BAR_BASE_SRC_CELL_WIDTH, 0.001f));
+    assert(approx_eq(g_drawSrcs[0].height, STATUS_BAR_BASE_SRC_CELL_HEIGHT, 0.001f));
 
-    /* Health fill: full cell interior at (194, 6, 160, 10). */
-    assert(approx_eq(g_drawSrcs[1].x, 194.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].y, 6.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[1].width, 160.0f, 0.5f));
-    assert(approx_eq(g_drawSrcs[1].height, 10.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].width, 160.0f, 0.5f));
-    assert(approx_eq(g_drawDsts[1].height, 10.0f, 0.001f));
+    /* Health fill: full cell interior at (94, 2, 80.1, 5), scaled on screen. */
+    assert(approx_eq(g_drawSrcs[1].x,
+                     STATUS_BAR_HEALTH_FULL_CELL_X + STATUS_BAR_HEALTH_FILL_SRC_LEFT_INSET,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[1].y,
+                     STATUS_BAR_HEALTH_FULL_CELL_Y + STATUS_BAR_HEALTH_FILL_SRC_TOP_INSET,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[1].width, expectedHealthFillSrcWidth, 0.001f));
+    assert(approx_eq(g_drawSrcs[1].height, STATUS_BAR_HEALTH_FILL_SRC_HEIGHT, 0.001f));
+    assert(approx_eq(g_drawDsts[1].width, expectedHealthFillDstWidth, 0.001f));
+    assert(approx_eq(g_drawDsts[1].height,
+                     STATUS_BAR_HEALTH_FILL_SRC_HEIGHT * STATUS_BAR_BASE_DRAW_SCALE_Y,
+                     0.001f));
 
-    /* Energy shell: empty cell at (0, 20, 188, 20). */
+    /* Energy shell: empty cell at (0, 9, 92, 9). */
     assert(approx_eq(g_drawSrcs[2].x, 0.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[2].y, 20.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[2].width, 188.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[2].height, 20.0f, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].y, STATUS_BAR_ENERGY_EMPTY_CELL_Y, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].width, STATUS_BAR_BASE_SRC_CELL_WIDTH, 0.001f));
+    assert(approx_eq(g_drawSrcs[2].height, STATUS_BAR_BASE_SRC_CELL_HEIGHT, 0.001f));
 
-    /* Energy pips: source X = 194 + 18*i, Y = 24, 16x10. */
+    /* Energy pips: source X = 94 + 9*i, Y = 11, 8x5. */
     for (int i = 0; i < 7; i++) {
         int idx = 3 + i;
-        float expectedX = 194.0f + 18.0f * (float)i;
+        float expectedX = STATUS_BAR_ENERGY_FULL_CELL_X +
+                          STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                          STATUS_BAR_ENERGY_PIP_STRIDE * (float)i;
         assert(approx_eq(g_drawSrcs[idx].x, expectedX, 0.001f));
-        assert(approx_eq(g_drawSrcs[idx].y, 24.0f, 0.001f));
-        assert(approx_eq(g_drawSrcs[idx].width, 16.0f, 0.001f));
-        assert(approx_eq(g_drawSrcs[idx].height, 10.0f, 0.001f));
+        assert(approx_eq(g_drawSrcs[idx].y,
+                         STATUS_BAR_ENERGY_FULL_CELL_Y + STATUS_BAR_ENERGY_PIP_TOP_INSET,
+                         0.001f));
+        assert(approx_eq(g_drawSrcs[idx].width, STATUS_BAR_ENERGY_PIP_WIDTH, 0.001f));
+        assert(approx_eq(g_drawSrcs[idx].height, STATUS_BAR_ENERGY_PIP_HEIGHT, 0.001f));
     }
 }
 
-/* Full bar: health fill spans the entire 178px interior, energy draws all
+/* Full bar: health fill spans the full scaled interior, energy draws all
  * 10 pips. */
 static void test_base_bar_full_health_and_energy(void) {
     GameState gs = make_game_state();
@@ -461,24 +474,30 @@ static void test_base_bar_full_health_and_energy(void) {
     /* 1 health shell + 1 health fill + 1 energy shell + 10 pips = 13. */
     assert(g_drawCalls == 13);
 
-    /* Health fill spans the full 178-pixel interior. */
-    assert(approx_eq(g_drawSrcs[1].width, 178.0f, 0.001f));
-    assert(approx_eq(g_drawDsts[1].width, 178.0f, 0.001f));
+    /* Health fill spans the full 89-pixel source band and scaled draw width. */
+    assert(approx_eq(g_drawSrcs[1].width, STATUS_BAR_HEALTH_FILL_SRC_WIDTH, 0.001f));
+    assert(approx_eq(g_drawDsts[1].width,
+                     STATUS_BAR_HEALTH_FILL_SRC_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
 
-    /* Energy pip 0 source at (194, 24); pip 9 source at (194 + 18*9, 24). */
-    assert(approx_eq(g_drawSrcs[3].x, 194.0f, 0.001f));
-    assert(approx_eq(g_drawSrcs[12].x, 194.0f + 18.0f * 9.0f, 0.001f));
+    /* Energy pip 0 source at (94, 11); pip 9 source at (94 + 9*9, 11). */
+    assert(approx_eq(g_drawSrcs[3].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET,
+                     0.001f));
+    assert(approx_eq(g_drawSrcs[12].x,
+                     STATUS_BAR_ENERGY_FULL_CELL_X + STATUS_BAR_ENERGY_PIP_SRC_LEFT_INSET +
+                         STATUS_BAR_ENERGY_PIP_STRIDE * 9.0f,
+                     0.001f));
 }
 
-/* Near-empty bar: health fill rounds to 0 so only the shell draws; energy
- * at 0 also draws only the shell. */
-static void test_base_bar_empty_draws_shell_only(void) {
+/* Near-empty health still draws a tiny continuous fill sliver; energy at 0
+ * draws only the shell. */
+static void test_base_bar_near_empty_health_draws_tiny_fill(void) {
     GameState gs = make_game_state();
     Entity base = make_base(0, 5000);
     Camera2D camera = {0};
 
-    /* hp=0 marks base as dead in the filter; tiny HP keeps it rendered but
-     * at a ratio where round(ratio * 178) = 0. 1/5000 = 0.0002 → 0.036 → 0. */
+    /* hp=0 marks base as dead in the filter; tiny HP keeps it rendered. */
     base.hp = 1;
 
     gs.players[0].base = &base;
@@ -486,35 +505,45 @@ static void test_base_bar_empty_draws_shell_only(void) {
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
 
-    /* Only shells, no fills and no pips. */
-    assert(g_drawCalls == 2);
+    /* Health shell + tiny health fill + energy shell. */
+    assert(g_drawCalls == 3);
     assert(approx_eq(g_drawSrcs[0].y, 0.0f, 0.001f));    /* health shell */
-    assert(approx_eq(g_drawSrcs[1].y, 20.0f, 0.001f));   /* energy shell */
+    assert(approx_eq(g_drawSrcs[1].y,
+                     STATUS_BAR_HEALTH_FULL_CELL_Y + STATUS_BAR_HEALTH_FILL_SRC_TOP_INSET,
+                     0.001f));                           /* health fill */
+    assert(approx_eq(g_drawSrcs[2].y, STATUS_BAR_ENERGY_EMPTY_CELL_Y, 0.001f));
+    assert(g_drawDsts[1].width > 0.0f);
+    assert(g_drawDsts[1].width < 0.1f);
 }
 
 /* Core motivating requirement: small HP damage must visibly move the bar.
- * 28 HP out of 5000 is 0.56% — with 178-pixel granularity that's 0.997
- * fill pixels which rounds to 1. */
+ * 28 HP out of 5000 is 0.56% — the scaled destination fill width still moves
+ * by just over one screen pixel. */
 static void test_base_bar_granularity_moves_on_small_hit(void) {
     GameState gs = make_game_state();
     Camera2D camera = {0};
     gs.players[0].energy = 10.0f;
 
-    /* Sample 1: full. Fill width = 178. */
+    /* Sample 1: full. */
     Entity baseFull = make_base(5000, 5000);
     gs.players[0].base = &baseFull;
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
-    float fullFillWidth = g_drawSrcs[1].width;
+    float fullFillWidth = g_drawDsts[1].width;
 
-    /* Sample 2: 4972/5000. round(4972/5000 * 178) = round(177.00) = 177. */
+    /* Sample 2: 4972/5000. */
     reset_draw_state();
     Entity baseHit = make_base(4972, 5000);
     gs.players[0].base = &baseHit;
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
-    float hitFillWidth = g_drawSrcs[1].width;
+    float hitFillWidth = g_drawDsts[1].width;
 
-    assert(approx_eq(fullFillWidth, 178.0f, 0.001f));
-    assert(approx_eq(hitFillWidth, 177.0f, 0.5f));
+    assert(approx_eq(fullFillWidth,
+                     STATUS_BAR_HEALTH_FILL_SRC_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
+    assert(approx_eq(hitFillWidth,
+                     (4972.0f / 5000.0f) * STATUS_BAR_HEALTH_FILL_SRC_WIDTH *
+                         STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
     assert(fullFillWidth - hitFillWidth >= 1.0f);
 }
 
@@ -656,21 +685,30 @@ static void test_fallback_renders_bars_and_labels(void) {
      * + 7 pip rects = 12. */
     assert(g_rectCalls == 12);
 
-    /* Health shell bg: full 188x20 cell footprint. */
-    assert(approx_eq(g_rectDsts[1].width, 188.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[1].height, 20.0f, 0.001f));
+    /* Health shell bg: unchanged 188x20 draw footprint. */
+    assert(approx_eq(g_rectDsts[1].width, STATUS_BAR_BASE_DRAW_WIDTH, 0.001f));
+    assert(approx_eq(g_rectDsts[1].height, STATUS_BAR_BASE_DRAW_HEIGHT, 0.001f));
 
-    /* Health fill rect: round(0.684 * 178) = 122. */
-    assert(approx_eq(g_rectDsts[2].width, 122.0f, 0.5f));
-    assert(approx_eq(g_rectDsts[2].height, 10.0f, 0.001f));
+    /* Health fill rect: scaled from the 89x5 authored fill band. */
+    assert(approx_eq(g_rectDsts[2].width,
+                     (3420.0f / 5000.0f) * STATUS_BAR_HEALTH_FILL_SRC_WIDTH *
+                         STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
+    assert(approx_eq(g_rectDsts[2].height,
+                     STATUS_BAR_HEALTH_FILL_SRC_HEIGHT * STATUS_BAR_BASE_DRAW_SCALE_Y,
+                     0.001f));
 
-    /* Energy shell bg: full 188x20. */
-    assert(approx_eq(g_rectDsts[4].width, 188.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[4].height, 20.0f, 0.001f));
+    /* Energy shell bg: unchanged 188x20 draw footprint. */
+    assert(approx_eq(g_rectDsts[4].width, STATUS_BAR_BASE_DRAW_WIDTH, 0.001f));
+    assert(approx_eq(g_rectDsts[4].height, STATUS_BAR_BASE_DRAW_HEIGHT, 0.001f));
 
-    /* First energy pip rect: 16x10. */
-    assert(approx_eq(g_rectDsts[5].width, 16.0f, 0.001f));
-    assert(approx_eq(g_rectDsts[5].height, 10.0f, 0.001f));
+    /* First energy pip rect: scaled 8x5 authored pip. */
+    assert(approx_eq(g_rectDsts[5].width,
+                     STATUS_BAR_ENERGY_PIP_WIDTH * STATUS_BAR_BASE_DRAW_SCALE_X,
+                     0.001f));
+    assert(approx_eq(g_rectDsts[5].height,
+                     STATUS_BAR_ENERGY_PIP_HEIGHT * STATUS_BAR_BASE_DRAW_SCALE_Y,
+                     0.001f));
 
     /* Fallback colors track the new authored sheet palette. */
     assert(color_eq(g_rectColors[0], BAR_BORDER_COLOR));
@@ -737,7 +775,7 @@ int main(void) {
     RUN_TEST(test_damaged_troop_uses_fallback_when_troop_texture_missing);
     RUN_TEST(test_base_bars_health_fill_and_energy_pips);
     RUN_TEST(test_base_bar_full_health_and_energy);
-    RUN_TEST(test_base_bar_empty_draws_shell_only);
+    RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
     RUN_TEST(test_fractional_energy_shows_whole_pips);
     RUN_TEST(test_label_placement_health_inside_energy_outside);
