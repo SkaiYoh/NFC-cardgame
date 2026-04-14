@@ -283,6 +283,20 @@ static void test_spec_lookup_brute_attack(void) {
     assert(approx_eq(spec->hitNormalized, 0.6f, 0.01f)); // brute hits later
 }
 
+static void test_spec_lookup_healer_blubert_timing(void) {
+    const EntityAnimSpec *walk = anim_spec_get(SPRITE_TYPE_HEALER, ANIM_WALK);
+    const EntityAnimSpec *attack = anim_spec_get(SPRITE_TYPE_HEALER, ANIM_ATTACK);
+
+    assert(walk != NULL);
+    assert(attack != NULL);
+    assert(walk->mode == ANIM_PLAY_LOOP);
+    assert(approx_eq(walk->cycleSeconds, 0.70f, 0.01f));
+    assert(attack->mode == ANIM_PLAY_ONCE);
+    assert(approx_eq(attack->cycleSeconds, 0.60f, 0.01f));
+    assert(approx_eq(attack->hitNormalized, 0.5f, 0.01f));
+    assert(attack->lockFacing == true);
+}
+
 static void test_spec_lookup_death_oneshot(void) {
     for (int t = 0; t < SPRITE_TYPE_COUNT; t++) {
         const EntityAnimSpec *spec = anim_spec_get((SpriteType)t, ANIM_DEATH);
@@ -711,6 +725,7 @@ int main(void) {
     RUN_TEST(test_spec_lookup_knight_idle);
     RUN_TEST(test_spec_lookup_knight_attack);
     RUN_TEST(test_spec_lookup_brute_attack);
+    RUN_TEST(test_spec_lookup_healer_blubert_timing);
     RUN_TEST(test_spec_lookup_death_oneshot);
     RUN_TEST(test_spec_lookup_out_of_bounds);
     RUN_TEST(test_sheet_lookup_resolves_idle_and_run_to_walk);
