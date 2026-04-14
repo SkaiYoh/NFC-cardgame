@@ -22,3 +22,5 @@ test_assault_slots
 test_deposit_slots
 test_entities
 test_spawn_placement
+test_progression
+test_uvulite_font
