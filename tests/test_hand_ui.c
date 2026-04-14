@@ -114,7 +114,7 @@ static bool player_hand_slot_is_occupied(const Player *p, int handIndex) {
     return p->handCards[handIndex] != NULL;
 }
 
-static int player_hand_occupied_count(const Player *p) {
+static __attribute__((unused)) int player_hand_occupied_count(const Player *p) {
     if (!p) return 0;
 
     int count = 0;
@@ -161,7 +161,7 @@ static Vector2 expected_visual_source_offset(int rowIndex, int frameIndex) {
             : (Vector2){0.0f, 0.0f};
     }
 
-    if (rowIndex >= 1 && rowIndex <= 5) {
+    if (rowIndex >= 1 && rowIndex <= 7) {
         return (frameIndex <= 3)
             ? (Vector2){-3.0f, -9.0f}
             : (Vector2){0.0f, -6.0f};
@@ -403,7 +403,7 @@ static void test_top_hand_background_uses_mirrored_rotation(void) {
     printf("  PASS: test_top_hand_background_uses_mirrored_rotation\n");
 }
 
-/* ---- Test: sparse hand compacts visible cards with no gaps ---- */
+/* ---- Test: sparse hand compacts cards in presentation order, not slot order ---- */
 static void test_sparse_hand_compacts_draw_positions(void) {
     Player p = {0};
     Card cardA = { .card_id = "ASSASSIN_01", .type = "assassin" };
@@ -421,9 +421,11 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     assert(g_draw_texture_calls == 2);
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[1], 270.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 160.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[1].y, 1120.0f, 0.01f));
 
-    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardA, 0.0f, 1.0f);
-    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardB, 0.0f, 1.0f);
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardB, 0.0f, 1.0f);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardA, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[0].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[1].x, expected1.x, 0.01f));
@@ -432,8 +434,8 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     printf("  PASS: test_sparse_hand_compacts_draw_positions\n");
 }
 
-/* ---- Test: idle knight uses row 0 from the shared card sheet ---- */
-static void test_idle_knight_uses_sheet_row_zero(void) {
+/* ---- Test: knight cards use their authored row in the shared sheet ---- */
+static void test_knight_uses_mapped_sheet_row(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
     Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
@@ -448,11 +450,11 @@ static void test_idle_knight_uses_sheet_row_zero(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
-    printf("  PASS: test_idle_knight_uses_sheet_row_zero\n");
+    printf("  PASS: test_knight_uses_mapped_sheet_row\n");
 }
 
 /* ---- Test: assassin cards use their mapped row in the shared sheet ---- */
@@ -471,14 +473,14 @@ static void test_assassin_uses_mapped_sheet_row(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
     printf("  PASS: test_assassin_uses_mapped_sheet_row\n");
 }
 
-/* ---- Test: bird cards reuse row 0 in the shared sheet ---- */
+/* ---- Test: bird cards use their authored row in the shared sheet ---- */
 static void test_bird_uses_mapped_sheet_row(void) {
     Player p = {0};
     Card bird = { .card_id = "BIRD_01", .type = "bird" };
@@ -501,7 +503,7 @@ static void test_bird_uses_mapped_sheet_row(void) {
     printf("  PASS: test_bird_uses_mapped_sheet_row\n");
 }
 
-/* ---- Test: fishfing cards reuse row 2 in the shared sheet ---- */
+/* ---- Test: fishfing cards use their authored row in the shared sheet ---- */
 static void test_fishfing_uses_mapped_sheet_row(void) {
     Player p = {0};
     Card fishfing = { .card_id = "FISHFING_01", .type = "fishfing" };
@@ -517,14 +519,14 @@ static void test_fishfing_uses_mapped_sheet_row(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 640.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
     printf("  PASS: test_fishfing_uses_mapped_sheet_row\n");
 }
 
-/* ---- Test: king cards reuse row 4 in the shared sheet ---- */
+/* ---- Test: king cards use their authored row in the shared sheet ---- */
 static void test_king_uses_mapped_sheet_row(void) {
     Player p = {0};
     Card king = { .card_id = "KING_01", .type = "king" };
@@ -540,7 +542,7 @@ static void test_king_uses_mapped_sheet_row(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 640.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 800.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
@@ -593,7 +595,7 @@ static void test_animating_mapped_card_scales_around_center(void) {
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
     Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin,
                                               peakTime, HAND_CARD_PLAY_LIFT_PEAK_SCALE);
     assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
@@ -625,7 +627,7 @@ static void test_frame_four_non_row_zero_card_recenters_visual_bounds(void) {
 
     assert(g_draw_texture_calls == 1);
     assert(approx_eq(g_drawn_src[0].x, 512.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
     Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin, elapsed, drawScale);
     assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected.y, 0.01f));
@@ -633,7 +635,7 @@ static void test_frame_four_non_row_zero_card_recenters_visual_bounds(void) {
     printf("  PASS: test_frame_four_non_row_zero_card_recenters_visual_bounds\n");
 }
 
-/* ---- Test: sparse hand uses the current frame and each card's mapped row ---- */
+/* ---- Test: sparse hand uses presentation order plus each card's mapped row/frame ---- */
 static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
@@ -654,15 +656,15 @@ static void test_sparse_hand_uses_current_frame_and_mapped_rows(void) {
 
     assert(g_draw_texture_calls == 2);
     assert(g_drawn_texture_id[0] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[0].x, 512.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 160.0f, 0.01f));
     assert(g_drawn_texture_id[1] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[1].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[1].y, 160.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[1].x, 512.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[1].y, 320.0f, 0.01f));
 
-    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &knight,
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &healer, 0.0f, 1.0f);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &knight,
                                                knightElapsed, knightScale);
-    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &healer, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[0].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[1].x, expected1.x, 0.01f));
@@ -699,8 +701,8 @@ static void test_background_draws_before_cards_and_preserves_positions(void) {
     assert(g_drawn_texture_id[1] == cardSheet.id);
     assert(g_drawn_texture_id[2] == cardSheet.id);
 
-    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardA, 0.0f, 1.0f);
-    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardB, 0.0f, 1.0f);
+    Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardB, 0.0f, 1.0f);
+    Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardA, 0.0f, 1.0f);
     assert(approx_eq(g_drawn_dst[1].x, expected0.x, 0.01f));
     assert(approx_eq(g_drawn_dst[1].y, expected0.y, 0.01f));
     assert(approx_eq(g_drawn_dst[2].x, expected1.x, 0.01f));
@@ -711,7 +713,7 @@ static void test_background_draws_before_cards_and_preserves_positions(void) {
     printf("  PASS: test_background_draws_before_cards_and_preserves_positions\n");
 }
 
-/* ---- Test: animated knight scales at center while keeping atlas row 0 ---- */
+/* ---- Test: animated knight scales at center while keeping its mapped row ---- */
 static void test_animating_knight_scales_around_center(void) {
     Player p = {0};
     Card knight = { .card_id = "KNIGHT_01", .type = "knight" };
@@ -729,7 +731,7 @@ static void test_animating_knight_scales_around_center(void) {
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[0].y, 0.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 320.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
     Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &knight,
                                               peakTime, HAND_CARD_PLAY_LIFT_PEAK_SCALE);
@@ -778,7 +780,7 @@ int main(void) {
     test_empty_hand_draws_background_when_available();
     test_top_hand_background_uses_mirrored_rotation();
     test_sparse_hand_compacts_draw_positions();
-    test_idle_knight_uses_sheet_row_zero();
+    test_knight_uses_mapped_sheet_row();
     test_assassin_uses_mapped_sheet_row();
     test_bird_uses_mapped_sheet_row();
     test_fishfing_uses_mapped_sheet_row();

@@ -4,6 +4,7 @@
 
 #include "troop.h"
 #include "entities.h"
+#include "../data/card_catalog.h"
 #include "../logic/pathfinding.h"
 #include "cJSON.h"
 #include <stdio.h>
@@ -25,8 +26,9 @@ float troop_default_body_radius(SpriteType type) {
 
 TroopData troop_create_data_from_card(const Card *card) {
     TroopData data = {0};
+    const char *cardType = card_catalog_resolved_type(card);
     data.name = card->name;
-    data.spriteType = sprite_type_from_card(card->type);
+    data.spriteType = sprite_type_from_card(cardType);
 
     // Sensible defaults
     data.hp = 100;
@@ -64,7 +66,7 @@ TroopData troop_create_data_from_card(const Card *card) {
     cJSON *heal = cJSON_GetObjectItem(root, "healAmount");
     if (heal && cJSON_IsNumber(heal)) {
         data.healAmount = heal->valueint;
-    } else if (card->type && strcmp(card->type, "healer") == 0) {
+    } else if (cardType && strcmp(cardType, "healer") == 0) {
         // Older DBs without healAmount: keep healers functional by reusing attack.
         data.healAmount = data.attack;
     }

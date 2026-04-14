@@ -7,6 +7,7 @@
 #include "battlefield.h"
 #include "sustenance.h"
 #include "debug_events.h"
+#include "../data/card_catalog.h"
 #include "../logic/card_effects.h"
 #include "../logic/farmer.h"
 #include "../logic/win_condition.h"
@@ -29,24 +30,14 @@
 static bool s_showLaneDebug = false;
 static DebugOverlayFlags s_debugFlags = {0};
 
-static const char *const DEMO_HAND_CARD_IDS[HAND_MAX_CARDS] = {
-    "KNIGHT_01",
-    "HEALER_01",
-    "ASSASSIN_01",
-    "FARMER_01",
-    "BRUTE_01",
-    "FISHFING_01",
-    "BIRD_01",
-    "KING_01",
-};
-
 static void game_seed_demo_hands(GameState *g) {
     for (int playerIndex = 0; playerIndex < 2; playerIndex++) {
         int handIndex = 0;
-        for (int i = 0; i < HAND_MAX_CARDS; i++) {
-            Card *card = cards_find(&g->deck, DEMO_HAND_CARD_IDS[i]);
+        for (int presentationIndex = 0; presentationIndex < HAND_MAX_CARDS; presentationIndex++) {
+            const char *cardId = card_catalog_card_id_for_presentation_index(presentationIndex);
+            Card *card = cards_find(&g->deck, cardId);
             if (!card) {
-                printf("[HandUI] Demo hand missing card '%s'\n", DEMO_HAND_CARD_IDS[i]);
+                printf("[HandUI] Demo hand missing card '%s'\n", cardId);
                 continue;
             }
 
@@ -198,9 +189,9 @@ static void game_handle_debug_input(void) {
 }
 
 static void game_handle_spawn_input(GameState *g) {
-    // Demo-hand smoke path: keys 1..8 fire P1's cards, keys Q W E R T Y U I
-    // fire P2's cards, in the same order as DEMO_HAND_CARD_IDS. Every card
-    // plays through slot 0 so they share one cooldown lane.
+    // Demo-hand smoke path: keys 1..8 fire P1's visible hand cards, keys
+    // Q W E R T Y U I fire P2's, in hand-presentation order. Every card plays through
+    // slot 0 so they share one cooldown lane.
     const int p1Keys[HAND_MAX_CARDS] = {
         KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR,
         KEY_FIVE, KEY_SIX, KEY_SEVEN, KEY_EIGHT,
@@ -211,11 +202,14 @@ static void game_handle_spawn_input(GameState *g) {
     };
 
     for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        const char *cardId = card_catalog_card_id_for_presentation_index(i);
+        if (!cardId) continue;
+
         if (IsKeyPressed(p1Keys[i])) {
-            game_test_play_card(g, 0, 0, DEMO_HAND_CARD_IDS[i]);
+            game_test_play_card(g, 0, 0, cardId);
         }
         if (IsKeyPressed(p2Keys[i])) {
-            game_test_play_card(g, 1, 0, DEMO_HAND_CARD_IDS[i]);
+            game_test_play_card(g, 1, 0, cardId);
         }
     }
 }

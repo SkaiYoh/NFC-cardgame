@@ -4,8 +4,8 @@
 
 #include "hand_ui.h"
 #include "../core/config.h"
+#include "../data/card_catalog.h"
 #include <stdio.h>
-#include <string.h>
 
 // Opaque dark neutral fill for the hand-bar background. Deliberately darker
 // than the tilemap so the hand strip reads as non-playfield chrome.
@@ -15,42 +15,22 @@ static const Color HAND_BAR_BG = { 20, 20, 24, 255 };
 // facing entry point here to keep hand_ui tests lightweight.
 int player_hand_occupied_count(const Player *p);
 
+typedef struct {
+    const Card *card;
+    int handSlotIndex;
+    int sortKey;
+} HandVisibleCard;
+
 static const int HAND_CARD_ANIMATION_SEQUENCE[] = {0, 1, 2, 3, 4, 0};
 // Measured from card_sheet.png alpha bounds. These are source-space offsets
 // from the nominal 128x160 frame center to the visible sprite center.
-static const Vector2 HAND_CARD_VISUAL_CENTER_OFFSETS[HAND_CARD_SHEET_ROWS][HAND_CARD_FRAME_COUNT] = {
-    {
-        {-3.0f, -3.0f}, {-3.0f, -3.0f}, {-3.0f, -3.0f},
-        {-3.0f, -3.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
-    },
-    {
-        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
-        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
-    },
-    {
-        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
-        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
-    },
-    {
-        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
-        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
-    },
-    {
-        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
-        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
-    },
-    {
-        {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
-        {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
-    },
-    {
-        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f},
-        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
-    },
-    {
-        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f},
-        {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
-    }
+static const Vector2 HAND_CARD_VISUAL_CENTER_OFFSETS_ROW_ZERO[HAND_CARD_FRAME_COUNT] = {
+    {-3.0f, -3.0f}, {-3.0f, -3.0f}, {-3.0f, -3.0f},
+    {-3.0f, -3.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}
+};
+static const Vector2 HAND_CARD_VISUAL_CENTER_OFFSETS_STANDARD[HAND_CARD_FRAME_COUNT] = {
+    {-3.0f, -9.0f}, {-3.0f, -9.0f}, {-3.0f, -9.0f},
+    {-3.0f, -9.0f}, {0.0f, -6.0f}, {0.0f, -6.0f}
 };
 
 static Texture2D hand_ui_load_texture_checked(const char *path, int expectedWidth, int expectedHeight,
@@ -95,20 +75,41 @@ void hand_ui_unload_texture(Texture2D texture) {
 }
 
 static int hand_ui_sheet_row_for_card(const Card *card) {
-    if (!card || !card->card_id) return 0;
+    return card_catalog_hand_sheet_row_for_card(card);
+}
 
-    if (strcmp(card->card_id, "KNIGHT_01") == 0) return 0;
-    if (strcmp(card->card_id, "HEALER_01") == 0) return 1;
-    if (strcmp(card->card_id, "ASSASSIN_01") == 0) return 2;
-    if (strcmp(card->card_id, "FARMER_01") == 0) return 3;
-    if (strcmp(card->card_id, "BRUTE_01") == 0) return 4;
-    // BIRD/FISHFING/KING reuse existing rows until card_sheet.png is redrawn.
-    if (strcmp(card->card_id, "BIRD_01") == 0) return 0;
-    if (strcmp(card->card_id, "FISHFING_01") == 0) return 2;
-    if (strcmp(card->card_id, "KING_01") == 0) return 4;
+static int hand_ui_collect_visible_cards(const Player *p, HandVisibleCard *outCards) {
+    if (!p || !outCards) return 0;
 
-    // Unimplemented or unknown cards reuse the knight art row.
-    return 0;
+    int count = 0;
+    for (int i = 0; i < HAND_MAX_CARDS; i++) {
+        const Card *card = p->handCards[i];
+        if (!card) continue;
+
+        int sortKey = card_catalog_hand_presentation_rank_for_card(card);
+        if (sortKey < 0) {
+            sortKey = card_catalog_presentation_count() + i;
+        }
+
+        outCards[count].card = card;
+        outCards[count].handSlotIndex = i;
+        outCards[count].sortKey = sortKey;
+        count++;
+    }
+
+    // Stable insertion sort: known cards follow presentation order, and ties
+    // (for duplicates/unknowns) preserve the original hand slot order.
+    for (int i = 1; i < count; i++) {
+        HandVisibleCard current = outCards[i];
+        int j = i - 1;
+        while (j >= 0 && outCards[j].sortKey > current.sortKey) {
+            outCards[j + 1] = outCards[j];
+            j--;
+        }
+        outCards[j + 1] = current;
+    }
+
+    return count;
 }
 
 static float hand_ui_play_animation_duration(void) {
@@ -161,7 +162,12 @@ static Vector2 hand_ui_card_visual_center_offset(int rowIndex, int frameIndex) {
         || frameIndex < 0 || frameIndex >= HAND_CARD_FRAME_COUNT) {
         return (Vector2){0.0f, 0.0f};
     }
-    return HAND_CARD_VISUAL_CENTER_OFFSETS[rowIndex][frameIndex];
+
+    if (rowIndex == 0) {
+        return HAND_CARD_VISUAL_CENTER_OFFSETS_ROW_ZERO[frameIndex];
+    }
+
+    return HAND_CARD_VISUAL_CENTER_OFFSETS_STANDARD[frameIndex];
 }
 
 Vector2 hand_ui_card_center_for_index(Rectangle handArea, int visibleCardCount, int visibleIndex) {
@@ -232,26 +238,26 @@ void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet
         DrawTexturePro(handBarTexture, srcRect, dstRect, origin, hand_ui_side_rotation(p->side), WHITE);
     }
 
-    const int visibleCardCount = player_hand_occupied_count(p);
+    HandVisibleCard visibleCards[HAND_MAX_CARDS];
+    const int visibleCardCount = hand_ui_collect_visible_cards(p, visibleCards);
     if (visibleCardCount <= 0) return;
 
     const float rotation = hand_ui_side_rotation(p->side);
 
-    int visibleIndex = 0;
-    for (int i = 0; i < HAND_MAX_CARDS; i++) {
-        const Card *card = p->handCards[i];
-        if (!card) continue;
+    for (int visibleIndex = 0; visibleIndex < visibleCardCount; visibleIndex++) {
+        const HandVisibleCard *entry = &visibleCards[visibleIndex];
+        const Card *card = entry->card;
+        const int handSlotIndex = entry->handSlotIndex;
 
         if (cardSheet.id == 0) {
-            visibleIndex++;
             continue;
         }
 
         const int rowIndex = hand_ui_sheet_row_for_card(card);
-        const int frameIndex = hand_ui_frame_for_elapsed(p->handCardAnimElapsed[i]);
+        const int frameIndex = hand_ui_frame_for_elapsed(p->handCardAnimElapsed[handSlotIndex]);
         Rectangle srcRect = hand_ui_card_src_rect(rowIndex, frameIndex);
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
-        const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[i]);
+        const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[handSlotIndex]);
         // The measured visual-center correction is frame-specific and scales
         // with the play-lift pulse, so cards will "step" slightly as the clip
         // moves between frames with different opaque-bounds centers.
@@ -275,6 +281,5 @@ void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet
         };
         Vector2 origin = { drawWidth * 0.5f, drawHeight * 0.5f };
         DrawTexturePro(cardSheet, srcRect, dstRect, origin, rotation, WHITE);
-        visibleIndex++;
     }
 }

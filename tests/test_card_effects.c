@@ -391,6 +391,27 @@ static void test_king_restarts_clip_when_base_already_attacking(void) {
     assert(g_spawn_register_calls == 0);
 }
 
+static void test_catalog_type_resolution_allows_known_card_id_without_db_type(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(ESTATE_IDLE);
+    Card king = make_king_card();
+    king.type = NULL;
+    gs.players[0].base = &base;
+
+    bool ok = card_action_play(&king, &gs, 0, 0);
+
+    assert(ok);
+    assert(gs.players[0].energy == 6.0f);
+    assert(base.state == ESTATE_ATTACKING);
+    assert(base.attackTargetId == -1);
+    assert(g_entity_set_state_calls == 1);
+    assert(g_entity_restart_clip_calls == 0);
+    assert(g_player_hand_restart_calls == 1);
+    assert(g_troop_create_data_calls == 0);
+    assert(g_troop_spawn_calls == 0);
+    assert(g_spawn_register_calls == 0);
+}
+
 int main(void) {
     printf("Running card_effects tests...\n");
     RUN_TEST(test_king_dispatch_consumes_energy_and_enters_attack);
@@ -398,6 +419,7 @@ int main(void) {
     RUN_TEST(test_king_invalid_slot_blocks_without_side_effects);
     RUN_TEST(test_king_missing_dead_or_marked_base_blocks_without_energy_spend);
     RUN_TEST(test_king_restarts_clip_when_base_already_attacking);
+    RUN_TEST(test_catalog_type_resolution_allows_known_card_id_without_db_type);
     printf("\nAll card_effects tests passed!\n");
     return 0;
 }

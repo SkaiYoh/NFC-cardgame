@@ -8,7 +8,7 @@
 #include "db.h"
 #include <stdbool.h>
 
-typedef struct {
+typedef struct Card {
     char *card_id;
     char *name;
     int cost;

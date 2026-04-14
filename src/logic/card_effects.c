@@ -3,6 +3,7 @@
 //
 
 #include "card_effects.h"
+#include "../data/card_catalog.h"
 #include "../entities/troop.h"
 #include "../entities/entities.h"
 #include "../systems/player.h"
@@ -42,16 +43,17 @@ void card_action_register(const char *type, CardPlayFn fn) {
 }
 
 bool card_action_play(const Card *card, GameState *state, int playerIndex, int slotIndex) {
-    if (!card || !card->type) return false;
+    const char *cardType = card_catalog_resolved_type(card);
+    if (!card || !cardType) return false;
 
     for (int i = 0; i < handler_count; i++) {
-        if (strcmp(handlers[i].type, card->type) == 0) {
+        if (strcmp(handlers[i].type, cardType) == 0) {
             handlers[i].play(card, state, playerIndex, slotIndex);
             return true;
         }
     }
 
-    printf("[PLAY] Unknown card type '%s' for card '%s'\n", card->type, card->name);
+    printf("[PLAY] Unknown card type '%s' for card '%s'\n", cardType, card->name);
     return false;
 }
 
