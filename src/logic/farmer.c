@@ -12,6 +12,7 @@
 #include "../core/config.h"
 #include "../entities/entities.h"
 #include "../systems/player.h"
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 
@@ -44,6 +45,123 @@ static float farmer_base_wait_radius(const Entity *farmer, const Entity *base) {
            PATHFIND_CONTACT_GAP;
 }
 
+static void farmer_resolve_return_goal(const Entity *farmer, const Entity *base,
+                                       Vector2 *outGoal, float *outRadius) {
+    if (!farmer || !base || !outGoal || !outRadius) return;
+
+    *outGoal = base->position;
+    *outRadius = farmer_base_wait_radius(farmer, base);
+
+    if (farmer->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
+        *outGoal = deposit_slots_get_position(base, DEPOSIT_SLOT_PRIMARY,
+                                              farmer->reservedDepositSlotIndex);
+        *outRadius = FARMER_DEPOSIT_ARRIVAL_RADIUS;
+        return;
+    }
+
+    if (farmer->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
+        *outGoal = deposit_slots_get_position(base, DEPOSIT_SLOT_QUEUE,
+                                              farmer->reservedDepositSlotIndex);
+        *outRadius = FARMER_QUEUE_WAIT_PROXIMITY;
+    }
+}
+
+static void farmer_build_sustenance_goal_request(const Entity *farmer,
+                                                 const GameState *gs,
+                                                 const SustenanceNode *node,
+                                                 NavFreeGoalRequest *outRequest) {
+    if (!farmer || !gs || !node || !outRequest) return;
+
+    *outRequest = (NavFreeGoalRequest){
+        .goalX = node->worldPos.v.x,
+        .goalY = node->worldPos.v.y,
+        .stopRadius = FARMER_SUSTENANCE_INTERACT_RADIUS,
+        .perspectiveSide = (int16_t)bf_side_for_player(farmer->ownerID),
+        .carveTargetId = -1,
+        .carveCenterX = 0.0f,
+        .carveCenterY = 0.0f,
+        .carveInnerRadius = 0.0f,
+    };
+
+    const Entity *base = gs->players[farmer->ownerID].base;
+    if (!base) return;
+
+    float baseNavRadius = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
+    float shellRadius = baseNavRadius +
+                        (float)NAV_MAX_MOBILE_BODY_RADIUS +
+                        (float)PATHFIND_CONTACT_GAP;
+    float dx = farmer->position.x - base->position.x;
+    float dy = farmer->position.y - base->position.y;
+    if (dx * dx + dy * dy > shellRadius * shellRadius) return;
+
+    outRequest->carveTargetId = base->id;
+    outRequest->carveCenterX = base->position.x;
+    outRequest->carveCenterY = base->position.y;
+    outRequest->carveInnerRadius = baseNavRadius;
+}
+
+static bool farmer_try_score_sustenance_node(const Entity *farmer,
+                                             GameState *gs,
+                                             const SustenanceNode *node,
+                                             int32_t *outCost) {
+    if (!farmer || !gs || !node || !outCost) return false;
+    if (!gs->nav.initialized) return false;
+
+    NavFreeGoalRequest request;
+    farmer_build_sustenance_goal_request(farmer, gs, node, &request);
+    const NavField *field = nav_get_or_build_free_goal_field(&gs->nav,
+                                                             &gs->battlefield,
+                                                             &request);
+    if (!field) return false;
+
+    int32_t cell = nav_cell_index_for_world(farmer->position.x, farmer->position.y);
+    int32_t cost = field->distance[cell];
+    if (cost == NAV_DIST_UNREACHABLE) return false;
+
+    *outCost = cost;
+    return true;
+}
+
+static SustenanceNode *farmer_find_best_sustenance_node(Entity *farmer, GameState *gs) {
+    if (!farmer || !gs) return NULL;
+
+    Battlefield *bf = &gs->battlefield;
+    BattleSide side = bf_side_for_player(farmer->ownerID);
+    SustenanceNode *bestReachable = NULL;
+    int32_t bestCost = INT_MAX;
+    float bestReachableDistSq = INFINITY;
+    SustenanceNode *bestNearest = NULL;
+    float bestNearestDistSq = INFINITY;
+
+    for (int i = 0; i < SUSTENANCE_MATCH_COUNT_PER_SIDE; ++i) {
+        SustenanceNode *node = &bf->sustenanceField.nodes[side][i];
+        if (!node->active || node->claimedByEntityId != -1) continue;
+
+        float dx = node->worldPos.v.x - farmer->position.x;
+        float dy = node->worldPos.v.y - farmer->position.y;
+        float distSq = dx * dx + dy * dy;
+        if (!bestNearest || distSq < bestNearestDistSq) {
+            bestNearest = node;
+            bestNearestDistSq = distSq;
+        }
+
+        int32_t navCost = NAV_DIST_UNREACHABLE;
+        if (!farmer_try_score_sustenance_node(farmer, gs, node, &navCost)) {
+            continue;
+        }
+
+        if (!bestReachable ||
+            navCost < bestCost ||
+            (navCost == bestCost && distSq < bestReachableDistSq)) {
+            bestReachable = node;
+            bestCost = navCost;
+            bestReachableDistSq = distSq;
+        }
+    }
+
+    return bestReachable ? bestReachable : bestNearest;
+}
+
 // Move a farmer toward `target`, stopping when within `radius`. Delegates
 // to pathfind_move_toward_goal so farmers participate in the same
 // obstacle-aware local steering as combat troops (queueing behind each
@@ -62,14 +180,13 @@ static bool farmer_move_with_steering(Entity *e, GameState *gs, Vector2 target,
 
 static void farmer_seek(Entity *e, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
-    BattleSide side = bf_side_for_player(e->ownerID);
     e->movementTargetId = -1;
 
     // Seeking Cheffies are always empty. Safety net in case a prior state
     // left the wrong variant attached (e.g. future code paths).
     farmer_apply_variant(e, gs, false);
 
-    SustenanceNode *node = sustenance_find_nearest_available(bf, side, e->position);
+    SustenanceNode *node = farmer_find_best_sustenance_node(e, gs);
     if (!node) {
         // No sustenance available — idle until one frees up
         if (e->state != ESTATE_IDLE) entity_set_state(e, ESTATE_IDLE);
@@ -215,14 +332,8 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
     }
 
     Vector2 target = base->position;
-    float arriveRadius = farmer_base_contact_radius(e, base);
-
-    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
-        target = deposit_slots_get_position(base,
-                                            e->reservedDepositSlotKind,
-                                            e->reservedDepositSlotIndex);
-        arriveRadius = FARMER_QUEUE_WAIT_PROXIMITY;
-    }
+    float arriveRadius = 0.0f;
+    farmer_resolve_return_goal(e, base, &target, &arriveRadius);
 
     bool arrived = farmer_move_with_steering(e, gs, target, arriveRadius, deltaTime);
 
@@ -307,22 +418,7 @@ bool farmer_debug_nav_goal(const Entity *e, const GameState *gs,
             const Entity *base = gs->players[e->ownerID].base;
             if (!base) return false;
 
-            *outGoal = base->position;
-            *outStopRadius = farmer_base_wait_radius(e, base);
-
-            if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
-                *outStopRadius = farmer_base_contact_radius(e, base);
-                return true;
-            }
-
-            if (e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
-                *outGoal = deposit_slots_get_position(base,
-                                                      e->reservedDepositSlotKind,
-                                                      e->reservedDepositSlotIndex);
-                *outStopRadius = FARMER_QUEUE_WAIT_PROXIMITY;
-                return true;
-            }
-
+            farmer_resolve_return_goal(e, base, outGoal, outStopRadius);
             return true;
         }
 

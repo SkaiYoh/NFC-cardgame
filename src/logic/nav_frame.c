@@ -608,6 +608,15 @@ static int32_t nav_range_q(float radius) {
     return (int32_t)(radius * 4.0f + 0.5f);
 }
 
+static float nav_free_goal_seed_radius(float stopRadius) {
+    float seedRadius = stopRadius;
+    float minSeedRadius = sqrtf(2.0f) * (float)NAV_CELL_SIZE * 0.5f;
+    if (seedRadius < minSeedRadius) {
+        seedRadius = minSeedRadius;
+    }
+    return seedRadius;
+}
+
 // ---------- Entity position snapshot (open-addressed hash table) ----------
 //
 // Entity ids grow monotonically and can exceed MAX_ENTITIES*2 in long
@@ -653,18 +662,27 @@ static void nav_entity_snap_insert(NavFrame *nav, int32_t entityId,
 // caller passes a non-negative targetId that matches a live snapshot slot,
 // the snapshot wins. Otherwise the caller-supplied coordinates are used as
 // a fallback (static buildings, free-goal points, tests with no entity id).
-static void nav_resolve_target_position(const NavFrame *nav,
-                                         const NavTargetGoal *goal,
-                                         float *outX, float *outY) {
-    float x = goal->targetX;
-    float y = goal->targetY;
-    int32_t slot = nav_entity_snap_find(nav, goal->targetId);
+static void nav_resolve_entity_position(const NavFrame *nav,
+                                        int32_t entityId,
+                                        float fallbackX, float fallbackY,
+                                        float *outX, float *outY) {
+    float x = fallbackX;
+    float y = fallbackY;
+    int32_t slot = nav_entity_snap_find(nav, entityId);
     if (slot >= 0) {
         x = nav->entityPosX[slot];
         y = nav->entityPosY[slot];
     }
     if (outX) *outX = x;
     if (outY) *outY = y;
+}
+
+static void nav_resolve_target_position(const NavFrame *nav,
+                                        const NavTargetGoal *goal,
+                                        float *outX, float *outY) {
+    nav_resolve_entity_position(nav, goal->targetId,
+                                goal->targetX, goal->targetY,
+                                outX, outY);
 }
 
 static void nav_target_field_stamp_key(NavField *field, const NavTargetGoal *goal,
@@ -684,6 +702,55 @@ static void nav_target_field_stamp_key(NavField *field, const NavTargetGoal *goa
     field->keyLane = -1;
     field->keyGoalXQ = (int32_t)(goal->targetX * 4.0f + 0.5f);
     field->keyGoalYQ = (int32_t)(goal->targetY * 4.0f + 0.5f);
+}
+
+static void nav_free_goal_field_stamp_key(NavField *field,
+                                          const NavFreeGoalRequest *request,
+                                          int32_t rangeQ) {
+    field->kind = NAV_GOAL_KIND_FREE_GOAL;
+    field->perspectiveSide = request->perspectiveSide;
+    field->anchorX = request->goalX;
+    field->anchorY = request->goalY;
+    field->stopRadius = request->stopRadius;
+    field->innerRadius = 0.0f;
+    field->arcCenterDeg = 0.0f;
+    field->arcHalfDeg = 0.0f;
+    field->targetBodyRadius = 0.0f;
+    field->keyTargetId = request->carveTargetId;
+    field->keyRangeQ = rangeQ;
+    field->keySide = -1;
+    field->keyLane = -1;
+    field->keyGoalXQ = (int32_t)(request->goalX * 4.0f + 0.5f);
+    field->keyGoalYQ = (int32_t)(request->goalY * 4.0f + 0.5f);
+}
+
+static void nav_field_carve_target_owned_blockers(const NavFrame *nav,
+                                                  NavField *field,
+                                                  int32_t targetId,
+                                                  float centerX,
+                                                  float centerY,
+                                                  float innerRadius) {
+    if (!nav || !field) return;
+    if (targetId < 0) return;
+
+    if (innerRadius < 0.0f) innerRadius = 0.0f;
+    float innerSq = innerRadius * innerRadius;
+
+    for (int32_t idx = 0; idx < NAV_CELLS; ++idx) {
+        if (nav->staticBlockers.blockerSrc[idx] != targetId) continue;
+        if (!field->hardBlocked[idx]) continue;
+
+        NavCellCoord c = nav_cell_coord(idx);
+        float cellX = (float)c.col * (float)NAV_CELL_SIZE +
+                      (float)NAV_CELL_SIZE * 0.5f;
+        float cellY = (float)c.row * (float)NAV_CELL_SIZE +
+                      (float)NAV_CELL_SIZE * 0.5f;
+        float dx = cellX - centerX;
+        float dy = cellY - centerY;
+        if (dx * dx + dy * dy >= innerSq) {
+            field->hardBlocked[idx] = 0;
+        }
+    }
 }
 
 static void nav_build_target_field(NavFrame *nav, NavField *field,
@@ -718,22 +785,10 @@ static void nav_build_target_field(NavFrame *nav, NavField *field,
     if (goal.kind == NAV_GOAL_KIND_STATIC_ATTACK && goal.targetId >= 0) {
         float innerFloor = goal.targetBodyRadius;
         if (goal.innerRadiusMin > innerFloor) innerFloor = goal.innerRadiusMin;
-        float innerSq = innerFloor * innerFloor;
         field->innerRadius = innerFloor;
-        for (int32_t idx = 0; idx < NAV_CELLS; ++idx) {
-            if (nav->staticBlockers.blockerSrc[idx] != goal.targetId) continue;
-            if (!field->hardBlocked[idx]) continue;
-            NavCellCoord c = nav_cell_coord(idx);
-            float cellX = (float)c.col * (float)NAV_CELL_SIZE +
-                          (float)NAV_CELL_SIZE * 0.5f;
-            float cellY = (float)c.row * (float)NAV_CELL_SIZE +
-                          (float)NAV_CELL_SIZE * 0.5f;
-            float dx = cellX - goal.targetX;
-            float dy = cellY - goal.targetY;
-            if (dx * dx + dy * dy >= innerSq) {
-                field->hardBlocked[idx] = 0;
-            }
-        }
+        nav_field_carve_target_owned_blockers(nav, field, goal.targetId,
+                                              goal.targetX, goal.targetY,
+                                              innerFloor);
     }
 
     int32_t seeded = 0;
@@ -820,20 +875,62 @@ const NavField *nav_find_target_field(const NavFrame *nav,
     return NULL;
 }
 
+static void nav_build_free_goal_field(NavFrame *nav, NavField *field,
+                                      const NavFreeGoalRequest *request) {
+    float seedRadius = nav_free_goal_seed_radius(request->stopRadius);
+    NavTargetGoal goal = {
+        .kind = NAV_GOAL_KIND_FREE_GOAL,
+        .targetX = request->goalX,
+        .targetY = request->goalY,
+        .outerRadius = seedRadius,
+        .arcCenterDeg = 0.0f,
+        .arcHalfDeg = 0.0f,
+        .targetId = -1,
+        .perspectiveSide = request->perspectiveSide,
+    };
+    int32_t rangeQ = nav_range_q(request->stopRadius);
+
+    nav_field_reset_for_build(nav, field);
+    nav_free_goal_field_stamp_key(field, request, rangeQ);
+
+    if (request->carveTargetId >= 0) {
+        float carveX = request->carveCenterX;
+        float carveY = request->carveCenterY;
+        nav_resolve_entity_position(nav, request->carveTargetId,
+                                    carveX, carveY,
+                                    &carveX, &carveY);
+        nav_field_carve_target_owned_blockers(nav, field,
+                                              request->carveTargetId,
+                                              carveX, carveY,
+                                              request->carveInnerRadius);
+    }
+
+    int32_t seeded = nav_seed_disk(field, &goal);
+    if (seeded == 0) {
+        int32_t anchorCell = nav_cell_index_for_world(goal.targetX, goal.targetY);
+        NavCellCoord anchor = nav_cell_coord(anchorCell);
+        seeded = nav_seed_field_at(field, anchor.col, anchor.row, 6);
+    }
+    if (seeded == 0) {
+        field->built = true;
+        return;
+    }
+    nav_integrate_field(nav, field);
+    field->built = true;
+}
+
 const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
-                                                   const Battlefield *bf,
-                                                   float goalX, float goalY,
-                                                   float stopRadius,
-                                                   int perspectiveSide) {
-    if (!nav || !nav->initialized || !bf) return NULL;
-    if (perspectiveSide < 0 || perspectiveSide > 1) return NULL;
+                                                 const Battlefield *bf,
+                                                 const NavFreeGoalRequest *request) {
+    if (!nav || !nav->initialized || !bf || !request) return NULL;
+    if (request->perspectiveSide < 0 || request->perspectiveSide > 1) return NULL;
     // Key on the exact goal coordinates at 0.25 px granularity, not on
     // the containing cell. Two goals inside the same 32 px cell that are
     // more than 0.25 px apart build distinct fields; closer than 0.25 px
     // they alias, which is tighter than any gameplay-visible difference.
-    int32_t goalXQ = (int32_t)(goalX * 4.0f + 0.5f);
-    int32_t goalYQ = (int32_t)(goalY * 4.0f + 0.5f);
-    int32_t rangeQ = nav_range_q(stopRadius);
+    int32_t goalXQ = (int32_t)(request->goalX * 4.0f + 0.5f);
+    int32_t goalYQ = (int32_t)(request->goalY * 4.0f + 0.5f);
+    int32_t rangeQ = nav_range_q(request->stopRadius);
     for (int32_t i = 0; i < nav->freeGoalCacheSize; ++i) {
         NavField *f = &nav->freeGoalFields[i];
         if (!f->built) continue;
@@ -841,7 +938,8 @@ const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
         if (f->keyGoalXQ != goalXQ) continue;
         if (f->keyGoalYQ != goalYQ) continue;
         if (f->keyRangeQ != rangeQ) continue;
-        if (f->perspectiveSide != (int16_t)perspectiveSide) continue;
+        if (f->perspectiveSide != request->perspectiveSide) continue;
+        if (f->keyTargetId != request->carveTargetId) continue;
         return f;
     }
     if (nav->freeGoalCacheSize >= NAV_FREE_GOAL_CACHE_CAPACITY) {
@@ -849,29 +947,17 @@ const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
         return NULL;
     }
     NavField *field = &nav->freeGoalFields[nav->freeGoalCacheSize++];
-    NavTargetGoal goal = {
-        .kind = NAV_GOAL_KIND_FREE_GOAL,
-        .targetX = goalX,
-        .targetY = goalY,
-        .outerRadius = stopRadius,
-        .arcCenterDeg = 0.0f,
-        .arcHalfDeg = 0.0f,
-        .targetId = -1,
-        .perspectiveSide = (int16_t)perspectiveSide,
-    };
-    nav_build_target_field(nav, field, &goal);
+    nav_build_free_goal_field(nav, field, request);
     return field;
 }
 
 const NavField *nav_find_free_goal_field(const NavFrame *nav,
-                                         float goalX, float goalY,
-                                         float stopRadius,
-                                         int perspectiveSide) {
-    if (!nav || !nav->initialized) return NULL;
-    if (perspectiveSide < 0 || perspectiveSide > 1) return NULL;
-    int32_t goalXQ = (int32_t)(goalX * 4.0f + 0.5f);
-    int32_t goalYQ = (int32_t)(goalY * 4.0f + 0.5f);
-    int32_t rangeQ = nav_range_q(stopRadius);
+                                         const NavFreeGoalRequest *request) {
+    if (!nav || !nav->initialized || !request) return NULL;
+    if (request->perspectiveSide < 0 || request->perspectiveSide > 1) return NULL;
+    int32_t goalXQ = (int32_t)(request->goalX * 4.0f + 0.5f);
+    int32_t goalYQ = (int32_t)(request->goalY * 4.0f + 0.5f);
+    int32_t rangeQ = nav_range_q(request->stopRadius);
     for (int32_t i = 0; i < nav->freeGoalCacheSize; ++i) {
         const NavField *f = &nav->freeGoalFields[i];
         if (!f->built) continue;
@@ -879,7 +965,8 @@ const NavField *nav_find_free_goal_field(const NavFrame *nav,
         if (f->keyGoalXQ != goalXQ) continue;
         if (f->keyGoalYQ != goalYQ) continue;
         if (f->keyRangeQ != rangeQ) continue;
-        if (f->perspectiveSide != (int16_t)perspectiveSide) continue;
+        if (f->perspectiveSide != request->perspectiveSide) continue;
+        if (f->keyTargetId != request->carveTargetId) continue;
         return f;
     }
     return NULL;

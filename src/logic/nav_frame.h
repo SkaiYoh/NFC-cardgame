@@ -227,15 +227,18 @@ typedef struct {
     // Cache key fields. Interpretation depends on `kind`:
     //   LANE_MARCH   -> keySide, keyLane
     //   STATIC_ATTACK, MELEE_RING, DIRECT_RANGE -> keyTargetId, keyRangeQ
-    //   FREE_GOAL    -> keyGoalXQ, keyGoalYQ, keyRangeQ
+    //   FREE_GOAL    -> keyGoalXQ, keyGoalYQ, keyRangeQ, keyTargetId
     //
     // keyRangeQ and keyGoalXQ/keyGoalYQ are all 0.25 px integer
     // quantizations (multiply by 4, round to int) of the exact caller
     // values. Two free-goal callers do not alias unless their goal
     // positions agree to within 0.25 px -- tighter than any physical
-    // gameplay difference. No snapping is applied to the seeded geometry:
-    // fields rasterize with the exact caller coordinates and radius, so
-    // the seed set always matches combat_in_range()'s own threshold.
+    // gameplay difference. For FREE_GOAL fields, keyTargetId stores the
+    // optional carveTargetId (-1 when no carve is requested) so carved and
+    // uncarved requests at the same goal point do not alias. No snapping is
+    // applied to the seeded geometry: fields rasterize with the exact caller
+    // coordinates and radius, so the seed set always matches the caller's own
+    // threshold.
     int16_t  keySide;
     int16_t  keyLane;
     int32_t  keyTargetId;
@@ -427,6 +430,26 @@ typedef struct {
     int16_t perspectiveSide; // 0 or 1; determines ally/enemy density cost
 } NavTargetGoal;
 
+// Parameters describing a free-goal field for farmers / helpers. The field is
+// anchored at the exact goal disk centered at (goalX, goalY) with gameplay
+// stop radius stopRadius. The builder may widen the seeded disk just enough to
+// guarantee at least one nearby cell center on the 32 px nav grid, while the
+// actual arrival test still uses stopRadius. Optionally, callers can carve the
+// blocker shell owned by one static target entity (identified by carveTargetId)
+// while preserving an inner no-entry radius. This lets a reserved deposit-slot
+// goal remain reachable even when it sits inside the target's inflated
+// mover-clearance shell.
+typedef struct {
+    float   goalX;
+    float   goalY;
+    float   stopRadius;
+    int16_t perspectiveSide; // 0 or 1; determines ally/enemy density cost
+    int32_t carveTargetId;   // -1 when no static-target carve is needed
+    float   carveCenterX;
+    float   carveCenterY;
+    float   carveInnerRadius;
+} NavFreeGoalRequest;
+
 // Return the target flow field matching `goal`, building it lazily on the
 // first lookup within the current frame. Cache key is
 // (targetId, kind, rangeClass, perspectiveSide). Returns NULL if the cache
@@ -439,28 +462,23 @@ const NavField *nav_get_or_build_target_field(NavFrame *nav, const Battlefield *
 const NavField *nav_find_target_field(const NavFrame *nav,
                                       const NavTargetGoal *goal);
 
-// Return the free-goal flow field seeded at the goal disk of radius
-// `stopRadius` centered at (goalX, goalY), from the perspective of
-// `perspectiveSide`. Cache key is (goalXQ, goalYQ, rangeQ,
-// perspectiveSide), where goalXQ/goalYQ are the 0.25 px integer
-// quantization of the exact caller coordinates and rangeQ is the 0.25 px
-// quantization of the exact caller stopRadius -- two free-goal callers
-// do not alias unless their goal points and radii agree to within
-// 0.25 px. Returns NULL only if the cache overflows (capacity is
-// MAX_ENTITIES * 2 = 128, which matches the battlefield's live entity
-// cap, so this is unreachable in practice).
+// Return the free-goal flow field described by `request`, building it lazily on
+// first lookup within the current frame. Cache key is
+// (goalXQ, goalYQ, rangeQ, perspectiveSide, carveTargetId), where goalXQ /
+// goalYQ are the 0.25 px integer quantization of the exact caller coordinates
+// and rangeQ is the 0.25 px quantization of the exact caller stopRadius. Two
+// free-goal callers do not alias unless their goal points, radii, perspective,
+// and carve target all agree. Returns NULL only if the cache overflows
+// (capacity is MAX_ENTITIES * 2 = 128, which matches the battlefield's live
+// entity cap, so this is unreachable in practice).
 const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
-                                                   const Battlefield *bf,
-                                                   float goalX, float goalY,
-                                                   float stopRadius,
-                                                   int perspectiveSide);
+                                                 const Battlefield *bf,
+                                                 const NavFreeGoalRequest *request);
 
-// Return the already-built free-goal field matching the exact cache key, or
-// NULL if it has not been built in the current frame.
+// Return the already-built free-goal field matching `request`'s exact cache
+// key, or NULL if it has not been built in the current frame.
 const NavField *nav_find_free_goal_field(const NavFrame *nav,
-                                         float goalX, float goalY,
-                                         float stopRadius,
-                                         int perspectiveSide);
+                                         const NavFreeGoalRequest *request);
 
 // Representative world-space anchor of the field's goal region. Lane fields
 // return the final authored lane waypoint; target fields return the target

@@ -358,6 +358,77 @@ static float pathfind_contact_cloud_radius_for_entity(const Entity *e, const Ent
     return combat_static_target_occupancy_radius(e, target);
 }
 
+static float pathfind_static_shell_stamp_radius(const Entity *target) {
+    if (!target) return 0.0f;
+    return pathfind_nav_radius(target) +
+           (float)NAV_MAX_MOBILE_BODY_RADIUS +
+           (float)PATHFIND_CONTACT_GAP;
+}
+
+static const Entity *pathfind_find_enclosing_friendly_static_shell(const Entity *self,
+                                                                   const Battlefield *bf) {
+    if (!self || !bf) return NULL;
+
+    const Entity *best = NULL;
+    float bestDistSq = INFINITY;
+    for (int i = 0; i < bf->entityCount; ++i) {
+        const Entity *other = bf->entities[i];
+        if (!other || other == self) continue;
+        if (!other->alive || other->markedForRemoval) continue;
+        if (other->ownerID != self->ownerID) continue;
+        if (other->type != ENTITY_BUILDING &&
+            other->navProfile != NAV_PROFILE_STATIC) {
+            continue;
+        }
+
+        float dx = self->position.x - other->position.x;
+        float dy = self->position.y - other->position.y;
+        float distSq = dx * dx + dy * dy;
+        float shell = pathfind_static_shell_stamp_radius(other);
+        if (distSq > shell * shell) continue;
+
+        if (!best || distSq < bestDistSq) {
+            best = other;
+            bestDistSq = distSq;
+        }
+    }
+
+    return best;
+}
+
+static void pathfind_build_free_goal_request(const Entity *e, const Battlefield *bf,
+                                             Vector2 goal, float stopRadius,
+                                             NavFreeGoalRequest *outRequest) {
+    if (!e || !outRequest) return;
+
+    *outRequest = (NavFreeGoalRequest){
+        .goalX = goal.x,
+        .goalY = goal.y,
+        .stopRadius = stopRadius,
+        .perspectiveSide = (int16_t)bf_side_for_player(e->ownerID),
+        .carveTargetId = -1,
+        .carveCenterX = 0.0f,
+        .carveCenterY = 0.0f,
+        .carveInnerRadius = 0.0f,
+    };
+
+    if (!bf) return;
+
+    const Entity *target = NULL;
+    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
+        target = pathfind_contact_cloud_target(e, bf);
+    }
+    if (!target) {
+        target = pathfind_find_enclosing_friendly_static_shell(e, bf);
+    }
+    if (!target) return;
+
+    outRequest->carveTargetId = target->id;
+    outRequest->carveCenterX = target->position.x;
+    outRequest->carveCenterY = target->position.y;
+    outRequest->carveInnerRadius = pathfind_nav_radius(target);
+}
+
 static bool pathfind_same_contact_cloud_pair(const Entity *self, const Entity *other,
                                              const Entity *target) {
     if (!self || !other || !target) return false;
@@ -1070,21 +1141,36 @@ static bool pathfind_step_free_goal_flow(Entity *e, Vector2 goal,
                                            const Battlefield *bf,
                                            float deltaTime) {
     if (!nav) return false;
-    int side = (e->ownerID == 0) ? 0 : 1;
-    const NavField *field =
-        nav_get_or_build_free_goal_field(nav, bf, goal.x, goal.y, stopRadius, side);
+
+    float dxGoal = goal.x - e->position.x;
+    float dyGoal = goal.y - e->position.y;
+    float distToGoal = sqrtf(dxGoal * dxGoal + dyGoal * dyGoal);
+    float seedRadius = stopRadius;
+    float minSeedRadius = sqrtf(2.0f) * (float)NAV_CELL_SIZE * 0.5f;
+    if (seedRadius < minSeedRadius) {
+        seedRadius = minSeedRadius;
+    }
+    if (distToGoal <= seedRadius + 0.01f) {
+        // Once a free mover reaches the widened seed neighborhood, switch to
+        // the exact local-steering path so the final few pixels are governed
+        // by the real stopRadius instead of the coarse 32 px grid.
+        return false;
+    }
+
+    NavFreeGoalRequest request;
+    pathfind_build_free_goal_request(e, bf, goal, stopRadius, &request);
+    const NavField *field = nav_get_or_build_free_goal_field(nav, bf, &request);
     if (!field) return false;
 
     float fx = 0.0f, fy = 0.0f;
     nav_sample_flow(field, e->position.x, e->position.y, &fx, &fy);
     if (fx == 0.0f && fy == 0.0f) {
-        // No flow: either already inside the seed disk (arrived) or
-        // standing in a fully-blocked neighborhood. The arrival check
-        // in the outer move_toward_goal covers the first case; for the
-        // second, stall and let the outer caller re-tick next frame.
-        e->ticksSinceProgress++;
-        pathfind_face_goal(e, bf, goal);
-        return true;
+        // No usable free-goal flow at the current sample point. This
+        // commonly happens when the exact stopRadius disk contains no cell
+        // centers (small arrival radii near carved blocker shells), so let
+        // the outer caller fall back to the old free-goal candidate fan for
+        // the final local approach instead of hard-stalling here.
+        return false;
     }
 
     float totalStep = e->moveSpeed * deltaTime;
@@ -1262,14 +1348,10 @@ static const NavField *pathfind_debug_get_target_field(NavFrame *nav,
 
 static const NavField *pathfind_debug_get_free_goal_field(NavFrame *nav,
                                                           const Battlefield *bf,
-                                                          float goalX, float goalY,
-                                                          float stopRadius,
-                                                          int perspectiveSide) {
-    const NavField *field = nav_find_free_goal_field(nav, goalX, goalY,
-                                                     stopRadius, perspectiveSide);
+                                                          const NavFreeGoalRequest *request) {
+    const NavField *field = nav_find_free_goal_field(nav, request);
     if (field) return field;
-    return nav_get_or_build_free_goal_field(nav, bf, goalX, goalY,
-                                            stopRadius, perspectiveSide);
+    return nav_get_or_build_free_goal_field(nav, bf, request);
 }
 
 bool pathfind_debug_preview_entity(const Entity *e, const GameState *gs,
@@ -1297,8 +1379,9 @@ bool pathfind_debug_preview_entity(const Entity *e, const GameState *gs,
         if (!farmer_debug_nav_goal(e, gs, &goal, &stopRadius)) return false;
         clampToStopRadius = true;
         if (nav && nav->initialized) {
-            field = pathfind_debug_get_free_goal_field(nav, bf, goal.x, goal.y,
-                                                       stopRadius, (int)ownerSide);
+            NavFreeGoalRequest request;
+            pathfind_build_free_goal_request(e, bf, goal, stopRadius, &request);
+            field = pathfind_debug_get_free_goal_field(nav, bf, &request);
         }
     } else {
         bool invalidMovementTarget = false;

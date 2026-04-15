@@ -20,6 +20,7 @@ test_hand_ui
 test_card_effects
 test_assault_slots
 test_nav_frame
+test_farmer
 test_deposit_slots
 test_entities
 test_spawn_placement

@@ -2059,6 +2059,22 @@ static NavFrame *phase3b_nav_begin(Battlefield *bf) {
     return &g_phase3bNav;
 }
 
+static NavFreeGoalRequest make_test_free_goal_request(float goalX, float goalY,
+                                                      float stopRadius,
+                                                      int perspectiveSide) {
+    NavFreeGoalRequest request = {
+        .goalX = goalX,
+        .goalY = goalY,
+        .stopRadius = stopRadius,
+        .perspectiveSide = (int16_t)perspectiveSide,
+        .carveTargetId = -1,
+        .carveCenterX = 0.0f,
+        .carveCenterY = 0.0f,
+        .carveInnerRadius = 0.0f,
+    };
+    return request;
+}
+
 static void test_phase3b_lane_flow_pulls_unit_toward_seed(void) {
     Battlefield bf = make_test_battlefield();
     /* Place a lane troop at the start of the lane (home half, near spawn)
@@ -2428,6 +2444,95 @@ static void test_phase3d_farmer_avoids_static_blocker(void) {
     printf("  PASS: test_phase3d_farmer_avoids_static_blocker\n");
 }
 
+static void test_phase3d_primary_deposit_slot_reaches_goal_inside_base_shell(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.position = (Vector2){ 540.0f, 1760.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.bodyRadius = 14.0f;
+    farmer.reservedDepositSlotKind = DEPOSIT_SLOT_PRIMARY;
+
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.id = 901;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+
+    farmer.movementTargetId = base.id;
+
+    bf_test_register(&bf, &farmer);
+    bf_test_register(&bf, &base);
+
+    Vector2 goal = {
+        base.position.x,
+        base.position.y - (base.navRadius + farmer.bodyRadius + BASE_DEPOSIT_SLOT_GAP)
+    };
+    float stopRadius = 10.0f;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    bool arrived = false;
+    for (int i = 0; i < 240 && !arrived; i++) {
+        arrived = (pathfind_move_toward_goal)(&farmer, goal, stopRadius, nav, &bf, 1.0f / 60.0f);
+        float dxBase = farmer.position.x - base.position.x;
+        float dyBase = farmer.position.y - base.position.y;
+        float baseDist = sqrtf(dxBase * dxBase + dyBase * dyBase);
+        assert(baseDist >= base.navRadius - 1.0f);
+    }
+
+    assert(arrived);
+    float dxGoal = farmer.position.x - goal.x;
+    float dyGoal = farmer.position.y - goal.y;
+    assert(sqrtf(dxGoal * dxGoal + dyGoal * dyGoal) <= stopRadius + 1.0f);
+    printf("  PASS: test_phase3d_primary_deposit_slot_reaches_goal_inside_base_shell\n");
+}
+
+static void test_phase3d_farmer_escapes_friendly_base_shell_to_far_goal(void) {
+    Battlefield bf = make_test_battlefield();
+
+    Entity farmer = make_test_entity(1, 0, 300.0f);
+    farmer.position = (Vector2){ 540.0f, 1542.0f };
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.bodyRadius = 14.0f;
+
+    Entity base = make_test_entity(1, 0, 0.0f);
+    base.id = 902;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.position = (Vector2){ 540.0f, 1616.0f };
+    base.bodyRadius = 16.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+
+    bf_test_register(&bf, &farmer);
+    bf_test_register(&bf, &base);
+
+    Vector2 goal = { 540.0f, 1768.0f };
+    float stopRadius = 16.0f;
+
+    NavFrame *nav = phase3b_nav_begin(&bf);
+    bool arrived = false;
+    bool tookDetour = false;
+    for (int i = 0; i < 300 && !arrived; i++) {
+        arrived = (pathfind_move_toward_goal)(&farmer, goal, stopRadius, nav, &bf, 1.0f / 60.0f);
+        if (fabsf(farmer.position.x - base.position.x) >= 12.0f) {
+            tookDetour = true;
+        }
+        float dxBase = farmer.position.x - base.position.x;
+        float dyBase = farmer.position.y - base.position.y;
+        float baseDist = sqrtf(dxBase * dxBase + dyBase * dyBase);
+        assert(baseDist >= base.navRadius - 1.0f);
+    }
+
+    assert(arrived);
+    assert(tookDetour);
+    float dxGoal = farmer.position.x - goal.x;
+    float dyGoal = farmer.position.y - goal.y;
+    assert(sqrtf(dxGoal * dxGoal + dyGoal * dyGoal) <= stopRadius + 1.0f);
+    printf("  PASS: test_phase3d_farmer_escapes_friendly_base_shell_to_far_goal\n");
+}
+
 static void test_phase3d_farmer_arrival_is_idempotent(void) {
     /* When already inside the stopRadius, move_toward_goal returns
      * true without taking a step. */
@@ -2785,10 +2890,10 @@ static void test_debug_preview_farmer_uses_cached_free_goal_without_mutation(voi
     g_farmer_debug_goal_valid = true;
     g_farmer_debug_goal = (Vector2){ 540.0f, 900.0f };
     g_farmer_debug_stop_radius = 36.0f;
-    (void)nav_get_or_build_free_goal_field(&nav, &bf,
-                                           g_farmer_debug_goal.x,
-                                           g_farmer_debug_goal.y,
-                                           g_farmer_debug_stop_radius, 0);
+    NavFreeGoalRequest request = make_test_free_goal_request(g_farmer_debug_goal.x,
+                                                             g_farmer_debug_goal.y,
+                                                             g_farmer_debug_stop_radius, 0);
+    (void)nav_get_or_build_free_goal_field(&nav, &bf, &request);
 
     GameState *gs = make_test_game_state(bf, nav);
     int freeGoalCacheBefore = gs->nav.freeGoalCacheSize;
@@ -2798,11 +2903,7 @@ static void test_debug_preview_farmer_uses_cached_free_goal_without_mutation(voi
     bool ok = pathfind_debug_preview_entity(&farmer, gs, &preview);
     assert(ok);
     assert(!preview.goalIsWaypoint);
-    assert(preview.field == nav_find_free_goal_field(&gs->nav,
-                                                     g_farmer_debug_goal.x,
-                                                     g_farmer_debug_goal.y,
-                                                     g_farmer_debug_stop_radius,
-                                                     0));
+    assert(preview.field == nav_find_free_goal_field(&gs->nav, &request));
     assert(preview.hasPreviewStep);
     assert(gs->nav.freeGoalCacheSize == freeGoalCacheBefore);
     assert(farmer.movementTargetId == movementTargetBefore);
@@ -2980,6 +3081,8 @@ int main(void) {
     test_phase3c_no_target_falls_back_to_lane_flow();
     test_phase3d_farmer_reaches_free_goal();
     test_phase3d_farmer_avoids_static_blocker();
+    test_phase3d_primary_deposit_slot_reaches_goal_inside_base_shell();
+    test_phase3d_farmer_escapes_friendly_base_shell_to_far_goal();
     test_phase3d_farmer_arrival_is_idempotent();
     test_debug_preview_lane_uses_cached_lane_field_without_mutation();
     test_debug_preview_mobile_target_uses_cached_field_without_mutation();
