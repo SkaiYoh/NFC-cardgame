@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 
 typedef struct {
     const char *path;
@@ -384,21 +385,205 @@ void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
     anim_state_init_with_loops(state, anim, dir, cycleDuration, oneShot, 1);
 }
 
+static unsigned int anim_idle_burst_mix(unsigned int value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+static float anim_idle_burst_hold_seconds(const AnimState *state, unsigned int cycleIndex) {
+    if (!state) return 0.0f;
+
+    float minSeconds = state->idleHoldMinSeconds;
+    float maxSeconds = state->idleHoldMaxSeconds;
+    if (minSeconds < 0.0f) minSeconds = 0.0f;
+    if (maxSeconds < minSeconds) maxSeconds = minSeconds;
+    if (maxSeconds <= 0.0f) return 0.0f;
+
+    unsigned int seed = state->idleSeed ^ ((cycleIndex + 1u) * 0x27d4eb2du);
+    double unit = (double) anim_idle_burst_mix(seed) / (double) UINT_MAX;
+    return minSeconds + (float) (unit * (double) (maxSeconds - minSeconds));
+}
+
+static float anim_idle_burst_initial_phase_normalized(const AnimState *state,
+                                                      float initialPhaseNormalized) {
+    if (!state) return 0.0f;
+
+    if (initialPhaseNormalized < 0.0f) {
+        unsigned int seed = state->idleSeed ^ 0x165667b1u;
+        return (float) ((double) anim_idle_burst_mix(seed) / (double) UINT_MAX);
+    }
+
+    if (initialPhaseNormalized > 1.0f) return 1.0f;
+    return initialPhaseNormalized;
+}
+
+static void anim_idle_burst_apply_initial_phase(AnimState *state, float initialPhaseNormalized) {
+    if (!state) return;
+    initialPhaseNormalized =
+        anim_idle_burst_initial_phase_normalized(state, initialPhaseNormalized);
+    if (initialPhaseNormalized <= 0.0f) return;
+
+    float holdDuration = state->idleHoldDuration;
+    float burstDuration = state->cycleDuration;
+    if (holdDuration < 0.0f) holdDuration = 0.0f;
+    if (burstDuration < 0.0f) burstDuration = 0.0f;
+
+    float firstCycleDuration = holdDuration + burstDuration;
+    if (firstCycleDuration <= 0.0f) return;
+
+    if (initialPhaseNormalized > 1.0f) initialPhaseNormalized = 1.0f;
+    float phaseSeconds = initialPhaseNormalized * firstCycleDuration;
+
+    if (phaseSeconds <= holdDuration) {
+        state->idleHolding = true;
+        state->elapsed = phaseSeconds;
+        state->normalizedTime = 0.0f;
+        return;
+    }
+
+    state->idleHolding = false;
+    state->elapsed = phaseSeconds - holdDuration;
+    if (state->elapsed > state->cycleDuration) {
+        state->elapsed = state->cycleDuration;
+    }
+    state->normalizedTime = (state->cycleDuration > 0.0f)
+                                ? state->elapsed / state->cycleDuration
+                                : 0.0f;
+}
+
+void anim_state_restart(AnimState *state) {
+    if (!state) return;
+
+    state->elapsed = 0.0f;
+    state->normalizedTime = 0.0f;
+    state->finished = false;
+
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        state->idleHolding = true;
+        state->idleCycleIndex = 0u;
+        state->idleHoldDuration = anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+    }
+}
+
 void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
                                 float cycleDuration, bool oneShot, int visualLoops) {
     state->anim = anim;
     state->dir = dir;
-    state->elapsed = 0.0f;
+    state->mode = oneShot ? ANIM_PLAY_ONCE : ANIM_PLAY_LOOP;
     state->cycleDuration = cycleDuration;
-    state->normalizedTime = 0.0f;
     state->oneShot = oneShot;
-    state->finished = false;
     state->flipH = false;
     state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = 0.0f;
+    state->idleHoldMaxSeconds = 0.0f;
+    state->idleHoldDuration = 0.0f;
+    state->idleSeed = 0u;
+    state->idleCycleIndex = 0u;
+    state->idleHolding = false;
+    anim_state_restart(state);
+}
+
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed) {
+    state->anim = anim;
+    state->dir = dir;
+    state->mode = ANIM_PLAY_IDLE_BURST;
+    state->cycleDuration = cycleDuration;
+    state->oneShot = false;
+    state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = idleHoldMinSeconds;
+    state->idleHoldMaxSeconds = idleHoldMaxSeconds;
+    state->idleSeed = idleSeed;
+    anim_state_restart(state);
+    anim_idle_burst_apply_initial_phase(state, idleInitialPhaseNormalized);
+}
+
+static AnimPlaybackEvent anim_state_update_idle_burst(AnimState *state, float dt) {
+    AnimPlaybackEvent evt = {0};
+    if (!state) return evt;
+
+    evt.prevNormalized = state->normalizedTime;
+
+    if (state->cycleDuration <= 0.0f) {
+        state->normalizedTime = 0.0f;
+        evt.currNormalized = state->normalizedTime;
+        return evt;
+    }
+
+    float remaining = (dt > 0.0f) ? dt : 0.0f;
+    int guard = 0;
+    while (remaining > 0.0f && guard++ < 32) {
+        if (state->idleHolding) {
+            float holdRemaining = state->idleHoldDuration - state->elapsed;
+            if (holdRemaining <= 0.0f) {
+                state->idleHolding = false;
+                state->elapsed = 0.0f;
+                continue;
+            }
+            if (remaining < holdRemaining) {
+                state->elapsed += remaining;
+                remaining = 0.0f;
+                state->normalizedTime = 0.0f;
+                break;
+            }
+            remaining -= holdRemaining;
+            state->idleHolding = false;
+            state->elapsed = 0.0f;
+            state->normalizedTime = 0.0f;
+            continue;
+        }
+
+        float burstRemaining = state->cycleDuration - state->elapsed;
+        if (burstRemaining <= 0.0f) {
+            evt.loopedThisTick = true;
+            state->idleHolding = true;
+            state->elapsed = 0.0f;
+            state->normalizedTime = 0.0f;
+            state->idleCycleIndex++;
+            state->idleHoldDuration =
+                anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+            continue;
+        }
+
+        if (remaining < burstRemaining) {
+            state->elapsed += remaining;
+            remaining = 0.0f;
+            state->normalizedTime = state->elapsed / state->cycleDuration;
+            break;
+        }
+
+        remaining -= burstRemaining;
+        evt.loopedThisTick = true;
+        state->idleHolding = true;
+        state->elapsed = 0.0f;
+        state->normalizedTime = 0.0f;
+        state->idleCycleIndex++;
+        state->idleHoldDuration = anim_idle_burst_hold_seconds(state, state->idleCycleIndex);
+    }
+
+    if (state->idleHolding) {
+        state->normalizedTime = 0.0f;
+    }
+
+    evt.currNormalized = state->normalizedTime;
+    return evt;
 }
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {
     AnimPlaybackEvent evt = {0};
+    if (!state) return evt;
+
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        return anim_state_update_idle_burst(state, dt);
+    }
 
     if (state->cycleDuration <= 0.0f) {
         // Degenerate clip: stay at frame 0, report finished immediately for one-shot

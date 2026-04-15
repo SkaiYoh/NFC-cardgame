@@ -8,6 +8,7 @@
  */
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -81,7 +82,8 @@ typedef enum {
 } SpriteType;
 typedef enum {
     ANIM_PLAY_LOOP,
-    ANIM_PLAY_ONCE
+    ANIM_PLAY_ONCE,
+    ANIM_PLAY_IDLE_BURST
 } AnimPlayMode;
 
 typedef struct {
@@ -90,10 +92,17 @@ typedef struct {
     float elapsed;
     float cycleDuration;
     float normalizedTime;
+    AnimPlayMode mode;
     bool oneShot;
     bool finished;
     bool flipH;
     int visualLoops;
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleHoldDuration;
+    unsigned int idleSeed;
+    unsigned int idleCycleIndex;
+    bool idleHolding;
 } AnimState;
 
 typedef struct {
@@ -111,6 +120,9 @@ typedef struct {
     bool lockFacing;
     bool removeOnFinish;
     int visualLoops;
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleInitialPhaseNormalized;
 } EntityAnimSpec;
 
 #define WALK_PIXELS_PER_CYCLE 64.0f
@@ -360,17 +372,18 @@ Entity *bf_find_entity(const Battlefield *bf, int id) {
 }
 
 const EntityAnimSpec *anim_spec_get(SpriteType spriteType, AnimationType animType) {
-    (void)spriteType;
-    static const EntityAnimSpec s_idle = { ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1 };
-    static const EntityAnimSpec s_walk = { ANIM_WALK, ANIM_PLAY_LOOP, 0.8f, -1.0f, false, false, 1 };
-    static const EntityAnimSpec s_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.0f, 0.5f, true, false, 1 };
-    static const EntityAnimSpec s_death = { ANIM_DEATH, ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true, 1 };
+    static const EntityAnimSpec s_idle = { ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1, 0.0f, 0.0f, 0.0f };
+    static const EntityAnimSpec s_base_idle = { ANIM_IDLE, ANIM_PLAY_IDLE_BURST, 1.0f, -1.0f, false, false, 1, 0.75f, 1.5f, -1.0f };
+    static const EntityAnimSpec s_walk = { ANIM_WALK, ANIM_PLAY_LOOP, 0.8f, -1.0f, false, false, 1, 0.0f, 0.0f, 0.0f };
+    static const EntityAnimSpec s_attack = { ANIM_ATTACK, ANIM_PLAY_ONCE, 1.0f, 0.5f, true, false, 1, 0.0f, 0.0f, 0.0f };
+    static const EntityAnimSpec s_death = { ANIM_DEATH, ANIM_PLAY_ONCE, 0.75f, -1.0f, false, true, 1, 0.0f, 0.0f, 0.0f };
 
     switch (animType) {
         case ANIM_ATTACK: return &s_attack;
         case ANIM_WALK: return &s_walk;
         case ANIM_DEATH: return &s_death;
         case ANIM_IDLE:
+            return (spriteType == SPRITE_TYPE_BASE) ? &s_base_idle : &s_idle;
         case ANIM_RUN:
         case ANIM_HURT:
         default:
@@ -391,23 +404,100 @@ float anim_attack_cycle_seconds(float attackSpeed) {
 
 void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
                                 float cycleDuration, bool oneShot, int visualLoops);
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed);
+void anim_state_restart(AnimState *state);
 
 void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
                      float cycleDuration, bool oneShot) {
     anim_state_init_with_loops(state, anim, dir, cycleDuration, oneShot, 1);
 }
 
+static unsigned int test_anim_idle_burst_mix(unsigned int value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+static float test_anim_idle_burst_initial_phase_normalized(unsigned int idleSeed,
+                                                           float initialPhaseNormalized) {
+    if (initialPhaseNormalized < 0.0f) {
+        unsigned int seed = idleSeed ^ 0x165667b1u;
+        return (float) ((double) test_anim_idle_burst_mix(seed) / (double) UINT_MAX);
+    }
+    if (initialPhaseNormalized > 1.0f) return 1.0f;
+    return initialPhaseNormalized;
+}
+
+void anim_state_restart(AnimState *state) {
+    if (!state) return;
+    state->elapsed = 0.0f;
+    state->normalizedTime = 0.0f;
+    state->finished = false;
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        state->idleHolding = true;
+        state->idleCycleIndex = 0u;
+        state->idleHoldDuration = state->idleHoldMinSeconds;
+    }
+}
+
 void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
                                 float cycleDuration, bool oneShot, int visualLoops) {
     state->anim = anim;
     state->dir = dir;
-    state->elapsed = 0.0f;
+    state->mode = oneShot ? ANIM_PLAY_ONCE : ANIM_PLAY_LOOP;
     state->cycleDuration = cycleDuration;
-    state->normalizedTime = 0.0f;
     state->oneShot = oneShot;
-    state->finished = false;
     state->flipH = false;
     state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = 0.0f;
+    state->idleHoldMaxSeconds = 0.0f;
+    state->idleHoldDuration = 0.0f;
+    state->idleSeed = 0u;
+    state->idleCycleIndex = 0u;
+    state->idleHolding = false;
+    anim_state_restart(state);
+}
+
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed) {
+    state->anim = anim;
+    state->dir = dir;
+    state->mode = ANIM_PLAY_IDLE_BURST;
+    state->cycleDuration = cycleDuration;
+    state->oneShot = false;
+    state->flipH = false;
+    state->visualLoops = (visualLoops > 0) ? visualLoops : 1;
+    state->idleHoldMinSeconds = idleHoldMinSeconds;
+    state->idleHoldMaxSeconds = idleHoldMaxSeconds;
+    state->idleSeed = idleSeed;
+    anim_state_restart(state);
+
+    idleInitialPhaseNormalized =
+        test_anim_idle_burst_initial_phase_normalized(idleSeed, idleInitialPhaseNormalized);
+    float firstCycleDuration = state->idleHoldDuration + state->cycleDuration;
+    if (idleInitialPhaseNormalized > 0.0f && firstCycleDuration > 0.0f) {
+        if (idleInitialPhaseNormalized > 1.0f) idleInitialPhaseNormalized = 1.0f;
+        float phaseSeconds = idleInitialPhaseNormalized * firstCycleDuration;
+        if (phaseSeconds <= state->idleHoldDuration) {
+            state->idleHolding = true;
+            state->elapsed = phaseSeconds;
+            state->normalizedTime = 0.0f;
+        } else {
+            state->idleHolding = false;
+            state->elapsed = phaseSeconds - state->idleHoldDuration;
+            state->normalizedTime = state->elapsed / state->cycleDuration;
+        }
+    }
 }
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {
@@ -421,10 +511,41 @@ AnimPlaybackEvent anim_state_update(AnimState *state, float dt) {
     }
 
     if (state->cycleDuration <= 0.0f) {
+        if (state->mode == ANIM_PLAY_IDLE_BURST) {
+            state->normalizedTime = 0.0f;
+            evt.currNormalized = state->normalizedTime;
+            return evt;
+        }
         if (state->oneShot) {
             state->finished = true;
             state->normalizedTime = 1.0f;
             evt.finishedThisTick = true;
+        }
+        evt.currNormalized = state->normalizedTime;
+        return evt;
+    }
+
+    if (state->mode == ANIM_PLAY_IDLE_BURST) {
+        if (state->idleHolding) {
+            state->elapsed += dt;
+            if (state->elapsed >= state->idleHoldDuration) {
+                state->idleHolding = false;
+                state->elapsed -= state->idleHoldDuration;
+            }
+            state->normalizedTime = 0.0f;
+            evt.currNormalized = state->normalizedTime;
+            return evt;
+        }
+
+        state->elapsed += dt;
+        if (state->elapsed >= state->cycleDuration) {
+            state->idleHolding = true;
+            state->elapsed = 0.0f;
+            state->idleCycleIndex++;
+            state->normalizedTime = 0.0f;
+            evt.loopedThisTick = true;
+        } else {
+            state->normalizedTime = state->elapsed / state->cycleDuration;
         }
         evt.currNormalized = state->normalizedTime;
         return evt;
@@ -462,6 +583,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
 }
 
 void entity_set_state(Entity *e, EntityState newState);
+void entity_sync_animation(Entity *e);
 void entity_restart_clip(Entity *e);
 
 /* ---- Include production code under test ---- */
@@ -1050,6 +1172,31 @@ static void test_building_attack_finish_clears_pending_king_burst_without_dispat
     assert(base.anim.oneShot == false);
 }
 
+static void test_entity_sync_animation_applies_base_idle_burst_spec(void) {
+    Entity base = make_base_building(1, 0, (Vector2){540.0f, 1800.0f});
+    base.anim.dir = DIR_DOWN;
+    base.anim.flipH = false;
+
+    entity_sync_animation(&base);
+
+    assert(base.anim.mode == ANIM_PLAY_IDLE_BURST);
+    assert(fabsf(base.anim.idleHoldMinSeconds - 0.75f) < 0.001f);
+    assert(fabsf(base.anim.idleHoldMaxSeconds - 1.5f) < 0.001f);
+    float phase = test_anim_idle_burst_initial_phase_normalized(base.anim.idleSeed, -1.0f);
+    float phaseSeconds = phase * (base.anim.idleHoldDuration + base.anim.cycleDuration);
+    if (phaseSeconds <= base.anim.idleHoldDuration) {
+        assert(base.anim.idleHolding == true);
+        assert(fabsf(base.anim.elapsed - phaseSeconds) < 0.001f);
+        assert(fabsf(base.anim.normalizedTime - 0.0f) < 0.001f);
+    } else {
+        float burstElapsed = phaseSeconds - base.anim.idleHoldDuration;
+        assert(base.anim.idleHolding == false);
+        assert(fabsf(base.anim.elapsed - burstElapsed) < 0.001f);
+        assert(fabsf(base.anim.normalizedTime - (burstElapsed / base.anim.cycleDuration)) < 0.001f);
+    }
+    assert(base.anim.oneShot == false);
+}
+
 int main(void) {
     printf("Running entities tests...\n");
 
@@ -1059,6 +1206,7 @@ int main(void) {
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
     RUN_TEST(test_building_attack_hit_marker_dispatches_queued_king_burst_once);
     RUN_TEST(test_building_attack_finish_clears_pending_king_burst_without_dispatch);
+    RUN_TEST(test_entity_sync_animation_applies_base_idle_burst_spec);
 
     RUN_TEST(test_walking_unit_acquires_movement_target_in_aggro_radius);
     RUN_TEST(test_idle_unit_acquires_enemy_pursuit_in_aggro_radius);

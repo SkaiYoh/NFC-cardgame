@@ -25,6 +25,12 @@ typedef enum {
     DIR_COUNT
 } SpriteDirection;
 
+typedef enum {
+    ANIM_PLAY_LOOP,
+    ANIM_PLAY_ONCE,
+    ANIM_PLAY_IDLE_BURST
+} AnimPlayMode;
+
 // A single animation sheet (e.g. "idle.png")
 typedef struct {
     Texture2D texture;
@@ -68,10 +74,17 @@ typedef struct {
     float elapsed;        // seconds since clip start
     float cycleDuration;  // total seconds for one full cycle
     float normalizedTime; // elapsed / cycleDuration, clamped [0,1] for one-shot
+    AnimPlayMode mode;
     bool oneShot;
     bool finished;        // true when one-shot clip completes
     bool flipH;
     int visualLoops;      // how many times to traverse the sheet during one cycle
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleHoldDuration;
+    unsigned int idleSeed;
+    unsigned int idleCycleIndex;
+    bool idleHolding;
 } AnimState;
 
 // Playback events returned by anim_state_update
@@ -101,6 +114,14 @@ void anim_state_init(AnimState *state, AnimationType anim, SpriteDirection dir,
 
 void anim_state_init_with_loops(AnimState *state, AnimationType anim, SpriteDirection dir,
                                 float cycleDuration, bool oneShot, int visualLoops);
+
+void anim_state_init_idle_burst(AnimState *state, AnimationType anim, SpriteDirection dir,
+                                float cycleDuration, float idleHoldMinSeconds,
+                                float idleHoldMaxSeconds, float idleInitialPhaseNormalized,
+                                int visualLoops,
+                                unsigned int idleSeed);
+
+void anim_state_restart(AnimState *state);
 
 AnimPlaybackEvent anim_state_update(AnimState *state, float dt);
 

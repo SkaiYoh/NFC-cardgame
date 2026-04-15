@@ -87,8 +87,6 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
 /* ---- Prevent entity_animation.h from re-including sprite_renderer.h ---- */
 #define NFC_CARDGAME_ENTITY_ANIMATION_H
 
-typedef enum { ANIM_PLAY_LOOP, ANIM_PLAY_ONCE } AnimPlayMode;
-
 typedef struct {
     AnimationType anim;
     AnimPlayMode mode;
@@ -97,6 +95,9 @@ typedef struct {
     bool lockFacing;
     bool removeOnFinish;
     int visualLoops;
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleInitialPhaseNormalized;
 } EntityAnimSpec;
 
 #define WALK_PIXELS_PER_CYCLE 64.0f
@@ -257,6 +258,84 @@ static void test_prev_curr_on_loop(void) {
     assert(e.currNormalized < 0.2f); // wrapped to ~0.1
 }
 
+static void test_idle_burst_holds_on_frame_zero_before_burst(void) {
+    AnimState s;
+    SpriteSheet sheet = {0};
+    sheet.frameCount = 8;
+
+    anim_state_init_idle_burst(&s, ANIM_IDLE, DIR_DOWN, 1.0f, 2.0f, 2.0f, 0.0f, 1, 123u);
+
+    AnimPlaybackEvent e = anim_state_update(&s, 1.5f);
+    assert(s.mode == ANIM_PLAY_IDLE_BURST);
+    assert(s.idleHolding);
+    assert(approx_eq(e.prevNormalized, 0.0f, 0.001f));
+    assert(approx_eq(e.currNormalized, 0.0f, 0.001f));
+    assert(anim_frame_index(&s, &sheet) == 0);
+}
+
+static void test_idle_burst_enters_burst_after_hold(void) {
+    AnimState s;
+    SpriteSheet sheet = {0};
+    sheet.frameCount = 8;
+
+    anim_state_init_idle_burst(&s, ANIM_IDLE, DIR_DOWN, 0.8f, 0.5f, 0.5f, 0.0f, 1, 123u);
+
+    AnimPlaybackEvent e = anim_state_update(&s, 0.65f);
+    assert(!s.idleHolding);
+    assert(e.currNormalized > 0.18f);
+    assert(e.currNormalized < 0.19f);
+    assert(anim_frame_index(&s, &sheet) == 1);
+}
+
+static void test_idle_burst_returns_to_frame_zero_after_burst(void) {
+    AnimState s;
+    SpriteSheet sheet = {0};
+    sheet.frameCount = 8;
+
+    anim_state_init_idle_burst(&s, ANIM_IDLE, DIR_DOWN, 0.8f, 0.5f, 0.5f, 0.0f, 1, 123u);
+
+    AnimPlaybackEvent e = anim_state_update(&s, 1.4f);
+    assert(e.loopedThisTick);
+    assert(s.idleHolding);
+    assert(s.idleCycleIndex == 1u);
+    assert(approx_eq(s.normalizedTime, 0.0f, 0.001f));
+    assert(anim_frame_index(&s, &sheet) == 0);
+}
+
+static void test_idle_burst_restart_returns_to_initial_hold(void) {
+    AnimState s;
+
+    anim_state_init_idle_burst(&s, ANIM_IDLE, DIR_DOWN, 0.8f, 0.5f, 0.5f, 0.0f, 1, 123u);
+    anim_state_update(&s, 0.65f);
+    assert(!s.idleHolding);
+
+    anim_state_restart(&s);
+    assert(s.idleHolding);
+    assert(s.idleCycleIndex == 0u);
+    assert(approx_eq(s.idleHoldDuration, 0.5f, 0.001f));
+    assert(approx_eq(s.normalizedTime, 0.0f, 0.001f));
+}
+
+static void test_idle_burst_random_initial_phase_is_seeded(void) {
+    AnimState a;
+    AnimState b;
+    AnimState c;
+
+    anim_state_init_idle_burst(&a, ANIM_IDLE, DIR_DOWN, 1.0f, 1.0f, 1.0f, -1.0f, 1, 123u);
+    anim_state_init_idle_burst(&b, ANIM_IDLE, DIR_DOWN, 1.0f, 1.0f, 1.0f, -1.0f, 1, 123u);
+    anim_state_init_idle_burst(&c, ANIM_IDLE, DIR_DOWN, 1.0f, 1.0f, 1.0f, -1.0f, 1, 456u);
+
+    assert(a.idleHolding == b.idleHolding);
+    assert(approx_eq(a.elapsed, b.elapsed, 0.001f));
+    assert(approx_eq(a.normalizedTime, b.normalizedTime, 0.001f));
+    assert(a.elapsed > 0.0f || a.normalizedTime > 0.0f || !a.idleHolding);
+
+    bool differs = (a.idleHolding != c.idleHolding) ||
+                   !approx_eq(a.elapsed, c.elapsed, 0.001f) ||
+                   !approx_eq(a.normalizedTime, c.normalizedTime, 0.001f);
+    assert(differs);
+}
+
 /* ==== Spec lookup tests ==== */
 
 static void test_spec_lookup_knight_idle(void) {
@@ -266,6 +345,16 @@ static void test_spec_lookup_knight_idle(void) {
     assert(spec->mode == ANIM_PLAY_LOOP);
     assert(approx_eq(spec->cycleSeconds, 0.0f, 0.01f));
     assert(spec->hitNormalized < 0.0f); // -1.0
+}
+
+static void test_spec_lookup_base_idle_uses_burst_mode(void) {
+    const EntityAnimSpec *spec = anim_spec_get(SPRITE_TYPE_BASE, ANIM_IDLE);
+    assert(spec != NULL);
+    assert(spec->mode == ANIM_PLAY_IDLE_BURST);
+    assert(approx_eq(spec->cycleSeconds, 1.0f, 0.01f));
+    assert(approx_eq(spec->idleHoldMinSeconds, 0.75f, 0.01f));
+    assert(approx_eq(spec->idleHoldMaxSeconds, 1.5f, 0.01f));
+    assert(approx_eq(spec->idleInitialPhaseNormalized, -1.0f, 0.01f));
 }
 
 static void test_spec_lookup_knight_attack(void) {
@@ -762,9 +851,15 @@ int main(void) {
     RUN_TEST(test_marker_crossing_large_dt);
     RUN_TEST(test_no_double_hit_on_finish);
     RUN_TEST(test_prev_curr_on_loop);
+    RUN_TEST(test_idle_burst_holds_on_frame_zero_before_burst);
+    RUN_TEST(test_idle_burst_enters_burst_after_hold);
+    RUN_TEST(test_idle_burst_returns_to_frame_zero_after_burst);
+    RUN_TEST(test_idle_burst_restart_returns_to_initial_hold);
+    RUN_TEST(test_idle_burst_random_initial_phase_is_seeded);
 
     // Spec lookup
     RUN_TEST(test_spec_lookup_knight_idle);
+    RUN_TEST(test_spec_lookup_base_idle_uses_burst_mode);
     RUN_TEST(test_spec_lookup_knight_attack);
     RUN_TEST(test_spec_lookup_brute_attack);
     RUN_TEST(test_spec_lookup_healer_blubert_timing);

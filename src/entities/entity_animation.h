@@ -7,11 +7,6 @@
 
 #include "../rendering/sprite_renderer.h"
 
-typedef enum {
-    ANIM_PLAY_LOOP,
-    ANIM_PLAY_ONCE
-} AnimPlayMode;
-
 typedef struct {
     AnimationType anim;
     AnimPlayMode mode;
@@ -20,6 +15,9 @@ typedef struct {
     bool lockFacing;
     bool removeOnFinish;
     int visualLoops;        // 0/1 => one traversal per cycle; >1 repeats within the same cycle
+    float idleHoldMinSeconds; // only used by ANIM_PLAY_IDLE_BURST
+    float idleHoldMaxSeconds; // only used by ANIM_PLAY_IDLE_BURST
+    float idleInitialPhaseNormalized; // negative => randomized seeded offset into first hold+burst cycle
 } EntityAnimSpec;
 
 // Walk tuning: world pixels covered per full walk cycle (8 frames * ~8px stride)

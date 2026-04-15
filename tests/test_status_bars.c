@@ -158,6 +158,7 @@ typedef enum {
     DIR_UP,
     DIR_COUNT
 } SpriteDirection;
+typedef enum { ANIM_PLAY_LOOP, ANIM_PLAY_ONCE, ANIM_PLAY_IDLE_BURST } AnimPlayMode;
 
 typedef struct {
     Texture2D texture;
@@ -177,10 +178,17 @@ typedef struct {
     float elapsed;
     float cycleDuration;
     float normalizedTime;
+    AnimPlayMode mode;
     bool oneShot;
     bool finished;
     bool flipH;
     int visualLoops;
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleHoldDuration;
+    unsigned int idleSeed;
+    unsigned int idleCycleIndex;
+    bool idleHolding;
 } AnimState;
 
 static const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim) {

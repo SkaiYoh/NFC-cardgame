@@ -287,24 +287,31 @@ void entity_destroy(Entity *e) {
     free(e);
 }
 
-void entity_set_state(Entity *e, EntityState newState) {
-    if (!e || e->state == newState) return;
+static AnimationType entity_anim_type_for_state(EntityState state) {
+    // Map EntityState → AnimationType for spec lookup
+    switch (state) {
+        case ESTATE_IDLE:      return ANIM_IDLE;
+        case ESTATE_WALKING:   return ANIM_WALK;
+        case ESTATE_ATTACKING: return ANIM_ATTACK;
+        case ESTATE_DEAD:      return ANIM_DEATH;
+        default:               return ANIM_IDLE;
+    }
+}
 
-    EntityState oldState = e->state;
+static unsigned int entity_anim_seed(const Entity *e, AnimationType animType) {
+    unsigned int seed = (unsigned int) (e ? (e->id + 1) : 1) * 0x9e3779b9u;
+    seed ^= (unsigned int) ((e ? e->spriteType : 0) + 1) * 0x85ebca6bu;
+    seed ^= (unsigned int) ((e ? e->ownerID : 0) + 1) * 0xc2b2ae35u;
+    seed ^= (unsigned int) (animType + 1) * 0x27d4eb2du;
+    return seed;
+}
+
+void entity_sync_animation(Entity *e) {
+    if (!e) return;
+
     SpriteDirection dir = e->anim.dir;
     bool flipH = e->anim.flipH;
-    e->state = newState;
-    e->hitFlashTimer = 0.0f;
-
-    // Map EntityState → AnimationType for spec lookup
-    AnimationType animType;
-    switch (newState) {
-        case ESTATE_IDLE:      animType = ANIM_IDLE;   break;
-        case ESTATE_WALKING:   animType = ANIM_WALK;   break;
-        case ESTATE_ATTACKING: animType = ANIM_ATTACK; break;
-        case ESTATE_DEAD:      animType = ANIM_DEATH;  break;
-        default:               animType = ANIM_IDLE;   break;
-    }
+    AnimationType animType = entity_anim_type_for_state(e->state);
 
     const EntityAnimSpec *spec = anim_spec_get(e->spriteType, animType);
     float duration = spec->cycleSeconds;
@@ -312,22 +319,39 @@ void entity_set_state(Entity *e, EntityState newState) {
     int visualLoops = (spec->visualLoops > 0) ? spec->visualLoops : 1;
 
     // Death is always one-shot regardless of spec (prevents fallback-spec death trap)
-    if (newState == ESTATE_DEAD) oneShot = true;
+    if (e->state == ESTATE_DEAD) oneShot = true;
 
     // Stat-driven overrides
-    if (newState == ESTATE_WALKING && e->moveSpeed > 0.0f) {
+    if (e->state == ESTATE_WALKING && e->moveSpeed > 0.0f) {
         duration = anim_walk_cycle_seconds(e->moveSpeed, WALK_PIXELS_PER_CYCLE);
-    } else if (newState == ESTATE_ATTACKING && e->attackSpeed > 0.0f) {
+    } else if (e->state == ESTATE_ATTACKING && e->attackSpeed > 0.0f) {
         duration = anim_attack_cycle_seconds(e->attackSpeed);
     }
 
-    anim_state_init_with_loops(&e->anim, spec->anim, dir, duration, oneShot, visualLoops);
+    if (spec->mode == ANIM_PLAY_IDLE_BURST) {
+        anim_state_init_idle_burst(&e->anim, spec->anim, dir, duration,
+                                   spec->idleHoldMinSeconds, spec->idleHoldMaxSeconds,
+                                   spec->idleInitialPhaseNormalized,
+                                   visualLoops, entity_anim_seed(e, animType));
+    } else {
+        anim_state_init_with_loops(&e->anim, spec->anim, dir, duration, oneShot, visualLoops);
+    }
 
     // Preserve facing from previous state, unless the new clip locks facing
     // (lockFacing states have facing set explicitly by the caller after this)
     if (!spec->lockFacing) {
         e->anim.flipH = flipH;
     }
+}
+
+void entity_set_state(Entity *e, EntityState newState) {
+    if (!e || e->state == newState) return;
+
+    EntityState oldState = e->state;
+    e->state = newState;
+    e->hitFlashTimer = 0.0f;
+
+    entity_sync_animation(e);
 
     debug_event_emit_xy(e->position.x, e->position.y, DEBUG_EVT_STATE_CHANGE);
 
@@ -338,9 +362,7 @@ void entity_set_state(Entity *e, EntityState newState) {
 
 void entity_restart_clip(Entity *e) {
     if (!e) return;
-    e->anim.elapsed = 0.0f;
-    e->anim.normalizedTime = 0.0f;
-    e->anim.finished = false;
+    anim_state_restart(&e->anim);
 }
 
 void entity_update(Entity *e, GameState *gs, float deltaTime) {

@@ -27,6 +27,7 @@ typedef struct { float x; float y; float width; float height; } Rectangle;
 
 typedef enum { ANIM_IDLE, ANIM_RUN, ANIM_WALK, ANIM_HURT, ANIM_DEATH, ANIM_ATTACK, ANIM_COUNT } AnimationType;
 typedef enum { DIR_SIDE, DIR_DOWN, DIR_UP, DIR_COUNT } SpriteDirection;
+typedef enum { ANIM_PLAY_LOOP, ANIM_PLAY_ONCE, ANIM_PLAY_IDLE_BURST } AnimPlayMode;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
@@ -40,10 +41,17 @@ typedef struct {
     float elapsed;
     float cycleDuration;
     float normalizedTime;
+    AnimPlayMode mode;
     bool oneShot;
     bool finished;
     bool flipH;
     int visualLoops;
+    float idleHoldMinSeconds;
+    float idleHoldMaxSeconds;
+    float idleHoldDuration;
+    unsigned int idleSeed;
+    unsigned int idleCycleIndex;
+    bool idleHolding;
 } AnimState;
 
 typedef struct { void *texture; int frameWidth; int frameHeight; int frameCount; } AnimSheet;

@@ -88,7 +88,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
     },
     // SPRITE_TYPE_BASE (King art — attack clip drives King burst at midpoint)
     {
-        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
+        [ANIM_IDLE]   = { ANIM_IDLE,   ANIM_PLAY_IDLE_BURST, 1.00f, -1.0f, false, false, 1, 0.75f, 1.5f, -1.0f },
         [ANIM_RUN]    = { ANIM_RUN,    ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_WALK]   = { ANIM_WALK,   ANIM_PLAY_LOOP, 1.00f, -1.0f, false, false },
         [ANIM_HURT]   = { ANIM_HURT,   ANIM_PLAY_ONCE, 0.50f, -1.0f, false, false },
@@ -99,7 +99,7 @@ static const EntityAnimSpec s_specs[SPRITE_TYPE_COUNT][ANIM_COUNT] = {
 
 // Fallback spec for out-of-bounds lookups
 static const EntityAnimSpec s_fallback = {
-    ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1
+    ANIM_IDLE, ANIM_PLAY_LOOP, 0.5f, -1.0f, false, false, 1, 0.0f, 0.0f, 0.0f
 };
 
 const EntityAnimSpec *anim_spec_get(SpriteType spriteType, AnimationType animType) {

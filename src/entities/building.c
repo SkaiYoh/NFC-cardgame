@@ -50,6 +50,7 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     // Use the front-facing row for both base sprites.
     e->anim.dir = DIR_DOWN;
     e->anim.flipH = false;
+    entity_sync_animation(e);
     e->spriteRotationDegrees = (owner->side == SIDE_BOTTOM) ? 180.0f : 0.0f;
 
     // Populate deposit slot ring now that position, navRadius, and
