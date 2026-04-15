@@ -552,6 +552,38 @@ static void test_assassin_walk_manifest_and_atlas_match_baxter_sheet(void) {
     assert(atlasEntry->sourceRowCount == 1);
 }
 
+static void test_bird_walk_manifest_and_atlas_match_birdman_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_BIRD &&
+            entry->anim == ANIM_WALK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Bird/birdman_fly.png") == 0);
+    assert(manifestEntry->frameCount == 8);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Bird/birdman_fly.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 8);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
 static void test_fishfing_walk_manifest_and_atlas_match_new_sheet(void) {
     const SpriteSheetManifestEntry *manifestEntry = NULL;
     const SpriteSheetAtlasEntry *atlasEntry = NULL;
@@ -1001,6 +1033,7 @@ int main(void) {
     RUN_TEST(test_knight_attack_manifest_and_atlas_match_uvulite_sheet);
     RUN_TEST(test_brute_walk_manifest_and_atlas_match_nostril_sheet);
     RUN_TEST(test_assassin_walk_manifest_and_atlas_match_baxter_sheet);
+    RUN_TEST(test_bird_walk_manifest_and_atlas_match_birdman_sheet);
     RUN_TEST(test_fishfing_walk_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);
 
