@@ -737,24 +737,24 @@ static const Rectangle s_fishfing_hurt_bounds[] = {
 };
 
 static const Rectangle s_fishfing_attack_bounds[] = {
-    { 25.0f, 25.0f, 19.0f, 15.0f },
-    { 25.0f, 25.0f, 19.0f, 15.0f },
-    { 29.0f, 26.0f, 28.0f, 16.0f },
-    { 32.0f, 26.0f, 25.0f, 16.0f },
-    { 34.0f, 25.0f, 22.0f, 15.0f },
-    { 34.0f, 25.0f, 16.0f, 15.0f },
-    { 28.0f, 24.0f, 18.0f, 16.0f },
-    { 22.0f, 24.0f, 24.0f, 16.0f },
-    { 21.0f, 26.0f, 27.0f, 26.0f },
-    { 21.0f, 26.0f, 27.0f, 26.0f },
-    { 33.0f, 25.0f, 19.0f, 17.0f },
-    { 30.0f, 25.0f, 16.0f, 16.0f },
-    { 33.0f, 25.0f, 18.0f, 16.0f },
-    { 33.0f, 25.0f, 23.0f, 16.0f },
-    { 30.0f, 21.0f, 27.0f, 19.0f },
-    { 30.0f, 21.0f, 27.0f, 19.0f },
-    { 26.0f, 26.0f, 20.0f, 14.0f },
-    { 33.0f, 25.0f, 15.0f, 15.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 0.0f, 41.0f, 25.0f },
+    { 0.0f, 6.0f, 42.0f, 19.0f },
+    { 0.0f, 6.0f, 22.0f, 19.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 0.0f, 41.0f, 25.0f },
+    { 0.0f, 6.0f, 42.0f, 19.0f },
+    { 0.0f, 6.0f, 22.0f, 19.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 5.0f, 20.0f, 20.0f },
+    { 0.0f, 0.0f, 41.0f, 25.0f },
+    { 0.0f, 6.0f, 42.0f, 19.0f },
+    { 0.0f, 6.0f, 22.0f, 19.0f },
 };
 
 static const SpriteSheetAtlasEntry kSpriteSheetAtlas[] = {
@@ -792,7 +792,7 @@ static const SpriteSheetAtlasEntry kSpriteSheetAtlas[] = {
     { "src/assets/characters/Bird/sword.png", 6, 3, s_bird_attack_bounds },
     { "src/assets/characters/Fishfing/fishfing_walk.png", 8, 1, s_fishfing_walk_bounds },
     { "src/assets/characters/Fishfing/hurt.png", 4, 3, s_fishfing_hurt_bounds },
-    { "src/assets/characters/Fishfing/sword.png", 6, 3, s_fishfing_attack_bounds },
+    { "src/assets/characters/Fishfing/fishfing_attack.png", 6, 1, s_fishfing_attack_bounds },
 };
 
 static const int kSpriteSheetAtlasCount = (int) (sizeof(kSpriteSheetAtlas) / sizeof(kSpriteSheetAtlas[0]));

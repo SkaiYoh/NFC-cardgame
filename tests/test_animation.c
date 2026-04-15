@@ -616,6 +616,38 @@ static void test_fishfing_walk_manifest_and_atlas_match_new_sheet(void) {
     assert(atlasEntry->sourceRowCount == 1);
 }
 
+static void test_fishfing_attack_manifest_and_atlas_match_new_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_FISHFING &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Fishfing/fishfing_attack.png") == 0);
+    assert(manifestEntry->frameCount == 6);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Fishfing/fishfing_attack.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 6);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
 static void test_king_idle_manifest_and_atlas_match_new_sheet(void) {
     const SpriteSheetManifestEntry *manifestEntry = NULL;
     const SpriteSheetAtlasEntry *atlasEntry = NULL;
@@ -1035,6 +1067,7 @@ int main(void) {
     RUN_TEST(test_assassin_walk_manifest_and_atlas_match_baxter_sheet);
     RUN_TEST(test_bird_walk_manifest_and_atlas_match_birdman_sheet);
     RUN_TEST(test_fishfing_walk_manifest_and_atlas_match_new_sheet);
+    RUN_TEST(test_fishfing_attack_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_king_idle_manifest_and_atlas_match_new_sheet);
 
     // Cycle calculations
