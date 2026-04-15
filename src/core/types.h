@@ -218,6 +218,7 @@ struct GameState {
     // Per-frame flow-field navigation cache. Reset each tick by
     // nav_begin_frame() before the entity update loop.
     NavFrame nav;
+    float lastFrameDeltaTime;
 
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;

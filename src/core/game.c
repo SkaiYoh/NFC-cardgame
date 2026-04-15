@@ -93,6 +93,7 @@ bool game_init(GameState *g) {
     // Initialize per-frame flow-field navigation cache. nav_begin_frame()
     // is called each tick before the entity update loop (wired in Phase 2).
     nav_frame_init(&g->nav);
+    g->lastFrameDeltaTime = 1.0f / 60.0f;
 
     // Initialize sustenance resource nodes (dedicated RNG, after bf_init generates waypoints)
     sustenance_init(&g->battlefield, sustenanceSeed);
@@ -184,14 +185,15 @@ static void game_handle_nfc_events(GameState *g) {
 
 static void game_handle_debug_input(void) {
     if (IsKeyPressed(KEY_F1)) s_showLaneDebug = !s_showLaneDebug;
-    if (IsKeyPressed(KEY_F2)) s_debugFlags.attackBars   = !s_debugFlags.attackBars;
-    if (IsKeyPressed(KEY_F3)) s_debugFlags.targetLines  = !s_debugFlags.targetLines;
-    if (IsKeyPressed(KEY_F4)) s_debugFlags.eventFlashes = !s_debugFlags.eventFlashes;
-    if (IsKeyPressed(KEY_F5)) s_debugFlags.rangeCirlces = !s_debugFlags.rangeCirlces;
-    if (IsKeyPressed(KEY_F6)) s_debugFlags.sustenanceNodes     = !s_debugFlags.sustenanceNodes;
-    if (IsKeyPressed(KEY_F7)) s_debugFlags.sustenancePlacement  = !s_debugFlags.sustenancePlacement;
-    if (IsKeyPressed(KEY_F9)) s_debugFlags.depositSlots         = !s_debugFlags.depositSlots;
-    if (IsKeyPressed(KEY_F10)) s_debugFlags.crowdShells         = !s_debugFlags.crowdShells;
+    if (IsKeyPressed(KEY_F2))  debug_overlay_toggle_key(&s_debugFlags, KEY_F2);
+    if (IsKeyPressed(KEY_F3))  debug_overlay_toggle_key(&s_debugFlags, KEY_F3);
+    if (IsKeyPressed(KEY_F4))  debug_overlay_toggle_key(&s_debugFlags, KEY_F4);
+    if (IsKeyPressed(KEY_F5))  debug_overlay_toggle_key(&s_debugFlags, KEY_F5);
+    if (IsKeyPressed(KEY_F6))  debug_overlay_toggle_key(&s_debugFlags, KEY_F6);
+    if (IsKeyPressed(KEY_F7))  debug_overlay_toggle_key(&s_debugFlags, KEY_F7);
+    if (IsKeyPressed(KEY_F8))  debug_overlay_toggle_key(&s_debugFlags, KEY_F8);
+    if (IsKeyPressed(KEY_F9))  debug_overlay_toggle_key(&s_debugFlags, KEY_F9);
+    if (IsKeyPressed(KEY_F10)) debug_overlay_toggle_key(&s_debugFlags, KEY_F10);
 }
 
 static void game_handle_spawn_input(GameState *g) {
@@ -222,6 +224,7 @@ static void game_handle_spawn_input(GameState *g) {
 
 void game_update(GameState *g) {
     float deltaTime = fminf(GetFrameTime(), 1.0f / 20.0f);
+    g->lastFrameDeltaTime = deltaTime;
     spawn_fx_update(&g->spawnFx, deltaTime);
 
     // Debug toggles always active (even after gameOver)
@@ -325,6 +328,18 @@ void game_render(GameState *g) {
     BeginDrawing();
     ClearBackground(RAYWHITE);
     Battlefield *bf = &g->battlefield;
+    Vector2 mouseScreen = GetMousePosition();
+    DebugNavOverlayState p1NavState = {0};
+    DebugNavOverlayState p2NavState = {0};
+    Camera2D p2CamRT = g->players[1].camera;
+    p2CamRT.offset = (Vector2){ g->players[1].battlefieldArea.width / 2.0f,
+                                SCREEN_HEIGHT / 2.0f };
+    if (s_debugFlags.navOverlay) {
+        p1NavState = debug_overlay_resolve_nav_state(
+            bf, g->players[0].battlefieldArea, g->players[0].camera, mouseScreen, false);
+        p2NavState = debug_overlay_resolve_nav_state(
+            bf, g->players[1].battlefieldArea, p2CamRT, mouseScreen, true);
+    }
 
     // --- Player 1 viewport (SIDE_BOTTOM) — direct to screen ---
     viewport_begin(&g->players[0]);
@@ -334,7 +349,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
-    debug_overlay_draw(bf, g, s_debugFlags);
+    debug_overlay_draw(bf, g, s_debugFlags, &p1NavState);
     viewport_end();
     if (s_showLaneDebug) {
         BeginScissorMode(
@@ -355,17 +370,16 @@ void game_render(GameState *g) {
     status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f, false);
     EndScissorMode();
 
-    // --- Player 2 viewport (SIDE_TOP) — render to texture, then flip ---
+    // --- Player 2 viewport (SIDE_TOP) — render to texture, then composite ---
     // P2 uses rot=+90 (same as P1) for correct seam placement.
-    // The RT is flipped vertically when composited to reverse the world-X
-    // orientation, giving P2 the opposite (across-the-table) perspective.
+    // The negative source height on composite corrects render-texture storage
+    // orientation, so input mapping should use RT-local coordinates without
+    // applying an extra mirror.
     BeginTextureMode(g->p2RT);
     ClearBackground(RAYWHITE);
     // Render with P2's camera but into the RT (no scissor needed — RT is viewport-sized).
     // Override camera offset to the center of the RT (which is sized to the
     // P2 battlefield sub-rect, not the full half-screen).
-    Camera2D p2CamRT = g->players[1].camera;
-    p2CamRT.offset = (Vector2){ g->players[1].battlefieldArea.width / 2.0f, SCREEN_HEIGHT / 2.0f };
     BeginMode2D(p2CamRT);
     viewport_draw_battlefield_tilemap(bf, SIDE_BOTTOM);
     viewport_draw_battlefield_tilemap(bf, SIDE_TOP);
@@ -373,7 +387,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
-    debug_overlay_draw(bf, g, s_debugFlags);
+    debug_overlay_draw(bf, g, s_debugFlags, &p2NavState);
     EndMode2D();
     if (s_showLaneDebug) {
         debug_draw_lane_paths_screen(bf, SIDE_TOP, p2CamRT);
@@ -381,9 +395,8 @@ void game_render(GameState *g) {
     status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f, true);
     EndTextureMode();
 
-    // Composite P2 RT to the P2 battlefield sub-rect (not the full half-screen),
-    // flipped vertically. Negative source height flips Y (OpenGL convention),
-    // reversing the world-X → screen-Y mapping for across-the-table perspective.
+    // Composite P2 RT to the P2 battlefield sub-rect (not the full half-screen).
+    // Negative source height corrects the FBO's upside-down storage.
     DrawTexturePro(
         g->p2RT.texture,
         (Rectangle){ 0, 0, (float)g->p2RT.texture.width, -(float)g->p2RT.texture.height },

@@ -216,6 +216,14 @@ typedef struct {
     // combat_engagement_goal shim can satisfy their radius contract
     // without re-deriving it from goal geometry.
     float    stopRadius;
+    // Exact authored geometry metadata for debug draw. STATIC_ATTACK uses
+    // innerRadius plus arcCenterDeg/arcHalfDeg to describe the ribbon;
+    // MELEE_RING uses innerRadius for the inner ring edge; disk-style goals
+    // leave innerRadius at 0 and ignore the arc values.
+    float    innerRadius;
+    float    arcCenterDeg;
+    float    arcHalfDeg;
+    float    targetBodyRadius;
     // Cache key fields. Interpretation depends on `kind`:
     //   LANE_MARCH   -> keySide, keyLane
     //   STATIC_ATTACK, MELEE_RING, DIRECT_RANGE -> keyTargetId, keyRangeQ
@@ -359,6 +367,10 @@ bool nav_cell_is_static_blocked(const NavFrame *nav, int32_t cellIndex);
 const NavField *nav_get_or_build_lane_field(NavFrame *nav, const Battlefield *bf,
                                              int side, int lane);
 
+// Return the already-built lane field for (side, lane), or NULL if that
+// field has not been built in the current frame.
+const NavField *nav_find_lane_field(const NavFrame *nav, int side, int lane);
+
 // ---------- Target / free-goal field access ----------
 
 // Parameters describing the seed region of a target or free-goal field. The
@@ -392,7 +404,7 @@ typedef struct {
     NavGoalKind kind;
     float  targetX;
     float  targetY;
-    float  outerRadius;    // builder snaps this to the nearest bucket grid
+    float  outerRadius;    // exact authored outer radius (cache key is quantized)
     float  arcCenterDeg;   // only read for STATIC_ATTACK
     float  arcHalfDeg;     // only read for STATIC_ATTACK
     // Authored body radius of the target itself (not the inflated
@@ -422,6 +434,11 @@ typedef struct {
 const NavField *nav_get_or_build_target_field(NavFrame *nav, const Battlefield *bf,
                                                 const NavTargetGoal *goal);
 
+// Return the already-built target field matching `goal`, or NULL if the
+// cache does not contain it in the current frame.
+const NavField *nav_find_target_field(const NavFrame *nav,
+                                      const NavTargetGoal *goal);
+
 // Return the free-goal flow field seeded at the goal disk of radius
 // `stopRadius` centered at (goalX, goalY), from the perspective of
 // `perspectiveSide`. Cache key is (goalXQ, goalYQ, rangeQ,
@@ -438,6 +455,13 @@ const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
                                                    float stopRadius,
                                                    int perspectiveSide);
 
+// Return the already-built free-goal field matching the exact cache key, or
+// NULL if it has not been built in the current frame.
+const NavField *nav_find_free_goal_field(const NavFrame *nav,
+                                         float goalX, float goalY,
+                                         float stopRadius,
+                                         int perspectiveSide);
+
 // Representative world-space anchor of the field's goal region. Lane fields
 // return the final authored lane waypoint; target fields return the target
 // pivot; free-goal fields return the goal point. Used by the Phase 3
@@ -450,6 +474,21 @@ void nav_goal_region_anchor(const NavField *field, float *outX, float *outY);
 // combat_engagement_goal shim (which must still return a stopRadius to
 // callers like debug_overlay.c:draw_assault_geometry).
 float nav_goal_region_stop_radius(const NavField *field);
+
+// Inner edge of the authored goal region. Returns 0 for lane fields and
+// disk-style goals that do not have an inner floor.
+float nav_goal_region_inner_radius(const NavField *field);
+
+// Authored front-arc center bearing in degrees. Only meaningful for
+// STATIC_ATTACK fields.
+float nav_goal_region_arc_center_deg(const NavField *field);
+
+// Authored front-arc half-angle in degrees. Only meaningful for
+// STATIC_ATTACK fields.
+float nav_goal_region_arc_half_deg(const NavField *field);
+
+// Authored target body radius carried through from the goal description.
+float nav_goal_region_target_body_radius(const NavField *field);
 
 // ---------- Raw mutators (called by game.c from the entity iteration loop) ----------
 //

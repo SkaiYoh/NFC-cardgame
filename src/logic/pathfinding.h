@@ -63,6 +63,24 @@ bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
                                NavFrame *nav, const Battlefield *bf,
                                float deltaTime);
 
+typedef struct {
+    const NavField *field;
+    Vector2 goal;
+    Vector2 goalAnchor;
+    float stopRadius;
+    float flowX;
+    float flowY;
+    Vector2 previewStep;
+    bool goalIsWaypoint;
+    bool hasPreviewStep;
+} PathfindDebugPreview;
+
+// Read-only nav preview for debug overlays. Mirrors the production
+// goal-resolution and cache lookup paths without mutating the entity, target
+// selection, or NavFrame caches.
+bool pathfind_debug_preview_entity(const Entity *e, const GameState *gs,
+                                   PathfindDebugPreview *outPreview);
+
 // Apply troop-facing using the supplied side's perspective.
 // Troops always use DIR_SIDE; SIDE_TOP still inverts flipH because those
 // sprites are rendered with a 180-degree rotation.

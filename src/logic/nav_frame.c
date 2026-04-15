@@ -400,6 +400,10 @@ static void nav_build_lane_field(NavFrame *nav, const Battlefield *bf,
     field->anchorX = seedX;
     field->anchorY = seedY;
     field->stopRadius = 0.0f;
+    field->innerRadius = 0.0f;
+    field->arcCenterDeg = 0.0f;
+    field->arcHalfDeg = 0.0f;
+    field->targetBodyRadius = 0.0f;
     field->keySide = (int16_t)side;
     field->keyLane = (int16_t)lane;
     field->keyTargetId = -1;
@@ -450,6 +454,14 @@ const NavField *nav_get_or_build_lane_field(NavFrame *nav, const Battlefield *bf
     return field;
 }
 
+const NavField *nav_find_lane_field(const NavFrame *nav, int side, int lane) {
+    if (!nav || !nav->initialized) return NULL;
+    if (side < 0 || side >= 2) return NULL;
+    if (lane < 0 || lane >= 3) return NULL;
+    const NavField *field = &nav->laneFields[side][lane];
+    return field->built ? field : NULL;
+}
+
 // ---------- Target / free-goal field builders ----------
 
 // Populate field->hardBlocked from the global staticBlockers mask and zero
@@ -460,6 +472,10 @@ static void nav_field_reset_for_build(const NavFrame *nav, NavField *field) {
         field->distance[i] = NAV_DIST_UNREACHABLE;
         field->hardBlocked[i] = nav->staticBlockers.blocked[i];
     }
+    field->innerRadius = 0.0f;
+    field->arcCenterDeg = 0.0f;
+    field->arcHalfDeg = 0.0f;
+    field->targetBodyRadius = 0.0f;
 }
 
 // Normalize an angle to [-180, 180] degrees.
@@ -658,6 +674,10 @@ static void nav_target_field_stamp_key(NavField *field, const NavTargetGoal *goa
     field->anchorX = goal->targetX;
     field->anchorY = goal->targetY;
     field->stopRadius = goal->outerRadius;
+    field->innerRadius = goal->innerRadiusMin;
+    field->arcCenterDeg = goal->arcCenterDeg;
+    field->arcHalfDeg = goal->arcHalfDeg;
+    field->targetBodyRadius = goal->targetBodyRadius;
     field->keyTargetId = goal->targetId;
     field->keyRangeQ = rangeQ;
     field->keySide = -1;
@@ -699,6 +719,7 @@ static void nav_build_target_field(NavFrame *nav, NavField *field,
         float innerFloor = goal.targetBodyRadius;
         if (goal.innerRadiusMin > innerFloor) innerFloor = goal.innerRadiusMin;
         float innerSq = innerFloor * innerFloor;
+        field->innerRadius = innerFloor;
         for (int32_t idx = 0; idx < NAV_CELLS; ++idx) {
             if (nav->staticBlockers.blockerSrc[idx] != goal.targetId) continue;
             if (!field->hardBlocked[idx]) continue;
@@ -781,6 +802,24 @@ const NavField *nav_get_or_build_target_field(NavFrame *nav, const Battlefield *
     return field;
 }
 
+const NavField *nav_find_target_field(const NavFrame *nav,
+                                      const NavTargetGoal *goal) {
+    if (!nav || !nav->initialized || !goal) return NULL;
+    int perspective = goal->perspectiveSide;
+    if (perspective < 0 || perspective > 1) return NULL;
+    int32_t rangeQ = nav_range_q(goal->outerRadius);
+    for (int32_t i = 0; i < nav->targetCacheSize; ++i) {
+        const NavField *f = &nav->targetFields[i];
+        if (!f->built) continue;
+        if (f->kind != goal->kind) continue;
+        if (f->keyTargetId != goal->targetId) continue;
+        if (f->keyRangeQ != rangeQ) continue;
+        if (f->perspectiveSide != (int16_t)perspective) continue;
+        return f;
+    }
+    return NULL;
+}
+
 const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
                                                    const Battlefield *bf,
                                                    float goalX, float goalY,
@@ -824,6 +863,28 @@ const NavField *nav_get_or_build_free_goal_field(NavFrame *nav,
     return field;
 }
 
+const NavField *nav_find_free_goal_field(const NavFrame *nav,
+                                         float goalX, float goalY,
+                                         float stopRadius,
+                                         int perspectiveSide) {
+    if (!nav || !nav->initialized) return NULL;
+    if (perspectiveSide < 0 || perspectiveSide > 1) return NULL;
+    int32_t goalXQ = (int32_t)(goalX * 4.0f + 0.5f);
+    int32_t goalYQ = (int32_t)(goalY * 4.0f + 0.5f);
+    int32_t rangeQ = nav_range_q(stopRadius);
+    for (int32_t i = 0; i < nav->freeGoalCacheSize; ++i) {
+        const NavField *f = &nav->freeGoalFields[i];
+        if (!f->built) continue;
+        if (f->kind != NAV_GOAL_KIND_FREE_GOAL) continue;
+        if (f->keyGoalXQ != goalXQ) continue;
+        if (f->keyGoalYQ != goalYQ) continue;
+        if (f->keyRangeQ != rangeQ) continue;
+        if (f->perspectiveSide != (int16_t)perspectiveSide) continue;
+        return f;
+    }
+    return NULL;
+}
+
 void nav_goal_region_anchor(const NavField *field, float *outX, float *outY) {
     float x = 0.0f, y = 0.0f;
     if (field) {
@@ -836,6 +897,22 @@ void nav_goal_region_anchor(const NavField *field, float *outX, float *outY) {
 
 float nav_goal_region_stop_radius(const NavField *field) {
     return field ? field->stopRadius : 0.0f;
+}
+
+float nav_goal_region_inner_radius(const NavField *field) {
+    return field ? field->innerRadius : 0.0f;
+}
+
+float nav_goal_region_arc_center_deg(const NavField *field) {
+    return field ? field->arcCenterDeg : 0.0f;
+}
+
+float nav_goal_region_arc_half_deg(const NavField *field) {
+    return field ? field->arcHalfDeg : 0.0f;
+}
+
+float nav_goal_region_target_body_radius(const NavField *field) {
+    return field ? field->targetBodyRadius : 0.0f;
 }
 
 void nav_snapshot_entity_position(NavFrame *nav, int entityId,

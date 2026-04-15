@@ -10,6 +10,7 @@
 #include "../entities/entity_animation.h"
 #include "../logic/combat.h"
 #include "../logic/deposit_slots.h"
+#include "../logic/pathfinding.h"
 #include <math.h>
 
 // --- Constants ---
@@ -281,7 +282,7 @@ static void draw_sustenance_nodes(const Battlefield *bf) {
     }
 }
 
-// --- Deposit slot overlay (F8) ---
+// --- Deposit slot overlay (F9) ---
 
 static void draw_deposit_slot_ring(const Entity *base) {
     if (!base || !base->depositSlots.initialized) return;
@@ -372,10 +373,183 @@ static void draw_crowd_shells(const Battlefield *bf) {
     }
 }
 
+static Vector2 nav_overlay_polar_point(Vector2 center, float radius, float degrees) {
+    float radians = degrees * PI_F / 180.0f;
+    return (Vector2){
+        center.x + cosf(radians) * radius,
+        center.y + sinf(radians) * radius
+    };
+}
+
+static void draw_nav_cross(Vector2 center, float radius, Color color) {
+    DrawLineEx((Vector2){ center.x - radius, center.y },
+               (Vector2){ center.x + radius, center.y }, 1.5f, color);
+    DrawLineEx((Vector2){ center.x, center.y - radius },
+               (Vector2){ center.x, center.y + radius }, 1.5f, color);
+}
+
+static void draw_nav_arc_outline(Vector2 center, float radius,
+                                 float startDeg, float endDeg,
+                                 Color color) {
+    if (radius <= 0.0f) return;
+
+    float span = fabsf(endDeg - startDeg);
+    int segments = (int)ceilf(span / 10.0f);
+    if (segments < 2) segments = 2;
+
+    Vector2 prev = nav_overlay_polar_point(center, radius, startDeg);
+    for (int i = 1; i <= segments; ++i) {
+        float t = (float)i / (float)segments;
+        float deg = startDeg + (endDeg - startDeg) * t;
+        Vector2 next = nav_overlay_polar_point(center, radius, deg);
+        DrawLineEx(prev, next, 1.5f, color);
+        prev = next;
+    }
+}
+
+static void draw_nav_blocker_mask(const NavFrame *nav) {
+    if (!nav || !nav->initialized) return;
+
+    for (int32_t i = 0; i < NAV_CELLS; ++i) {
+        if (!nav->staticBlockers.blocked[i]) continue;
+        NavCellCoord coord = nav_cell_coord(i);
+        Rectangle cell = {
+            (float)coord.col * (float)NAV_CELL_SIZE,
+            (float)coord.row * (float)NAV_CELL_SIZE,
+            (float)NAV_CELL_SIZE,
+            (float)NAV_CELL_SIZE
+        };
+        Color fill = (nav->staticBlockers.blockerSrc[i] == NAV_BLOCKER_SRC_NONE)
+            ? Fade(DARKGRAY, 0.18f)
+            : Fade(RED, 0.14f);
+        Color outline = (nav->staticBlockers.blockerSrc[i] == NAV_BLOCKER_SRC_NONE)
+            ? Fade(GRAY, 0.25f)
+            : Fade(ORANGE, 0.35f);
+        DrawRectangleRec(cell, fill);
+        DrawRectangleLinesEx(cell, 1.0f, outline);
+    }
+}
+
+static void draw_nav_field_flow(const NavField *field) {
+    if (!field) return;
+
+    for (int32_t i = 0; i < NAV_CELLS; ++i) {
+        if (field->hardBlocked[i]) continue;
+        if (field->distance[i] == NAV_DIST_UNREACHABLE) continue;
+
+        float cx = 0.0f, cy = 0.0f;
+        nav_cell_center(i, &cx, &cy);
+        Vector2 center = { cx, cy };
+        Color dot = (field->distance[i] == 0)
+            ? Fade(GREEN, 0.80f)
+            : Fade(SKYBLUE, 0.45f);
+        DrawCircleV(center, (field->distance[i] == 0) ? 3.5f : 2.0f, dot);
+
+        int dcol = 0;
+        int drow = 0;
+        nav_cell_flow_direction(field, i, &dcol, &drow);
+        if (dcol == 0 && drow == 0) continue;
+        Vector2 flow = {
+            center.x + (float)dcol * 10.0f,
+            center.y + (float)drow * 10.0f
+        };
+        DrawLineEx(center, flow, 1.0f, Fade(SKYBLUE, 0.55f));
+    }
+}
+
+static void draw_nav_goal_geometry(const NavField *field) {
+    if (!field) return;
+
+    Vector2 anchor = { 0.0f, 0.0f };
+    nav_goal_region_anchor(field, &anchor.x, &anchor.y);
+    float stopRadius = nav_goal_region_stop_radius(field);
+    float innerRadius = nav_goal_region_inner_radius(field);
+
+    draw_nav_cross(anchor, 9.0f, Fade(YELLOW, 0.95f));
+
+    switch (field->kind) {
+        case NAV_GOAL_KIND_STATIC_ATTACK: {
+            float centerDeg = nav_goal_region_arc_center_deg(field);
+            float halfDeg = nav_goal_region_arc_half_deg(field);
+            float startDeg = centerDeg - halfDeg;
+            float endDeg = centerDeg + halfDeg;
+            draw_nav_arc_outline(anchor, stopRadius, startDeg, endDeg,
+                                 Fade(ORANGE, 0.95f));
+            if (innerRadius > 0.0f) {
+                draw_nav_arc_outline(anchor, innerRadius, startDeg, endDeg,
+                                     Fade(ORANGE, 0.75f));
+                Vector2 outerA = nav_overlay_polar_point(anchor, stopRadius, startDeg);
+                Vector2 innerA = nav_overlay_polar_point(anchor, innerRadius, startDeg);
+                Vector2 outerB = nav_overlay_polar_point(anchor, stopRadius, endDeg);
+                Vector2 innerB = nav_overlay_polar_point(anchor, innerRadius, endDeg);
+                DrawLineEx(innerA, outerA, 1.5f, Fade(ORANGE, 0.85f));
+                DrawLineEx(innerB, outerB, 1.5f, Fade(ORANGE, 0.85f));
+            }
+            break;
+        }
+
+        case NAV_GOAL_KIND_MELEE_RING:
+            DrawCircleLinesV(anchor, stopRadius, Fade(ORANGE, 0.95f));
+            if (innerRadius > 0.0f) {
+                DrawCircleLinesV(anchor, innerRadius, Fade(ORANGE, 0.65f));
+            }
+            break;
+
+        case NAV_GOAL_KIND_DIRECT_RANGE:
+        case NAV_GOAL_KIND_FREE_GOAL:
+            DrawCircleLinesV(anchor, stopRadius, Fade(ORANGE, 0.95f));
+            break;
+
+        case NAV_GOAL_KIND_LANE_MARCH:
+        default:
+            break;
+    }
+}
+
+static void draw_nav_focus_entity(const Battlefield *bf, const GameState *gs,
+                                  const DebugNavOverlayState *navState) {
+    if (!navState || !navState->hasFocus) return;
+
+    DrawCircleLinesV(navState->mouseWorld, 10.0f, Fade(WHITE, 0.35f));
+    if (navState->focusEntityId < 0) return;
+
+    const Entity *focus = bf_find_entity((Battlefield *)bf, navState->focusEntityId);
+    if (!focus || !focus->alive || focus->markedForRemoval) return;
+
+    DrawCircleLinesV(focus->position, debug_nav_radius(focus) + 6.0f,
+                     Fade(YELLOW, 0.95f));
+
+    PathfindDebugPreview preview = { 0 };
+    if (!pathfind_debug_preview_entity(focus, gs, &preview)) return;
+    if (!preview.field) return;
+
+    draw_nav_field_flow(preview.field);
+    draw_nav_goal_geometry(preview.field);
+
+    Vector2 flowTip = {
+        focus->position.x + preview.flowX * 28.0f,
+        focus->position.y + preview.flowY * 28.0f
+    };
+    if (preview.flowX != 0.0f || preview.flowY != 0.0f) {
+        DrawLineEx(focus->position, flowTip, 2.0f, Fade(GREEN, 0.9f));
+    }
+    if (preview.hasPreviewStep) {
+        DrawLineEx(focus->position, preview.previewStep, 2.0f, Fade(YELLOW, 0.9f));
+        DrawCircleV(preview.previewStep, 4.0f, Fade(YELLOW, 0.85f));
+    }
+}
+
+static void draw_nav_overlay(const Battlefield *bf, const GameState *gs,
+                             const DebugNavOverlayState *navState) {
+    draw_nav_blocker_mask(&gs->nav);
+    draw_nav_focus_entity(bf, gs, navState);
+}
+
 // --- Public API ---
 
 void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
-                        DebugOverlayFlags flags) {
+                        DebugOverlayFlags flags,
+                        const DebugNavOverlayState *navState) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *e = bf->entities[i];
         if (!e || e->markedForRemoval) continue;
@@ -390,4 +564,5 @@ void debug_overlay_draw(const Battlefield *bf, const GameState *gs,
     if (flags.crowdShells)          draw_crowd_shells(bf);
     if (flags.eventFlashes)  draw_event_flashes();
     if (flags.rangeCirlces)  draw_range_circles(bf);
+    if (flags.navOverlay)    draw_nav_overlay(bf, gs, navState);
 }

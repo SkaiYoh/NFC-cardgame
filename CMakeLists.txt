@@ -35,6 +35,7 @@ set(SRC_RENDERING  src/rendering/card_renderer.c
                    src/rendering/biome.c
                    src/rendering/ui.c
                    src/rendering/debug_overlay.c
+                   src/rendering/debug_overlay_input.c
                    src/rendering/sustenance_renderer.c
                    src/rendering/hand_ui.c
                    src/rendering/uvulite_font.c)
@@ -183,6 +184,16 @@ add_executable(test_progression
     tests/test_progression.c)
 target_link_libraries(test_progression ${MATH_LIB})
 add_test(NAME progression COMMAND test_progression)
+
+add_executable(test_debug_overlay
+    tests/test_debug_overlay.c)
+target_link_libraries(test_debug_overlay ${MATH_LIB})
+add_test(NAME debug_overlay COMMAND test_debug_overlay)
+
+add_executable(test_game_debug_input
+    tests/test_game_debug_input.c)
+target_link_libraries(test_game_debug_input ${MATH_LIB})
+add_test(NAME game_debug_input COMMAND test_game_debug_input)
 
 # --- Database init (convenience target) ---
 add_custom_target(init-db

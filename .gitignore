@@ -25,3 +25,5 @@ test_entities
 test_spawn_placement
 test_progression
 test_uvulite_font
+test_debug_overlay
+test_game_debug_input

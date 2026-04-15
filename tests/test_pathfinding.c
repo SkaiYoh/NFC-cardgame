@@ -24,6 +24,7 @@
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_PLAYER_H
 #define NFC_CARDGAME_ENTITIES_H
+#define NFC_CARDGAME_FARMER_H
 #define NFC_CARDGAME_BATTLEFIELD_H
 #define NFC_CARDGAME_BATTLEFIELD_MATH_H
 /* nav_frame.h is NOT blocked -- the real NavFrame / NavField types are
@@ -87,6 +88,7 @@ typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } Targeting
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
+typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
 
 typedef struct {
     AnimationType anim;
@@ -153,6 +155,7 @@ struct Entity {
     int waypointIndex;
     float laneProgress;
     float hitFlashTimer;
+    UnitRole unitRole;
     bool alive;
     bool markedForRemoval;
     int healAmount;
@@ -370,6 +373,43 @@ float combat_static_target_occupancy_radius(const Entity *attacker, const Entity
  *      stepper end-to-end instead of stubbing out flow sampling. ---- */
 #include "../src/logic/nav_frame.c"
 
+typedef struct Player {
+    Entity *base;
+} Player;
+
+typedef struct GameState {
+    Battlefield battlefield;
+    NavFrame nav;
+    Player players[2];
+    float lastFrameDeltaTime;
+} GameState;
+
+typedef struct {
+    const NavField *field;
+    Vector2 goal;
+    Vector2 goalAnchor;
+    float stopRadius;
+    float flowX;
+    float flowY;
+    Vector2 previewStep;
+    bool goalIsWaypoint;
+    bool hasPreviewStep;
+} PathfindDebugPreview;
+
+static bool g_farmer_debug_goal_valid = false;
+static Vector2 g_farmer_debug_goal = { 0.0f, 0.0f };
+static float g_farmer_debug_stop_radius = 0.0f;
+
+bool farmer_debug_nav_goal(const Entity *e, const GameState *gs,
+                           Vector2 *outGoal, float *outStopRadius) {
+    (void)e;
+    (void)gs;
+    if (!g_farmer_debug_goal_valid) return false;
+    if (outGoal) *outGoal = g_farmer_debug_goal;
+    if (outStopRadius) *outStopRadius = g_farmer_debug_stop_radius;
+    return true;
+}
+
 /* ---- Forward declarations for functions in pathfinding.c ---- */
 bool pathfind_step_entity(Entity *e, NavFrame *nav, const Battlefield *bf, float deltaTime);
 bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
@@ -383,6 +423,8 @@ float pathfind_lane_progress_for_position(const Entity *e, const Battlefield *bf
 void pathfind_sync_lane_progress(Entity *e, const Battlefield *bf);
 void pathfind_apply_direction_for_side(AnimState *anim, Vector2 diff, BattleSide side);
 float pathfind_sprite_rotation_for_side(SpriteDirection dir, BattleSide side);
+bool pathfind_debug_preview_entity(const Entity *e, const GameState *gs,
+                                   PathfindDebugPreview *outPreview);
 
 /* ---- Include production code under test ---- */
 #include "../src/logic/pathfinding.c"
@@ -469,11 +511,21 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.alive = true;
     e.ownerID = 0;  // SIDE_BOTTOM
     e.type = ENTITY_TROOP;
+    e.unitRole = UNIT_ROLE_COMBAT;
     e.bodyRadius = 14.0f;
     e.attackRange = 50.0f;
     e.movementTargetId = -1;
     e.ticksSinceProgress = 0;
     return e;
+}
+
+static GameState *make_test_game_state(Battlefield bf, NavFrame nav) {
+    static GameState gs;
+    memset(&gs, 0, sizeof(gs));
+    gs.battlefield = bf;
+    gs.nav = nav;
+    gs.lastFrameDeltaTime = 1.0f / 60.0f;
+    return &gs;
 }
 
 /* Register a blocker entity with the minimal battlefield stub. Caller owns
@@ -2539,6 +2591,241 @@ static void test_phase6_stress_32_knights_converge_on_front_arc(void) {
            attackReady, KNIGHT_COUNT);
 }
 
+static void test_debug_preview_lane_uses_cached_lane_field_without_mutation(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 1, 96.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+    e.laneProgress = 777.0f;
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+    (void)nav_get_or_build_lane_field(&nav, &bf, SIDE_BOTTOM, e.lane);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    int targetCacheBefore = gs->nav.targetCacheSize;
+    int freeGoalCacheBefore = gs->nav.freeGoalCacheSize;
+    int movementTargetBefore = e.movementTargetId;
+    float laneProgressBefore = e.laneProgress;
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&e, gs, &preview);
+    assert(ok);
+    assert(preview.goalIsWaypoint);
+    assert(preview.field == nav_find_lane_field(&gs->nav, SIDE_BOTTOM, e.lane));
+    assert(preview.hasPreviewStep);
+    assert(preview.flowY < 0.0f);
+    assert(gs->nav.targetCacheSize == targetCacheBefore);
+    assert(gs->nav.freeGoalCacheSize == freeGoalCacheBefore);
+    assert(e.movementTargetId == movementTargetBefore);
+    assert(approx_eq(e.laneProgress, laneProgressBefore, 0.001f));
+    assert(approx_eq(e.position.x, bf.laneWaypoints[SIDE_BOTTOM][1][1].v.x, 0.001f));
+    assert(approx_eq(e.position.y, bf.laneWaypoints[SIDE_BOTTOM][1][1].v.y, 0.001f));
+    printf("  PASS: test_debug_preview_lane_uses_cached_lane_field_without_mutation\n");
+}
+
+static void test_debug_preview_mobile_target_uses_cached_field_without_mutation(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity attacker = make_test_entity(1, 1, 96.0f);
+    Entity target = make_test_entity(1, 1, 0.0f);
+    attacker.position = (Vector2){ 540.0f, 1500.0f };
+    attacker.movementTargetId = 501;
+    attacker.laneProgress = 222.0f;
+    target.id = 501;
+    target.ownerID = 1;
+    target.position = (Vector2){ 540.0f, 1100.0f };
+    target.moveSpeed = 0.0f;
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &target);
+
+    float stopRadius = 0.0f;
+    Vector2 goal = { 0 };
+    assert(combat_engagement_goal(&attacker, &target, &bf, &goal, &stopRadius));
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+    nav_snapshot_entity_position(&nav, target.id, target.position.x, target.position.y);
+    NavTargetGoal navGoal = {
+        .kind = NAV_GOAL_KIND_MELEE_RING,
+        .targetX = target.position.x,
+        .targetY = target.position.y,
+        .outerRadius = stopRadius,
+        .targetBodyRadius = target.bodyRadius,
+        .innerRadiusMin = target.bodyRadius + attacker.bodyRadius + PATHFIND_CONTACT_GAP,
+        .targetId = target.id,
+        .perspectiveSide = 0
+    };
+    (void)nav_get_or_build_target_field(&nav, &bf, &navGoal);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    int targetCacheBefore = gs->nav.targetCacheSize;
+    int movementTargetBefore = attacker.movementTargetId;
+    float laneProgressBefore = attacker.laneProgress;
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&attacker, gs, &preview);
+    assert(ok);
+    assert(!preview.goalIsWaypoint);
+    assert(preview.field == nav_find_target_field(&gs->nav, &navGoal));
+    assert(preview.hasPreviewStep);
+    assert(gs->nav.targetCacheSize == targetCacheBefore);
+    assert(attacker.movementTargetId == movementTargetBefore);
+    assert(approx_eq(attacker.laneProgress, laneProgressBefore, 0.001f));
+    printf("  PASS: test_debug_preview_mobile_target_uses_cached_field_without_mutation\n");
+}
+
+static void test_debug_preview_static_assault_uses_cached_arc_without_mutation(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity attacker = make_test_entity(1, 1, 96.0f);
+    Entity base = make_test_entity(1, 1, 0.0f);
+    attacker.position = (Vector2){ 540.0f, 1500.0f };
+    attacker.movementTargetId = 777;
+    attacker.laneProgress = 333.0f;
+    base.id = 777;
+    base.type = ENTITY_BUILDING;
+    base.navProfile = NAV_PROFILE_STATIC;
+    base.ownerID = 1;
+    base.bodyRadius = 28.0f;
+    base.navRadius = BASE_NAV_RADIUS;
+    base.position = (Vector2){ 540.0f, 250.0f };
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &base);
+
+    float stopRadius = 0.0f;
+    Vector2 goal = { 0 };
+    assert(combat_engagement_goal(&attacker, &base, &bf, &goal, &stopRadius));
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+    nav_snapshot_entity_position(&nav, base.id, base.position.x, base.position.y);
+    nav_stamp_static_entity(&nav, base.id, base.position.x, base.position.y,
+                            base.navRadius);
+    NavTargetGoal navGoal = {
+        .kind = NAV_GOAL_KIND_STATIC_ATTACK,
+        .targetX = base.position.x,
+        .targetY = base.position.y,
+        .outerRadius = stopRadius,
+        .arcCenterDeg = 90.0f,
+        .arcHalfDeg = 80.0f,
+        .targetBodyRadius = base.bodyRadius,
+        .innerRadiusMin = base.bodyRadius + attacker.bodyRadius + PATHFIND_CONTACT_GAP,
+        .targetId = base.id,
+        .perspectiveSide = 0
+    };
+    (void)nav_get_or_build_target_field(&nav, &bf, &navGoal);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    int targetCacheBefore = gs->nav.targetCacheSize;
+    int movementTargetBefore = attacker.movementTargetId;
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&attacker, gs, &preview);
+    assert(ok);
+    assert(!preview.goalIsWaypoint);
+    assert(preview.field == nav_find_target_field(&gs->nav, &navGoal));
+    assert(preview.field != NULL);
+    assert(preview.field->kind == NAV_GOAL_KIND_STATIC_ATTACK);
+    assert(gs->nav.targetCacheSize == targetCacheBefore);
+    assert(attacker.movementTargetId == movementTargetBefore);
+    printf("  PASS: test_debug_preview_static_assault_uses_cached_arc_without_mutation\n");
+}
+
+static void test_debug_preview_farmer_uses_cached_free_goal_without_mutation(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity farmer = make_test_entity(1, 1, 90.0f);
+    farmer.position = (Vector2){ 540.0f, 1500.0f };
+    farmer.unitRole = UNIT_ROLE_FARMER;
+    farmer.navProfile = NAV_PROFILE_FREE_GOAL;
+    farmer.movementTargetId = 1234;
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+
+    g_farmer_debug_goal_valid = true;
+    g_farmer_debug_goal = (Vector2){ 540.0f, 900.0f };
+    g_farmer_debug_stop_radius = 36.0f;
+    (void)nav_get_or_build_free_goal_field(&nav, &bf,
+                                           g_farmer_debug_goal.x,
+                                           g_farmer_debug_goal.y,
+                                           g_farmer_debug_stop_radius, 0);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    int freeGoalCacheBefore = gs->nav.freeGoalCacheSize;
+    int movementTargetBefore = farmer.movementTargetId;
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&farmer, gs, &preview);
+    assert(ok);
+    assert(!preview.goalIsWaypoint);
+    assert(preview.field == nav_find_free_goal_field(&gs->nav,
+                                                     g_farmer_debug_goal.x,
+                                                     g_farmer_debug_goal.y,
+                                                     g_farmer_debug_stop_radius,
+                                                     0));
+    assert(preview.hasPreviewStep);
+    assert(gs->nav.freeGoalCacheSize == freeGoalCacheBefore);
+    assert(farmer.movementTargetId == movementTargetBefore);
+
+    g_farmer_debug_goal_valid = false;
+    printf("  PASS: test_debug_preview_farmer_uses_cached_free_goal_without_mutation\n");
+}
+
+static void test_debug_preview_builds_missing_target_field_for_stationary_focus(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity attacker = make_test_entity(1, 1, 96.0f);
+    Entity target = make_test_entity(1, 1, 0.0f);
+    attacker.position = (Vector2){ 540.0f, 1500.0f };
+    attacker.movementTargetId = 602;
+    target.id = 602;
+    target.ownerID = 1;
+    target.position = (Vector2){ 540.0f, 1150.0f };
+    bf_test_register(&bf, &attacker);
+    bf_test_register(&bf, &target);
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+    nav_snapshot_entity_position(&nav, target.id, target.position.x, target.position.y);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    assert(gs->nav.targetCacheSize == 0);
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&attacker, gs, &preview);
+    assert(ok);
+    assert(preview.field != NULL);
+    assert(gs->nav.targetCacheSize == 1);
+    printf("  PASS: test_debug_preview_builds_missing_target_field_for_stationary_focus\n");
+}
+
+static void test_debug_preview_uses_game_delta_time_for_step_length(void) {
+    Battlefield bf = make_test_battlefield();
+    Entity e = make_test_entity(1, 1, 120.0f);
+    e.position = bf.laneWaypoints[SIDE_BOTTOM][1][1].v;
+
+    NavFrame nav;
+    nav_frame_init(&nav);
+    nav_begin_frame(&nav, &bf);
+
+    GameState *gs = make_test_game_state(bf, nav);
+    gs->lastFrameDeltaTime = 0.05f;
+
+    PathfindDebugPreview preview;
+    bool ok = pathfind_debug_preview_entity(&e, gs, &preview);
+    assert(ok);
+    assert(preview.field != NULL);
+    assert(preview.hasPreviewStep);
+
+    float dx = preview.previewStep.x - e.position.x;
+    float dy = preview.previewStep.y - e.position.y;
+    float stepLen = sqrtf(dx * dx + dy * dy);
+    assert(approx_eq(stepLen, e.moveSpeed * gs->lastFrameDeltaTime, 0.2f));
+    printf("  PASS: test_debug_preview_uses_game_delta_time_for_step_length\n");
+}
+
 /* ---- CORE-01 bonus: Invalid lane produces IDLE ---- */
 static void test_invalid_lane_idles(void) {
     Battlefield bf = make_test_battlefield();
@@ -2654,9 +2941,15 @@ int main(void) {
     test_phase3d_farmer_reaches_free_goal();
     test_phase3d_farmer_avoids_static_blocker();
     test_phase3d_farmer_arrival_is_idempotent();
+    test_debug_preview_lane_uses_cached_lane_field_without_mutation();
+    test_debug_preview_mobile_target_uses_cached_field_without_mutation();
+    test_debug_preview_static_assault_uses_cached_arc_without_mutation();
+    test_debug_preview_farmer_uses_cached_free_goal_without_mutation();
+    test_debug_preview_builds_missing_target_field_for_stationary_focus();
+    test_debug_preview_uses_game_delta_time_for_step_length();
 
     test_phase6_stress_32_knights_converge_on_front_arc();
 
-    printf("\nAll 60 tests passed!\n");
+    printf("\nAll pathfinding tests passed!\n");
     return 0;
 }

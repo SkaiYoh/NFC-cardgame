@@ -286,6 +286,51 @@ static void farmer_deposit(Entity *e, GameState *gs, float deltaTime) {
     entity_set_state(e, ESTATE_IDLE);
 }
 
+bool farmer_debug_nav_goal(const Entity *e, const GameState *gs,
+                           Vector2 *outGoal, float *outStopRadius) {
+    if (!e || !gs || !outGoal || !outStopRadius) return false;
+
+    switch (e->farmerState) {
+        case FARMER_WALKING_TO_SUSTENANCE: {
+            const SustenanceNode *node =
+                sustenance_get_node((Battlefield *)&gs->battlefield,
+                                    e->claimedSustenanceNodeId);
+            if (!node || !node->active || node->claimedByEntityId != e->id) {
+                return false;
+            }
+            *outGoal = node->worldPos.v;
+            *outStopRadius = FARMER_SUSTENANCE_INTERACT_RADIUS;
+            return true;
+        }
+
+        case FARMER_RETURNING: {
+            const Entity *base = gs->players[e->ownerID].base;
+            if (!base) return false;
+
+            *outGoal = base->position;
+            *outStopRadius = farmer_base_wait_radius(e, base);
+
+            if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
+                *outStopRadius = farmer_base_contact_radius(e, base);
+                return true;
+            }
+
+            if (e->reservedDepositSlotKind == DEPOSIT_SLOT_QUEUE) {
+                *outGoal = deposit_slots_get_position(base,
+                                                      e->reservedDepositSlotKind,
+                                                      e->reservedDepositSlotIndex);
+                *outStopRadius = FARMER_QUEUE_WAIT_PROXIMITY;
+                return true;
+            }
+
+            return true;
+        }
+
+        default:
+            return false;
+    }
+}
+
 // --- Public API ---
 
 void farmer_update(Entity *e, GameState *gs, float deltaTime) {

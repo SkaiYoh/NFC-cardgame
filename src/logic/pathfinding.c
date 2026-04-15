@@ -1,5 +1,6 @@
 #include "pathfinding.h"
 #include "combat.h"
+#include "farmer.h"
 #include "../core/config.h"
 #include "../core/battlefield.h"
 #include "../entities/entities.h"
@@ -10,6 +11,10 @@
 static bool pathfind_compute_goal(Entity *e, const Battlefield *bf,
                                   Vector2 *outGoal, float *outStopRadius,
                                   bool *outIsWaypoint);
+static bool pathfind_try_resolve_goal(const Entity *e, const Battlefield *bf,
+                                      Vector2 *outGoal, float *outStopRadius,
+                                      bool *outIsWaypoint,
+                                      bool *outInvalidMovementTarget);
 
 BattleSide pathfind_presentation_side_for_position(Vector2 position, float seamY) {
     CanonicalPos pos = { .v = position };
@@ -404,10 +409,12 @@ static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 ca
 // If movementTargetId is set but the target is invalid, it is cleared here.
 // Returns false when there is no remaining steering goal (lane exhausted and
 // no valid pursuit target).
-static bool pathfind_compute_goal(Entity *e, const Battlefield *bf,
-                                  Vector2 *outGoal, float *outStopRadius,
-                                  bool *outIsWaypoint) {
+static bool pathfind_try_resolve_goal(const Entity *e, const Battlefield *bf,
+                                      Vector2 *outGoal, float *outStopRadius,
+                                      bool *outIsWaypoint,
+                                      bool *outInvalidMovementTarget) {
     if (!e || !bf || !outGoal || !outStopRadius || !outIsWaypoint) return false;
+    if (outInvalidMovementTarget) *outInvalidMovementTarget = false;
 
     if (e->movementTargetId != -1) {
         Entity *target = bf_find_entity((Battlefield *)bf, e->movementTargetId);
@@ -417,23 +424,74 @@ static bool pathfind_compute_goal(Entity *e, const Battlefield *bf,
                 return true;
             }
         }
-        e->movementTargetId = -1;
+        if (outInvalidMovementTarget) *outInvalidMovementTarget = true;
     }
 
     if (e->lane < 0 || e->lane >= 3) return false;
 
     BattleSide ownerSide = bf_side_for_player(e->ownerID);
-    pathfind_sync_lane_progress(e, bf);
+    float laneProgress =
+        pathfind_lane_progress_for_position_on_side(bf, ownerSide, e->lane,
+                                                    e->position, NULL);
 
     float laneTotal = pathfind_lane_total_length_for_side(bf, ownerSide, e->lane);
     if (laneTotal <= 0.0f) return false;
-    if (e->laneProgress >= laneTotal - PATHFIND_WAYPOINT_REACH_GAP) return false;
+    if (laneProgress >= laneTotal - PATHFIND_WAYPOINT_REACH_GAP) return false;
 
-    float goalProgress = e->laneProgress + PATHFIND_LANE_LOOKAHEAD_DISTANCE;
+    float goalProgress = laneProgress + PATHFIND_LANE_LOOKAHEAD_DISTANCE;
     if (goalProgress > laneTotal) goalProgress = laneTotal;
     *outGoal = pathfind_lane_position_at_progress_on_side(bf, ownerSide, e->lane, goalProgress);
     *outStopRadius = 0.0f;
     *outIsWaypoint = true;
+    return true;
+}
+
+static bool pathfind_compute_goal(Entity *e, const Battlefield *bf,
+                                  Vector2 *outGoal, float *outStopRadius,
+                                  bool *outIsWaypoint) {
+    bool invalidMovementTarget = false;
+    bool resolved = pathfind_try_resolve_goal(e, bf, outGoal, outStopRadius,
+                                              outIsWaypoint,
+                                              &invalidMovementTarget);
+    if (invalidMovementTarget) {
+        e->movementTargetId = -1;
+    }
+    return resolved;
+}
+
+static bool pathfind_build_target_nav_goal(const Entity *e, const Entity *target,
+                                           BattleSide ownerSide,
+                                           float stopRadius,
+                                           NavTargetGoal *outGoal) {
+    if (!e || !target || !outGoal) return false;
+    if (stopRadius <= 0.0f) return false;
+
+    bool isStatic = (target->navProfile == NAV_PROFILE_STATIC) ||
+                    (target->type == ENTITY_BUILDING);
+    bool isRanged = e->attackRange > e->bodyRadius + 48.0f;
+
+    NavTargetGoal goal = { 0 };
+    goal.targetX = target->position.x;
+    goal.targetY = target->position.y;
+    goal.outerRadius = stopRadius;
+    goal.targetBodyRadius = target->bodyRadius;
+    goal.innerRadiusMin = target->bodyRadius + e->bodyRadius +
+                          (float)PATHFIND_CONTACT_GAP;
+    goal.targetId = target->id;
+    goal.perspectiveSide = (int16_t)ownerSide;
+
+    if (isStatic) {
+        goal.kind = NAV_GOAL_KIND_STATIC_ATTACK;
+        BattleSide targetSide = bf_side_for_player(target->ownerID);
+        goal.arcCenterDeg = (targetSide == SIDE_BOTTOM) ? -90.0f : 90.0f;
+        goal.arcHalfDeg = 80.0f;
+    } else if (isRanged) {
+        goal.kind = NAV_GOAL_KIND_DIRECT_RANGE;
+    } else {
+        goal.kind = NAV_GOAL_KIND_MELEE_RING;
+    }
+
+    *outGoal = goal;
     return true;
 }
 
@@ -1097,6 +1155,181 @@ bool pathfind_move_toward_goal(Entity *e, Vector2 goal, float stopRadius,
     return false;
 }
 
+static bool pathfind_debug_preview_step_for_field(const Entity *e,
+                                                  const NavField *field,
+                                                  Vector2 goal,
+                                                  float stopRadius,
+                                                  const Entity *target,
+                                                  float deltaTime,
+                                                  bool clampToStopRadius,
+                                                  Vector2 *outStep,
+                                                  float *outFlowX,
+                                                  float *outFlowY) {
+    if (!e || !field) return false;
+
+    float fx = 0.0f;
+    float fy = 0.0f;
+    nav_sample_flow(field, e->position.x, e->position.y, &fx, &fy);
+    if (outFlowX) *outFlowX = fx;
+    if (outFlowY) *outFlowY = fy;
+    if (fx == 0.0f && fy == 0.0f) return false;
+
+    float totalStep = e->moveSpeed * deltaTime;
+    if (totalStep < 0.0f) totalStep = 0.0f;
+    float maxSub = (float)NAV_CELL_SIZE * 0.5f;
+    int32_t subCount = 1;
+    if (totalStep > maxSub) {
+        subCount = (int32_t)ceilf(totalStep / maxSub);
+    }
+    float subLen = (subCount > 0) ? totalStep / (float)subCount : 0.0f;
+
+    float minSepTargetSq = 0.0f;
+    if (target) {
+        minSepTargetSq = target->bodyRadius + e->bodyRadius +
+                         (float)PATHFIND_CONTACT_GAP;
+        minSepTargetSq *= minSepTargetSq;
+    }
+
+    float posX = e->position.x;
+    float posY = e->position.y;
+    bool moved = false;
+    for (int32_t s = 0; s < subCount; ++s) {
+        float tryX = posX + fx * subLen;
+        float tryY = posY + fy * subLen;
+        int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
+        if (field->hardBlocked[tryCell]) break;
+        if (target) {
+            float dxTarget = tryX - target->position.x;
+            float dyTarget = tryY - target->position.y;
+            if (dxTarget * dxTarget + dyTarget * dyTarget < minSepTargetSq) {
+                break;
+            }
+        }
+        if (clampToStopRadius) {
+            float dxGoal = tryX - goal.x;
+            float dyGoal = tryY - goal.y;
+            if (dxGoal * dxGoal + dyGoal * dyGoal <= stopRadius * stopRadius) {
+                posX = tryX;
+                posY = tryY;
+                moved = true;
+                break;
+            }
+        }
+        posX = tryX;
+        posY = tryY;
+        moved = true;
+    }
+
+    if (!moved) return false;
+
+    if (posX < 0.0f) posX = 0.0f;
+    if (posY < 0.0f) posY = 0.0f;
+    if (posX > (float)BOARD_WIDTH)  posX = (float)BOARD_WIDTH;
+    if (posY > (float)BOARD_HEIGHT) posY = (float)BOARD_HEIGHT;
+
+    if (outStep) *outStep = (Vector2){ posX, posY };
+    return true;
+}
+
+static const NavField *pathfind_debug_get_lane_field(NavFrame *nav,
+                                                     const Battlefield *bf,
+                                                     int side, int lane) {
+    const NavField *field = nav_find_lane_field(nav, side, lane);
+    if (field) return field;
+    return nav_get_or_build_lane_field(nav, bf, side, lane);
+}
+
+static const NavField *pathfind_debug_get_target_field(NavFrame *nav,
+                                                       const Battlefield *bf,
+                                                       const NavTargetGoal *goal) {
+    const NavField *field = nav_find_target_field(nav, goal);
+    if (field) return field;
+    return nav_get_or_build_target_field(nav, bf, goal);
+}
+
+static const NavField *pathfind_debug_get_free_goal_field(NavFrame *nav,
+                                                          const Battlefield *bf,
+                                                          float goalX, float goalY,
+                                                          float stopRadius,
+                                                          int perspectiveSide) {
+    const NavField *field = nav_find_free_goal_field(nav, goalX, goalY,
+                                                     stopRadius, perspectiveSide);
+    if (field) return field;
+    return nav_get_or_build_free_goal_field(nav, bf, goalX, goalY,
+                                            stopRadius, perspectiveSide);
+}
+
+bool pathfind_debug_preview_entity(const Entity *e, const GameState *gs,
+                                   PathfindDebugPreview *outPreview) {
+    if (!e || !gs || !outPreview) return false;
+
+    *outPreview = (PathfindDebugPreview){ 0 };
+
+    const Battlefield *bf = &gs->battlefield;
+    // Debug preview may materialize the current frame's field on demand so
+    // stationary focused units still render their nav intent. This only fills
+    // the ephemeral per-frame NavFrame caches; it does not mutate entity state.
+    NavFrame *nav = (NavFrame *)&gs->nav;
+    BattleSide ownerSide = bf_side_for_player(e->ownerID);
+    float deltaTime = gs->lastFrameDeltaTime;
+    if (deltaTime <= 0.0f) deltaTime = 1.0f / 60.0f;
+    Vector2 goal = { 0 };
+    float stopRadius = 0.0f;
+    const NavField *field = NULL;
+    const Entity *target = NULL;
+    bool goalIsWaypoint = false;
+    bool clampToStopRadius = false;
+
+    if (e->unitRole == UNIT_ROLE_FARMER) {
+        if (!farmer_debug_nav_goal(e, gs, &goal, &stopRadius)) return false;
+        clampToStopRadius = true;
+        if (nav && nav->initialized) {
+            field = pathfind_debug_get_free_goal_field(nav, bf, goal.x, goal.y,
+                                                       stopRadius, (int)ownerSide);
+        }
+    } else {
+        bool invalidMovementTarget = false;
+        if (!pathfind_try_resolve_goal(e, bf, &goal, &stopRadius, &goalIsWaypoint,
+                                       &invalidMovementTarget)) {
+            return false;
+        }
+
+        if (nav && nav->initialized) {
+            if (goalIsWaypoint && e->navProfile == NAV_PROFILE_LANE) {
+                field = pathfind_debug_get_lane_field(nav, bf, (int)ownerSide, e->lane);
+            } else if (!goalIsWaypoint && e->movementTargetId >= 0) {
+                target = bf_find_entity((Battlefield *)bf, e->movementTargetId);
+                if (target && target->alive && !target->markedForRemoval) {
+                    NavTargetGoal targetGoal = { 0 };
+                    if (pathfind_build_target_nav_goal(e, target, ownerSide,
+                                                       stopRadius, &targetGoal)) {
+                        field = pathfind_debug_get_target_field(nav, bf, &targetGoal);
+                    }
+                }
+            }
+        }
+    }
+
+    outPreview->field = field;
+    outPreview->goal = goal;
+    outPreview->goalAnchor = goal;
+    outPreview->stopRadius = stopRadius;
+    outPreview->goalIsWaypoint = goalIsWaypoint;
+
+    if (!field) return true;
+
+    nav_goal_region_anchor(field, &outPreview->goalAnchor.x,
+                           &outPreview->goalAnchor.y);
+    outPreview->hasPreviewStep =
+        pathfind_debug_preview_step_for_field(e, field, goal, stopRadius, target,
+                                              deltaTime,
+                                              clampToStopRadius,
+                                              &outPreview->previewStep,
+                                              &outPreview->flowX,
+                                              &outPreview->flowY);
+    return true;
+}
+
 // Phase 3b: flow-field lane-march stepper.
 //
 // Entry conditions (checked by the caller in pathfind_step_entity):
@@ -1232,37 +1465,9 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
     if (e->movementTargetId < 0) return false;
     Entity *target = bf_find_entity((Battlefield *)bf, e->movementTargetId);
     if (!target || !target->alive) return false;
-    if (stopRadius <= 0.0f) return false;
-
-    bool isStatic = (target->navProfile == NAV_PROFILE_STATIC) ||
-                    (target->type == ENTITY_BUILDING);
-    bool isRanged = e->attackRange > e->bodyRadius + 48.0f;
-
     NavTargetGoal goal = { 0 };
-    goal.targetX = target->position.x;
-    goal.targetY = target->position.y;
-    goal.outerRadius = stopRadius;
-    goal.targetBodyRadius = target->bodyRadius;
-    // Inner floor matches the stepper's target-body contact shell so
-    // the ribbon never seeds cells the stepper will refuse to enter.
-    goal.innerRadiusMin = target->bodyRadius + e->bodyRadius +
-                          (float)PATHFIND_CONTACT_GAP;
-    goal.targetId = target->id;
-    goal.perspectiveSide = (int16_t)ownerSide;
-
-    if (isStatic) {
-        goal.kind = NAV_GOAL_KIND_STATIC_ATTACK;
-        // Attackers approach from the enemy half, so the target's front
-        // arc faces away from its own spawn. Bottom-side targets face
-        // upward (-y, -90 deg), top-side targets face downward (+y, +90
-        // deg). 160-deg total arc -> half = 80.
-        BattleSide targetSide = bf_side_for_player(target->ownerID);
-        goal.arcCenterDeg = (targetSide == SIDE_BOTTOM) ? -90.0f : 90.0f;
-        goal.arcHalfDeg = 80.0f;
-    } else if (isRanged) {
-        goal.kind = NAV_GOAL_KIND_DIRECT_RANGE;
-    } else {
-        goal.kind = NAV_GOAL_KIND_MELEE_RING;
+    if (!pathfind_build_target_nav_goal(e, target, ownerSide, stopRadius, &goal)) {
+        return false;
     }
 
     const NavField *field = nav_get_or_build_target_field(nav, bf, &goal);
