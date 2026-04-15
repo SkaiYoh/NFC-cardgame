@@ -62,6 +62,17 @@ Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float 
 // Legacy: used before clip-driven attacks. Retained for non-clip entities.
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime);
 
+// Build the effect payload an attacker should deliver to a currently locked
+// target. Returns false for strict no-op cases (for example a healer pointed
+// at a friendly target that is no longer healable).
+bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
+                                 CombatEffectPayload *outPayload);
+
+// Apply an already-authored damage/heal payload to a target. Used by both
+// direct hits and projectile impacts so kill/heal bookkeeping stays unified.
+bool combat_apply_effect_payload(const CombatEffectPayload *payload,
+                                 Entity *target, GameState *gs);
+
 // Apply one hit from attacker to target (no cooldown check, immediate damage).
 // Called by the animation hit-sync system when the attack clip crosses its hit marker.
 // Checks for base kill and latches win condition if applicable.

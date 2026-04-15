@@ -24,6 +24,7 @@
 #include "../systems/progression.h"
 #include "../entities/entities.h"
 #include "../entities/building.h"
+#include "../entities/projectile.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -111,6 +112,8 @@ bool game_init(GameState *g) {
     // Initialize character sprite atlas
     sprite_atlas_init(&g->spriteAtlas);
     spawn_fx_init(&g->spawnFx);
+    projectile_assets_init(&g->projectileAssets);
+    projectile_system_init(&g->projectileSystem);
 
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
@@ -284,6 +287,10 @@ void game_update(GameState *g) {
         if (g->gameOver) break;  // Win latched mid-loop -- stop processing
     }
 
+    if (!g->gameOver) {
+        projectile_system_update(g, deltaTime);
+    }
+
     // Defensive fallback: catch base deaths from non-combat paths
     win_check(g);
 
@@ -349,6 +356,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 0.0f);
     spawn_fx_draw(&g->spawnFx, 180.0f);
     game_draw_canonical_entities(bf);
+    projectile_system_draw(g);
     debug_overlay_draw(bf, g, s_debugFlags, &p1NavState);
     viewport_end();
     if (s_showLaneDebug) {
@@ -387,6 +395,7 @@ void game_render(GameState *g) {
     sustenance_renderer_draw(&bf->sustenanceField, SIDE_TOP, g->sustenanceTexture, 180.0f);
     spawn_fx_draw(&g->spawnFx, 0.0f);
     game_draw_canonical_entities(bf);
+    projectile_system_draw(g);
     debug_overlay_draw(bf, g, s_debugFlags, &p2NavState);
     EndMode2D();
     if (s_showLaneDebug) {
@@ -459,6 +468,7 @@ void game_cleanup(GameState *g) {
     hand_ui_unload_texture(g->handCardSheetTexture);
     uvulite_font_unload(g->uvuliteLetteringTexture);
 
+    projectile_assets_cleanup(&g->projectileAssets);
     spawn_fx_cleanup(&g->spawnFx);
     // Cleanup Battlefield (must be before biome_free_all since tilemaps reference biome textures)
     bf_cleanup(&g->battlefield);

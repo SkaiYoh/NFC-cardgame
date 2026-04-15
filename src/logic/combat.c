@@ -22,7 +22,7 @@ static float combat_center_distance(Vector2 a, Vector2 b) {
 static bool combat_uses_direct_range(const Entity *attacker, const Entity *target) {
     (void)target;
     if (!attacker) return true;
-    return attacker->healAmount > 0;
+    return attacker->engagementMode == ATTACK_ENGAGEMENT_DIRECT_RANGE;
 }
 
 float combat_target_contact_radius(const Entity *target) {
@@ -346,12 +346,6 @@ static void combat_on_kill(Entity *victim, GameState *gs) {
     }
 }
 
-typedef enum {
-    EFFECT_NONE,
-    EFFECT_HEAL,
-    EFFECT_DAMAGE
-} EffectResult;
-
 static bool combat_is_invalid_supporter_friendly_target(const Entity *attacker, const Entity *target) {
     if (!attacker || !target) return false;
     if (attacker->healAmount <= 0) return false;
@@ -359,27 +353,73 @@ static bool combat_is_invalid_supporter_friendly_target(const Entity *attacker, 
     return !combat_can_heal_target(attacker, target);
 }
 
-// Apply one effect (heal or damage) from attacker to target. Single choke point
-// shared by combat_apply_hit (clip-driven) and combat_resolve (legacy cooldown)
-// so healer semantics stay uniform across the public combat API.
-static EffectResult apply_effect(Entity *attacker, Entity *target, GameState *gs) {
+bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
+                                 CombatEffectPayload *outPayload) {
+    if (!attacker || !target || !outPayload) return false;
+
     if (combat_can_heal_target(attacker, target)) {
-        entity_apply_heal(target, attacker->healAmount);
-        debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
-        printf("[COMBAT] Entity %d healed entity %d for %d (hp: %d/%d)\n",
-               attacker->id, target->id, attacker->healAmount, target->hp, target->maxHP);
-        return EFFECT_HEAL;
+        *outPayload = (CombatEffectPayload){
+            .kind = PROJECTILE_EFFECT_HEAL,
+            .amount = attacker->healAmount,
+            .sourceEntityId = attacker->id,
+            .sourceOwnerId = attacker->ownerID,
+        };
+        return true;
     }
 
     if (combat_is_invalid_supporter_friendly_target(attacker, target)) {
-        return EFFECT_NONE;
+        return false;
     }
 
-    bool killed = entity_take_damage(target, attacker->attack);
+    *outPayload = (CombatEffectPayload){
+        .kind = PROJECTILE_EFFECT_DAMAGE,
+        .amount = attacker->attack,
+        .sourceEntityId = attacker->id,
+        .sourceOwnerId = attacker->ownerID,
+    };
+    return true;
+}
+
+static bool combat_payload_can_heal_target(const CombatEffectPayload *payload, const Entity *target) {
+    if (!payload || !target) return false;
+    if (payload->kind != PROJECTILE_EFFECT_HEAL) return false;
+    if (payload->amount <= 0) return false;
+    if (target->ownerID != payload->sourceOwnerId) return false;
+    if (target->type != ENTITY_TROOP) return false;
+    if (!target->alive || target->markedForRemoval) return false;
+    if (target->hp >= target->maxHP) return false;
+    return true;
+}
+
+bool combat_apply_effect_payload(const CombatEffectPayload *payload,
+                                 Entity *target, GameState *gs) {
+    if (!payload || !target || !gs) return false;
+    if (!target->alive || target->markedForRemoval) return false;
+
+    if (payload->kind == PROJECTILE_EFFECT_HEAL) {
+        if (!combat_payload_can_heal_target(payload, target)) {
+            return false;
+        }
+
+        entity_apply_heal(target, payload->amount);
+        debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
+        printf("[COMBAT] Entity %d healed entity %d for %d (hp: %d/%d)\n",
+               payload->sourceEntityId, target->id, payload->amount, target->hp, target->maxHP);
+        return true;
+    }
+
+    if (payload->kind != PROJECTILE_EFFECT_DAMAGE) {
+        return false;
+    }
+    if (target->ownerID == payload->sourceOwnerId) {
+        return false;
+    }
+
+    bool killed = entity_take_damage(target, payload->amount);
     debug_event_emit_xy(target->position.x, target->position.y, DEBUG_EVT_HIT);
 
     printf("[COMBAT] Entity %d dealt %d damage to entity %d (hp: %d/%d)\n",
-           attacker->id, attacker->attack, target->id, target->hp, target->maxHP);
+           payload->sourceEntityId, payload->amount, target->id, target->hp, target->maxHP);
 
     if (killed) {
         combat_on_kill(target, gs);
@@ -387,14 +427,15 @@ static EffectResult apply_effect(Entity *attacker, Entity *target, GameState *gs
             win_latch_from_destroyed_base(gs, target);
         }
     }
-    return EFFECT_DAMAGE;
+    return true;
 }
 
 void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
+    CombatEffectPayload payload = {0};
     if (!attacker || !target || !gs) return;
     if (!target->alive) return;
-
-    apply_effect(attacker, target, gs);
+    if (!combat_build_effect_payload(attacker, target, &payload)) return;
+    combat_apply_effect_payload(&payload, target, gs);
 }
 
 void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
@@ -431,6 +472,7 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
 }
 
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime) {
+    CombatEffectPayload payload = {0};
     if (!attacker || !target || !gs) return;
     if (!attacker->alive || attacker->markedForRemoval) return;
     if (!target->alive || target->markedForRemoval) return;
@@ -442,8 +484,8 @@ void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float delta
     // Not ready to attack yet
     if (attacker->attackCooldown > 0.0f) return;
 
-    EffectResult result = apply_effect(attacker, target, gs);
-    if (result != EFFECT_NONE) {
+    if (combat_build_effect_payload(attacker, target, &payload) &&
+        combat_apply_effect_payload(&payload, target, gs)) {
         attacker->attackCooldown = (attacker->attackSpeed > 0.0f)
             ? 1.0f / attacker->attackSpeed
             : 1.0f;

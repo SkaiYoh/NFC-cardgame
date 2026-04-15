@@ -85,6 +85,24 @@ typedef enum { ANIM_IDLE, ANIM_RUN, ANIM_WALK, ANIM_HURT, ANIM_DEATH, ANIM_ATTAC
 typedef enum { DIR_SIDE, DIR_DOWN, DIR_UP, DIR_COUNT } SpriteDirection;
 typedef enum { ANIM_PLAY_LOOP, ANIM_PLAY_ONCE, ANIM_PLAY_IDLE_BURST } AnimPlayMode;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+typedef enum {
+    ATTACK_ENGAGEMENT_CONTACT = 0,
+    ATTACK_ENGAGEMENT_DIRECT_RANGE
+} AttackEngagementMode;
+typedef enum {
+    ATTACK_DELIVERY_INSTANT = 0,
+    ATTACK_DELIVERY_PROJECTILE
+} AttackDeliveryMode;
+typedef enum {
+    PROJECTILE_VISUAL_NONE = 0,
+    PROJECTILE_VISUAL_FISH,
+    PROJECTILE_VISUAL_HEALER_BLOB
+} ProjectileVisualType;
+typedef enum {
+    COMBAT_PROFILE_DEFAULT_MELEE = 0,
+    COMBAT_PROFILE_HEALER,
+    COMBAT_PROFILE_FISHFING
+} CombatProfileId;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
@@ -150,8 +168,17 @@ struct Entity {
     float attackRange;
     float attackCooldown;
     int attackTargetId;
+    bool attackReleaseFired;
     TargetingMode targeting;
     const char *targetType;
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
     AnimState anim;
     const CharacterSprite *sprite;
     int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
@@ -256,7 +283,7 @@ float combat_static_target_flow_angle_degrees(const Entity *attacker, const Enti
 
 static bool combat_uses_direct_range(const Entity *attacker, const Entity *target) {
     (void)target;
-    return attacker && attacker->healAmount > 0;
+    return attacker && attacker->engagementMode == ATTACK_ENGAGEMENT_DIRECT_RANGE;
 }
 
 static unsigned int combat_pair_hash(int attackerId, int targetId) {
@@ -523,6 +550,15 @@ static Entity make_test_entity(int lane, int waypointIndex, float moveSpeed) {
     e.unitRole = UNIT_ROLE_COMBAT;
     e.bodyRadius = 14.0f;
     e.attackRange = 50.0f;
+    e.attackReleaseFired = false;
+    e.combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
+    e.engagementMode = ATTACK_ENGAGEMENT_CONTACT;
+    e.deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e.projectileVisualType = PROJECTILE_VISUAL_NONE;
+    e.projectileSpeed = 0.0f;
+    e.projectileHitRadius = 0.0f;
+    e.projectileRenderScale = 1.0f;
+    e.projectileLaunchOffset = (Vector2){0};
     e.movementTargetId = -1;
     e.ticksSinceProgress = 0;
     return e;
@@ -2288,6 +2324,7 @@ static void test_phase3c_ranged_stops_inside_attack_range(void) {
     attacker.navProfile = NAV_PROFILE_LANE;
     attacker.bodyRadius = 14.0f;
     attacker.attackRange = 180.0f;  /* clearly ranged */
+    attacker.engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE;
 
     Entity target = make_test_entity(1, 0, 0.0f);
     target.position = (Vector2){ 540.0f, 1400.0f };

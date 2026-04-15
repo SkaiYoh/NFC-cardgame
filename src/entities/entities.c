@@ -4,6 +4,7 @@
 
 #include "entities.h"
 #include "entity_animation.h"
+#include "projectile.h"
 #include "../core/battlefield.h"
 #include "../core/config.h"
 #include "../core/debug_events.h"
@@ -247,6 +248,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->alive = true;
     e->markedForRemoval = false;
     e->attackTargetId = -1;
+    e->attackReleaseFired = false;
     e->movementTargetId = -1;
     e->ticksSinceProgress = 0;
     e->laneProgress = 0.0f;
@@ -263,6 +265,14 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->presentationSide = SIDE_BOTTOM;
 
     e->spriteType = SPRITE_TYPE_COUNT; // sentinel: no sprite type assigned yet
+    e->combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
+    e->engagementMode = ATTACK_ENGAGEMENT_CONTACT;
+    e->deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e->projectileVisualType = PROJECTILE_VISUAL_NONE;
+    e->projectileSpeed = 0.0f;
+    e->projectileHitRadius = 0.0f;
+    e->projectileRenderScale = 1.0f;
+    e->projectileLaunchOffset = (Vector2){ 0.0f, 0.0f };
 
     // Default to combat role; farmer overrides in troop_spawn
     e->unitRole = UNIT_ROLE_COMBAT;
@@ -345,6 +355,7 @@ void entity_set_state(Entity *e, EntityState newState) {
     EntityState oldState = e->state;
     e->state = newState;
     e->hitFlashTimer = 0.0f;
+    e->attackReleaseFired = false;
 
     entity_sync_animation(e);
 
@@ -357,6 +368,7 @@ void entity_set_state(Entity *e, EntityState newState) {
 
 void entity_restart_clip(Entity *e) {
     if (!e) return;
+    e->attackReleaseFired = false;
     anim_state_restart(&e->anim);
 }
 
@@ -494,9 +506,17 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 evt.prevNormalized < spec->hitNormalized &&
                 evt.currNormalized >= spec->hitNormalized) {
                 e->hitFlashTimer = 0.15f;
-                // Re-validate target at hit moment
-                if (target->alive) {
-                    combat_apply_hit(e, target, gs);
+                if (!e->attackReleaseFired && target->alive) {
+                    if (e->deliveryMode == ATTACK_DELIVERY_PROJECTILE) {
+                        if (!projectile_spawn_for_attack(gs, e, target)) {
+                            // Degrade to the shared direct-hit path rather than
+                            // silently dropping the swing when the visual pool is exhausted.
+                            combat_apply_hit(e, target, gs);
+                        }
+                    } else {
+                        combat_apply_hit(e, target, gs);
+                    }
+                    e->attackReleaseFired = true;
                 }
             }
 

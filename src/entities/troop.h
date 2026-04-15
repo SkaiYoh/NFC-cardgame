@@ -20,6 +20,14 @@ typedef struct {
     const char *targetType;
     SpriteType spriteType;
     float bodyRadius;
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
 } TroopData;
 
 // Default collision footprint radius for a given sprite type.

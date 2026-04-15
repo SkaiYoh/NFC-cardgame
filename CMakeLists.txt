@@ -120,6 +120,11 @@ add_executable(test_entities
 target_link_libraries(test_entities ${MATH_LIB})
 add_test(NAME entities COMMAND test_entities)
 
+add_executable(test_projectiles
+    tests/test_projectiles.c)
+target_link_libraries(test_projectiles ${MATH_LIB})
+add_test(NAME projectiles COMMAND test_projectiles)
+
 add_executable(test_animation
     tests/test_animation.c)
 target_link_libraries(test_animation ${MATH_LIB})

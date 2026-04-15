@@ -23,12 +23,42 @@ typedef struct Entity Entity;
 typedef struct Player Player;
 typedef struct GameState GameState;
 
+#define PROJECTILE_CAPACITY (MAX_ENTITIES * 2)
+
 // Entity enums
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+
+typedef enum {
+    ATTACK_ENGAGEMENT_CONTACT = 0,
+    ATTACK_ENGAGEMENT_DIRECT_RANGE
+} AttackEngagementMode;
+
+typedef enum {
+    ATTACK_DELIVERY_INSTANT = 0,
+    ATTACK_DELIVERY_PROJECTILE
+} AttackDeliveryMode;
+
+typedef enum {
+    PROJECTILE_EFFECT_NONE = 0,
+    PROJECTILE_EFFECT_DAMAGE,
+    PROJECTILE_EFFECT_HEAL
+} ProjectileEffectKind;
+
+typedef enum {
+    PROJECTILE_VISUAL_NONE = 0,
+    PROJECTILE_VISUAL_FISH,
+    PROJECTILE_VISUAL_HEALER_BLOB
+} ProjectileVisualType;
+
+typedef enum {
+    COMBAT_PROFILE_DEFAULT_MELEE = 0,
+    COMBAT_PROFILE_HEALER,
+    COMBAT_PROFILE_FISHFING
+} CombatProfileId;
 
 // Targeting preference for combat (used by Entity and TroopData)
 typedef enum {
@@ -88,6 +118,38 @@ typedef struct {
     bool initialized;
 } DepositSlotRing;
 
+typedef struct {
+    ProjectileEffectKind kind;
+    int amount;
+    int sourceEntityId;
+    int sourceOwnerId;
+} CombatEffectPayload;
+
+typedef struct {
+    bool active;
+    int sourceId;
+    int sourceOwnerId;
+    int lockedTargetId;
+    CombatEffectPayload payload;
+    Vector2 prevPos;
+    Vector2 currentPos;
+    Vector2 snapshotTargetPos;
+    float speed;
+    float hitRadius;
+    ProjectileVisualType visualType;
+    float renderScale;
+    float animElapsed;
+} Projectile;
+
+typedef struct {
+    Texture2D fishTexture;
+    Texture2D healerBlobTexture;
+} ProjectileAssets;
+
+typedef struct {
+    Projectile projectiles[PROJECTILE_CAPACITY];
+} ProjectileSystem;
+
 // Entity definition
 struct Entity {
     int id;
@@ -106,8 +168,17 @@ struct Entity {
     float attackRange;
     float attackCooldown;       // time remaining before next attack
     int attackTargetId;         // locked target for current swing, -1 if none
+    bool attackReleaseFired;    // once-per-clip latch for effect release/projectile spawn
     TargetingMode targeting;    // targeting preference
     const char *targetType;     // for TARGET_SPECIFIC_TYPE (owned, freed in entity_destroy)
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
 
     // Animation
     AnimState anim;
@@ -223,6 +294,8 @@ struct GameState {
     // Character sprites (shared by all entities)
     SpriteAtlas spriteAtlas;
     SpawnFxSystem spawnFx;
+    ProjectileAssets projectileAssets;
+    ProjectileSystem projectileSystem;
 
     // Sustenance node texture (shared by sustenance_renderer)
     Texture2D sustenanceTexture;

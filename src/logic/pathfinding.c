@@ -552,7 +552,7 @@ static bool pathfind_build_target_nav_goal(const Entity *e, const Entity *target
 
     bool isStatic = (target->navProfile == NAV_PROFILE_STATIC) ||
                     (target->type == ENTITY_BUILDING);
-    bool isRanged = e->attackRange > e->bodyRadius + 48.0f;
+    bool isRanged = e->engagementMode == ATTACK_ENGAGEMENT_DIRECT_RANGE;
 
     NavTargetGoal goal = { 0 };
     goal.targetX = target->position.x;

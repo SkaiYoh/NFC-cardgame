@@ -27,6 +27,7 @@
 #define NFC_CARDGAME_COMBAT_H
 #define NFC_CARDGAME_FARMER_H
 #define NFC_CARDGAME_PROGRESSION_H
+#define NFC_CARDGAME_PROJECTILE_H
 #define PROGRESSION_KING_BURST_RADIUS 160.0f
 
 /* ---- Local steering constants (must mirror src/core/config.h) ---- */
@@ -48,6 +49,29 @@ typedef struct { float x; float y; float width; float height; } Rectangle;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+typedef enum {
+    ATTACK_ENGAGEMENT_CONTACT = 0,
+    ATTACK_ENGAGEMENT_DIRECT_RANGE
+} AttackEngagementMode;
+typedef enum {
+    ATTACK_DELIVERY_INSTANT = 0,
+    ATTACK_DELIVERY_PROJECTILE
+} AttackDeliveryMode;
+typedef enum {
+    PROJECTILE_EFFECT_NONE = 0,
+    PROJECTILE_EFFECT_DAMAGE,
+    PROJECTILE_EFFECT_HEAL
+} ProjectileEffectKind;
+typedef enum {
+    PROJECTILE_VISUAL_NONE = 0,
+    PROJECTILE_VISUAL_FISH,
+    PROJECTILE_VISUAL_HEALER_BLOB
+} ProjectileVisualType;
+typedef enum {
+    COMBAT_PROFILE_DEFAULT_MELEE = 0,
+    COMBAT_PROFILE_HEALER,
+    COMBAT_PROFILE_FISHFING
+} CombatProfileId;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { UNIT_ROLE_COMBAT, UNIT_ROLE_FARMER } UnitRole;
 typedef enum {
@@ -157,6 +181,13 @@ typedef struct {
     bool initialized;
 } DepositSlotRing;
 
+typedef struct {
+    ProjectileEffectKind kind;
+    int amount;
+    int sourceEntityId;
+    int sourceOwnerId;
+} CombatEffectPayload;
+
 typedef struct Entity Entity;
 typedef struct GameState GameState;
 typedef struct Player Player;
@@ -174,8 +205,17 @@ struct Entity {
     float attackRange;
     float attackCooldown;
     int attackTargetId;
+    bool attackReleaseFired;
     TargetingMode targeting;
     const char *targetType;
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
     AnimState anim;
     const CharacterSprite *sprite;
     SpriteType spriteType;
@@ -235,6 +275,10 @@ static Entity *g_findWithinRadiusResult = NULL;
 static int g_applyHitCalls = 0;
 static Entity *g_lastApplyHitAttacker = NULL;
 static Entity *g_lastApplyHitTarget = NULL;
+static int g_projectileSpawnCalls = 0;
+static Entity *g_lastProjectileAttacker = NULL;
+static Entity *g_lastProjectileTarget = NULL;
+static bool g_projectileSpawnShouldFail = false;
 static int g_applyKingBurstCalls = 0;
 static Entity *g_lastKingBurstBase = NULL;
 static float g_lastKingBurstRadius = 0.0f;
@@ -308,6 +352,15 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
     g_lastKingBurstBase = base;
     g_lastKingBurstRadius = radius;
     g_lastKingBurstDamage = damage;
+}
+
+bool projectile_spawn_for_attack(GameState *gs, const Entity *attacker,
+                                 const Entity *target) {
+    (void)gs;
+    g_projectileSpawnCalls++;
+    g_lastProjectileAttacker = (Entity *)attacker;
+    g_lastProjectileTarget = (Entity *)target;
+    return !g_projectileSpawnShouldFail;
 }
 
 /* Phase 3a: signature gained a NavFrame* parameter. The test harness does
@@ -616,6 +669,10 @@ static void reset_globals(void) {
     g_applyHitCalls = 0;
     g_lastApplyHitAttacker = NULL;
     g_lastApplyHitTarget = NULL;
+    g_projectileSpawnCalls = 0;
+    g_lastProjectileAttacker = NULL;
+    g_lastProjectileTarget = NULL;
+    g_projectileSpawnShouldFail = false;
     g_applyKingBurstCalls = 0;
     g_lastKingBurstBase = NULL;
     g_lastKingBurstRadius = 0.0f;
@@ -647,7 +704,16 @@ static Entity make_entity(int id, int ownerID, EntityType type, Vector2 pos) {
     e.attackSpeed = 1.0f;
     e.attackRange = 80.0f;
     e.attackTargetId = -1;
+    e.attackReleaseFired = false;
     e.targeting = TARGET_NEAREST;
+    e.combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
+    e.engagementMode = ATTACK_ENGAGEMENT_CONTACT;
+    e.deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e.projectileVisualType = PROJECTILE_VISUAL_NONE;
+    e.projectileSpeed = 0.0f;
+    e.projectileHitRadius = 0.0f;
+    e.projectileRenderScale = 1.0f;
+    e.projectileLaunchOffset = (Vector2){0};
     e.presentationSide = SIDE_BOTTOM;
     e.ownerID = ownerID;
     e.lane = 1;
@@ -665,6 +731,14 @@ static Entity make_healer(int id, Vector2 pos) {
     healer.state = ESTATE_ATTACKING;
     healer.healAmount = 8;
     healer.spriteType = SPRITE_TYPE_HEALER;
+    healer.combatProfileId = COMBAT_PROFILE_HEALER;
+    healer.engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE;
+    healer.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
+    healer.projectileVisualType = PROJECTILE_VISUAL_HEALER_BLOB;
+    healer.projectileSpeed = 240.0f;
+    healer.projectileHitRadius = 14.0f;
+    healer.projectileRenderScale = 1.0f;
+    healer.projectileLaunchOffset = (Vector2){12.0f, -8.0f};
     anim_state_init(&healer.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
     healer.anim.elapsed = 0.49f;
     healer.anim.normalizedTime = 0.49f;
@@ -1120,6 +1194,47 @@ static void test_non_healer_enemy_hit_flow_unchanged(void) {
     assert(g_lastApplyHitTarget == &enemy);
 }
 
+static void test_projectile_attacker_spawns_projectile_on_release(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity healer = make_healer(1, (Vector2){0.0f, 0.0f});
+    Entity enemy = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 0.0f});
+    healer.attackTargetId = enemy.id;
+
+    battlefield_add(&gs.battlefield, &enemy);
+
+    entity_update(&healer, &gs, 0.05f);
+
+    assert(healer.state == ESTATE_ATTACKING);
+    assert(healer.attackTargetId == enemy.id);
+    assert(g_projectileSpawnCalls == 1);
+    assert(g_lastProjectileAttacker == &healer);
+    assert(g_lastProjectileTarget == &enemy);
+    assert(g_applyHitCalls == 0);
+}
+
+static void test_projectile_spawn_failure_falls_back_to_direct_hit(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_healer(1, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){20.0f, 0.0f});
+    attacker.attackRange = 64.0f;
+    attacker.attackTargetId = target.id;
+
+    g_projectileSpawnShouldFail = true;
+    battlefield_add(&gs.battlefield, &target);
+
+    entity_update(&attacker, &gs, 0.05f);
+
+    assert(g_projectileSpawnCalls == 1);
+    assert(g_applyHitCalls == 1);
+    assert(g_lastApplyHitAttacker == &attacker);
+    assert(g_lastApplyHitTarget == &target);
+    assert(attacker.attackReleaseFired);
+}
+
 static void test_building_attack_clip_finishes_and_returns_to_idle(void) {
     reset_globals();
     GameState gs = make_game_state();
@@ -1212,6 +1327,8 @@ int main(void) {
     RUN_TEST(test_healer_cancels_stale_heal_and_retargets_enemy);
     RUN_TEST(test_healer_cancels_stale_heal_and_walks_without_replacement);
     RUN_TEST(test_non_healer_enemy_hit_flow_unchanged);
+    RUN_TEST(test_projectile_attacker_spawns_projectile_on_release);
+    RUN_TEST(test_projectile_spawn_failure_falls_back_to_direct_hit);
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
     RUN_TEST(test_building_attack_hit_marker_dispatches_queued_king_burst_once);
     RUN_TEST(test_building_attack_finish_clears_pending_king_burst_without_dispatch);

@@ -34,6 +34,7 @@
 #define NFC_CARDGAME_FARMER_H
 #define NFC_CARDGAME_ASSAULT_SLOTS_H
 #define NFC_CARDGAME_DEPOSIT_SLOTS_H
+#define NFC_CARDGAME_TROOP_H
 
 /* ---- Config defines (must match src/core/config.h) ---- */
 #define LANE_WAYPOINT_COUNT  8
@@ -64,6 +65,29 @@ typedef enum { ANIM_IDLE, ANIM_RUN, ANIM_WALK, ANIM_HURT, ANIM_DEATH, ANIM_ATTAC
 typedef enum { DIR_SIDE, DIR_DOWN, DIR_UP, DIR_COUNT } SpriteDirection;
 typedef enum { ANIM_PLAY_LOOP, ANIM_PLAY_ONCE, ANIM_PLAY_IDLE_BURST } AnimPlayMode;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+typedef enum {
+    ATTACK_ENGAGEMENT_CONTACT = 0,
+    ATTACK_ENGAGEMENT_DIRECT_RANGE
+} AttackEngagementMode;
+typedef enum {
+    ATTACK_DELIVERY_INSTANT = 0,
+    ATTACK_DELIVERY_PROJECTILE
+} AttackDeliveryMode;
+typedef enum {
+    PROJECTILE_EFFECT_NONE = 0,
+    PROJECTILE_EFFECT_DAMAGE,
+    PROJECTILE_EFFECT_HEAL
+} ProjectileEffectKind;
+typedef enum {
+    PROJECTILE_VISUAL_NONE = 0,
+    PROJECTILE_VISUAL_FISH,
+    PROJECTILE_VISUAL_HEALER_BLOB
+} ProjectileVisualType;
+typedef enum {
+    COMBAT_PROFILE_DEFAULT_MELEE = 0,
+    COMBAT_PROFILE_HEALER,
+    COMBAT_PROFILE_FISHFING
+} CombatProfileId;
 typedef enum { TARGET_NEAREST, TARGET_BUILDING, TARGET_SPECIFIC_TYPE } TargetingMode;
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
@@ -148,6 +172,13 @@ typedef struct {
     bool initialized;
 } DepositSlotRing;
 
+typedef struct {
+    ProjectileEffectKind kind;
+    int amount;
+    int sourceEntityId;
+    int sourceOwnerId;
+} CombatEffectPayload;
+
 struct Entity {
     int id;
     EntityType type;
@@ -161,8 +192,17 @@ struct Entity {
     float attackRange;
     float attackCooldown;
     int attackTargetId;
+    bool attackReleaseFired;
     TargetingMode targeting;
     const char *targetType;
+    CombatProfileId combatProfileId;
+    AttackEngagementMode engagementMode;
+    AttackDeliveryMode deliveryMode;
+    ProjectileVisualType projectileVisualType;
+    float projectileSpeed;
+    float projectileHitRadius;
+    float projectileRenderScale;
+    Vector2 projectileLaunchOffset;
     AnimState anim;
     const CharacterSprite *sprite;
     int spriteType; // SpriteType enum, but int to avoid pulling in sprite_renderer.h
@@ -353,6 +393,11 @@ void entity_sync_animation(Entity *e) {
     (void)e;
 }
 
+float troop_default_body_radius(SpriteType type) {
+    (void)type;
+    return 16.0f;
+}
+
 /* ---- Deposit slot stub (building.c calls this on base creation) ---- */
 void deposit_slots_build_for_base(Entity *base) {
     if (!base) return;
@@ -385,6 +430,15 @@ static Entity make_entity(int ownerID, EntityType type, Vector2 pos) {
     e.alive = true;
     e.markedForRemoval = false;
     e.attackCooldown = 0.0f;
+    e.attackReleaseFired = false;
+    e.combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
+    e.engagementMode = ATTACK_ENGAGEMENT_CONTACT;
+    e.deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e.projectileVisualType = PROJECTILE_VISUAL_NONE;
+    e.projectileSpeed = 0.0f;
+    e.projectileHitRadius = 0.0f;
+    e.projectileRenderScale = 1.0f;
+    e.projectileLaunchOffset = (Vector2){0};
     e.bodyRadius = 14.0f;
     e.navRadius = 14.0f;
     e.navProfile = NAV_PROFILE_LANE;
@@ -1069,6 +1123,9 @@ static Entity make_healer(int ownerID, Vector2 pos) {
     h.attack = 5;
     h.healAmount = 8;
     h.attackRange = 80.0f;
+    h.combatProfileId = COMBAT_PROFILE_HEALER;
+    h.engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE;
+    h.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
     return h;
 }
 
