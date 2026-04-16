@@ -308,6 +308,14 @@ static bool combat_is_healer_profile(const Entity *entity) {
     return entity->combatProfileId == COMBAT_PROFILE_HEALER;
 }
 
+static bool combat_healer_profile_rejects_heal_target(CombatProfileId attackerProfile,
+                                                      const Entity *target) {
+    if (!target) return false;
+    if (attackerProfile != COMBAT_PROFILE_HEALER) return false;
+    return combat_is_healer_profile(target) ||
+           target->unitRole == UNIT_ROLE_FARMER;
+}
+
 bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
     if (!attacker || !target) return false;
     if (attacker->healAmount <= 0) return false;
@@ -315,14 +323,17 @@ bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
     if (!combat_is_friendly_target(attacker, target)) return false;
     if (target->type != ENTITY_TROOP) return false;
     if (!target->alive || target->markedForRemoval) return false;
-    if (combat_is_healer_profile(attacker) &&
-        combat_is_healer_profile(target)) return false;
+    if (combat_healer_profile_rejects_heal_target(attacker->combatProfileId,
+                                                  target)) {
+        return false;
+    }
     if (target->hp >= target->maxHP) return false;
     return true;
 }
 
 // Support priority: nearest injured friendly troop already inside attack range.
-// Healer-profile units exclude healer-profile allies via combat_can_heal_target().
+// Healer-profile units exclude healer-profile and farmer-role allies via
+// combat_can_heal_target().
 // Returns NULL if no eligible ally exists; the caller then falls back to enemy targeting.
 static Entity *combat_find_heal_target(Entity *attacker, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
@@ -534,6 +545,7 @@ bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
             .amount = attacker->healAmount,
             .sourceEntityId = attacker->id,
             .sourceOwnerId = attacker->ownerID,
+            .sourceCombatProfileId = attacker->combatProfileId,
             .canHitAir = false,
         };
         return true;
@@ -551,24 +563,24 @@ bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
         .amount = combat_damage_amount_for_target(attacker, target),
         .sourceEntityId = attacker->id,
         .sourceOwnerId = attacker->ownerID,
+        .sourceCombatProfileId = attacker->combatProfileId,
         .canHitAir = combat_attacker_can_hit_air(attacker),
     };
     return true;
 }
 
 static bool combat_payload_can_heal_target(const CombatEffectPayload *payload,
-                                           const Entity *target,
-                                           GameState *gs) {
-    if (!payload || !target || !gs) return false;
+                                           const Entity *target) {
+    if (!payload || !target) return false;
     if (payload->kind != PROJECTILE_EFFECT_HEAL) return false;
     if (payload->amount <= 0) return false;
     if (target->ownerID != payload->sourceOwnerId) return false;
     if (target->type != ENTITY_TROOP) return false;
     if (!target->alive || target->markedForRemoval) return false;
-    Entity *source = combat_find_source_entity(gs, payload->sourceEntityId);
-    if (source &&
-        combat_is_healer_profile(source) &&
-        combat_is_healer_profile(target)) return false;
+    if (combat_healer_profile_rejects_heal_target(payload->sourceCombatProfileId,
+                                                  target)) {
+        return false;
+    }
     if (target->hp >= target->maxHP) return false;
     return true;
 }
@@ -579,7 +591,7 @@ bool combat_apply_effect_payload(const CombatEffectPayload *payload,
     if (!target->alive || target->markedForRemoval) return false;
 
     if (payload->kind == PROJECTILE_EFFECT_HEAL) {
-        if (!combat_payload_can_heal_target(payload, target, gs)) {
+        if (!combat_payload_can_heal_target(payload, target)) {
             return false;
         }
 
