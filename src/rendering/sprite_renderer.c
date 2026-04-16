@@ -265,7 +265,7 @@ const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType ani
         [ANIM_RUN] = { ANIM_RUN, ANIM_WALK, ANIM_IDLE },
         [ANIM_WALK] = { ANIM_WALK, ANIM_RUN, ANIM_IDLE },
         [ANIM_HURT] = { ANIM_HURT, ANIM_DEATH, ANIM_HURT },
-        [ANIM_DEATH] = { ANIM_DEATH, ANIM_HURT, ANIM_DEATH },
+        [ANIM_DEATH] = { ANIM_DEATH, ANIM_DEATH, ANIM_DEATH },
         [ANIM_ATTACK] = { ANIM_ATTACK, ANIM_ATTACK, ANIM_ATTACK },
     };
 

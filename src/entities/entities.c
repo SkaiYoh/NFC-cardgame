@@ -409,7 +409,8 @@ void entity_sync_animation(Entity *e) {
     bool oneShot = (spec->mode == ANIM_PLAY_ONCE);
     int visualLoops = (spec->visualLoops > 0) ? spec->visualLoops : 1;
 
-    // Death is always one-shot regardless of spec (prevents fallback-spec death trap)
+    // Keep DEAD configured as a one-shot clip even though killed entities are
+    // now removed before the death playback can advance.
     if (e->state == ESTATE_DEAD) oneShot = true;
 
     // Stat-driven overrides
@@ -644,13 +645,7 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
         }
 
         case ESTATE_DEAD: {
-            // Death animation plays to completion, then entity is removed
-            AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
-            if (evt.finishedThisTick) {
-                debug_event_emit_xy(e->position.x, e->position.y, DEBUG_EVT_DEATH_FINISH);
-                e->markedForRemoval = true;
-            }
-            return; // skip the unconditional anim_state_update below
+            return; // killed entities are skipped until the end-of-tick sweep
         }
     }
 

@@ -34,6 +34,15 @@
 static bool s_showLaneDebug = false;
 static DebugOverlayFlags s_debugFlags = {0};
 
+static void player_capture_base_hud_snapshot(Player *player, const Entity *base) {
+    if (!player || !base) return;
+
+    player->hasBaseHudSnapshot = true;
+    player->baseHudHP = base->hp;
+    player->baseHudMaxHP = base->maxHP;
+    player->baseHudLevel = base->baseLevel;
+}
+
 static void game_seed_demo_hands(GameState *g) {
     for (int playerIndex = 0; playerIndex < 2; playerIndex++) {
         int handIndex = 0;
@@ -119,14 +128,21 @@ bool game_init(GameState *g) {
     // Initialize split-screen viewports and players
     viewport_init_split_screen(g);
     game_seed_demo_hands(g);
+    for (int i = 0; i < 2; i++) {
+        g->players[i].hasBaseHudSnapshot = false;
+        g->players[i].baseHudHP = 0;
+        g->players[i].baseHudMaxHP = 0;
+        g->players[i].baseHudLevel = 0;
+    }
 
-    // Spawn home bases behind center-lane spawn points
+    // Spawn home bases at the authored center-lane home anchors.
     for (int i = 0; i < 2; i++) {
         BattleSide side = bf_side_for_player(i);
         CanonicalPos anchor = bf_base_anchor(&g->battlefield, side);
         Entity *base = building_create_base(&g->players[i], anchor.v, &g->spriteAtlas);
         if (base) {
             g->players[i].base = base;
+            player_capture_base_hud_snapshot(&g->players[i], base);
             bf_add_entity(&g->battlefield, base);
         }
         progression_sync_player(g, i);
@@ -320,8 +336,14 @@ void game_update(GameState *g) {
             }
 
             // Clear stale base pointers before freeing memory
-            if (dead == g->players[0].base) g->players[0].base = NULL;
-            if (dead == g->players[1].base) g->players[1].base = NULL;
+            if (dead == g->players[0].base) {
+                player_capture_base_hud_snapshot(&g->players[0], dead);
+                g->players[0].base = NULL;
+            }
+            if (dead == g->players[1].base) {
+                player_capture_base_hud_snapshot(&g->players[1], dead);
+                g->players[1].base = NULL;
+            }
 
             bf->entities[i] = bf->entities[bf->entityCount - 1];
             bf->entityCount--;
@@ -487,6 +509,14 @@ void game_cleanup(GameState *g) {
     }
     g->players[0].base = NULL;
     g->players[1].base = NULL;
+    g->players[0].hasBaseHudSnapshot = false;
+    g->players[1].hasBaseHudSnapshot = false;
+    g->players[0].baseHudHP = 0;
+    g->players[1].baseHudHP = 0;
+    g->players[0].baseHudMaxHP = 0;
+    g->players[1].baseHudMaxHP = 0;
+    g->players[0].baseHudLevel = 0;
+    g->players[1].baseHudLevel = 0;
 
     // Unload sustenance texture
     UnloadTexture(g->sustenanceTexture);

@@ -99,8 +99,8 @@ void sprite_atlas_init(SpriteAtlas *atlas);
 
 void sprite_atlas_free(SpriteAtlas *atlas);
 
-// Returns the authored sheet for anim, or the explicit fallback sheet when a
-// semantic clip (for example IDLE/DEATH) is not authored for this sprite set.
+// Returns the authored sheet for anim, or a configured fallback sheet for
+// clips that allow fallback (for example IDLE/WALK/RUN).
 const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType anim);
 
 Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimState *state,

@@ -1,6 +1,6 @@
 # Project Status
 
-Verified from source and local commands on 2026-04-04.
+Verified from source and local commands on 2026-04-16.
 
 ## Project Summary
 
@@ -12,7 +12,7 @@ stationary player bases, and three standalone tools (`card_preview`,
 The codebase is not a complete end-to-end match game yet. The current
 implementation supports spawning troops, spawning one base per player, moving
 units through canonical lane paths, finding targets, applying hit-synced combat
-damage, playing death animations, latching match results on base destruction,
+damage, despawning dead entities immediately, latching match results on base destruction,
 and rendering both players' views over the same battlefield. Pregame/match
 phases, projectile gameplay, base-health UI, and in-game
 card rendering are still missing.
@@ -21,14 +21,8 @@ card rendering are still missing.
 
 - `make cardgame` builds the main game successfully.
 - `make preview`, `make biome_preview`, and `make card_enroll` all build successfully.
-- `make test` passes all seven standalone test binaries:
-  - `test_pathfinding`
-  - `test_combat`
-  - `test_battlefield_math`
-  - `test_battlefield`
-  - `test_animation`
-  - `test_debug_events`
-  - `test_win_condition`
+- `make test` passes the standalone test binaries wired into the Makefile
+  target.
 - Runtime architecture is canonical:
   - one `1080 x 1920` battlefield
   - seam at `y = 960`
@@ -54,7 +48,7 @@ card rendering are still missing.
   - Battlefield registry insert
 - Troops path through canonical waypoints from `Battlefield`.
 - Troops can acquire targets, play attack clips, apply damage at the attack hit
-  marker, die, and get swept after the death clip finishes.
+  marker, die, and get swept at the end of the same tick without a death clip.
 - Idle troops do reacquire nearby targets; they do not need an external state
   transition to re-enter combat.
 - Debug rendering exists and is wired:

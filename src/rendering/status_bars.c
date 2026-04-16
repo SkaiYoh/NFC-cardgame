@@ -721,18 +721,41 @@ static float regen_label_normal_offset(float labelRotationDegrees) {
         :  STATUS_BAR_REGEN_LABEL_STACK_OFFSET;
 }
 
-static void draw_base_bars(const GameState *gs, const Entity *base, const Player *owner,
+static bool resolve_base_bar_snapshot(const Player *owner, int *outHp,
+                                      int *outMaxHp, int *outBaseLevel) {
+    if (!owner || !outHp || !outMaxHp || !outBaseLevel) return false;
+
+    const Entity *base = owner->base;
+    if (base && !base->markedForRemoval) {
+        *outHp = base->hp;
+        *outMaxHp = base->maxHP;
+        *outBaseLevel = base->baseLevel;
+        return true;
+    }
+
+    if (!owner->hasBaseHudSnapshot || owner->baseHudMaxHP <= 0) {
+        return false;
+    }
+
+    *outHp = owner->baseHudHP;
+    *outMaxHp = owner->baseHudMaxHP;
+    *outBaseLevel = owner->baseHudLevel;
+    return true;
+}
+
+static void draw_base_bars(const GameState *gs, int hp, int maxHP, int baseLevel,
+                           const Player *owner,
                            Rectangle viewportRect,
                            float rotationDegrees,
                            float labelRotationDegrees,
                            bool reverseFillDirection) {
-    if (!base || !owner) return;
+    if (!owner) return;
 
     Vector2 healthCenter, energyCenter;
     base_bar_centers(owner->side, viewportRect, &healthCenter, &energyCenter);
 
-    float hpRatio = (base->maxHP > 0)
-        ? ((float)base->hp / (float)base->maxHP)
+    float hpRatio = (maxHP > 0)
+        ? ((float)hp / (float)maxHP)
         : 0.0f;
 
     draw_base_health_continuous(gs->statusBarsTexture, hpRatio,
@@ -751,8 +774,8 @@ static void draw_base_bars(const GameState *gs, const Entity *base, const Player
     // raw RT-space outside offset stays positive while the unflipped P1 path
     // needs the opposite sign to land on the same authored side on screen.
     float energyLabelDirection = reverseFillDirection ? 1.0f : -1.0f;
-    int displayLevel = (base->baseLevel > 0) ? base->baseLevel : 1;
-    format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
+    int displayLevel = (baseLevel > 0) ? baseLevel : 1;
+    format_bar_label(hpLabel, sizeof(hpLabel), hp, maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
     snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
@@ -885,17 +908,18 @@ static void draw_base_energy_fallback(Vector2 screenCenter, float energy,
                      ENERGY_BAR_REGEN_PROGRESS_COLOR);
 }
 
-static void draw_base_bars_fallback(const Entity *base, const Player *owner,
+static void draw_base_bars_fallback(int hp, int maxHP, int baseLevel,
+                                    const Player *owner,
                                     Rectangle viewportRect, float rotationDegrees,
                                     float labelRotationDegrees,
                                     bool reverseFillDirection) {
-    if (!base || !owner) return;
+    if (!owner) return;
 
     Vector2 healthCenter, energyCenter;
     base_bar_centers(owner->side, viewportRect, &healthCenter, &energyCenter);
 
-    float hpRatio = (base->maxHP > 0)
-        ? ((float)base->hp / (float)base->maxHP)
+    float hpRatio = (maxHP > 0)
+        ? ((float)hp / (float)maxHP)
         : 0.0f;
 
     draw_base_health_fallback(healthCenter, hpRatio, rotationDegrees);
@@ -911,8 +935,8 @@ static void draw_base_bars_fallback(const Entity *base, const Player *owner,
     int filledPips = base_energy_filled_pips(owner->energy);
     // Keep fallback label placement aligned with the textured path.
     float energyLabelDirection = reverseFillDirection ? 1.0f : -1.0f;
-    int displayLevel = (base->baseLevel > 0) ? base->baseLevel : 1;
-    format_bar_label(hpLabel, sizeof(hpLabel), base->hp, base->maxHP);
+    int displayLevel = (baseLevel > 0) ? baseLevel : 1;
+    format_bar_label(hpLabel, sizeof(hpLabel), hp, maxHP);
     format_bar_label(energyLabel, sizeof(energyLabel),
                      filledPips, STATUS_BAR_ENERGY_PIP_COUNT);
     snprintf(levelLabel, sizeof(levelLabel), "LVL %d", displayLevel);
@@ -1008,15 +1032,19 @@ void status_bars_draw_screen(const GameState *gs, const Player *hudPlayer,
         }
     }
 
-    const Entity *base = hudPlayer->base;
-    if (!base || base->markedForRemoval) return;
+    int baseHp = 0;
+    int baseMaxHp = 0;
+    int baseLevel = 1;
+    if (!resolve_base_bar_snapshot(hudPlayer, &baseHp, &baseMaxHp, &baseLevel)) {
+        return;
+    }
 
     if (hasBaseTexture) {
-        draw_base_bars(gs, base, hudPlayer, viewportRect,
+        draw_base_bars(gs, baseHp, baseMaxHp, baseLevel, hudPlayer, viewportRect,
                        rotationDegrees, labelRotationDegrees,
                        reverseFillDirection);
     } else {
-        draw_base_bars_fallback(base, hudPlayer, viewportRect,
+        draw_base_bars_fallback(baseHp, baseMaxHp, baseLevel, hudPlayer, viewportRect,
                                 rotationDegrees, labelRotationDegrees,
                                 reverseFillDirection);
     }

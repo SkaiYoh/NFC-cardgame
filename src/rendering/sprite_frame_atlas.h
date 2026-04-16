@@ -61,27 +61,6 @@ static const Rectangle s_base_basic_hurt_bounds[] = {
     { 33.0f, 26.0f, 13.0f, 14.0f },
 };
 
-static const Rectangle s_base_basic_death_bounds[] = {
-    { 32.0f, 24.0f, 13.0f, 16.0f },
-    { 34.0f, 25.0f, 12.0f, 15.0f },
-    { 36.0f, 26.0f, 14.0f, 14.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 36.0f, 29.0f, 19.0f, 11.0f },
-    { 36.0f, 30.0f, 19.0f, 10.0f },
-    { 33.0f, 24.0f, 13.0f, 16.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 34.0f, 17.0f, 10.0f },
-    { 30.0f, 33.0f, 19.0f, 11.0f },
-    { 30.0f, 34.0f, 19.0f, 10.0f },
-    { 33.0f, 25.0f, 13.0f, 15.0f },
-    { 32.0f, 26.0f, 15.0f, 14.0f },
-    { 32.0f, 27.0f, 15.0f, 13.0f },
-    { 31.0f, 28.0f, 17.0f, 12.0f },
-    { 30.0f, 27.0f, 19.0f, 13.0f },
-    { 30.0f, 28.0f, 19.0f, 12.0f },
-};
-
 static const Rectangle s_base_attack_sword_bounds[] = {
     { 25.0f, 25.0f, 19.0f, 15.0f },
     { 25.0f, 25.0f, 19.0f, 15.0f },
@@ -779,7 +758,6 @@ static const SpriteSheetAtlasEntry kSpriteSheetAtlas[] = {
     { "src/assets/characters/Base/Basic/idle.png", 4, 3, s_base_basic_idle_bounds },
     { "src/assets/characters/Base/Basic/walk.png", 8, 3, s_base_basic_walk_bounds },
     { "src/assets/characters/Base/Basic/hurt.png", 4, 3, s_base_basic_hurt_bounds },
-    { "src/assets/characters/Base/Basic/death.png", 6, 3, s_base_basic_death_bounds },
     { "src/assets/characters/Base/Attack/sword.png", 6, 3, s_base_attack_sword_bounds },
     { "src/assets/characters/King/king_idle.png", 8, 1, s_king_idle_bounds },
     { "src/assets/characters/King/hurt.png", 4, 3, s_king_hurt_bounds },

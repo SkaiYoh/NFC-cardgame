@@ -280,6 +280,13 @@ struct Player {
     // NULL if destroyed or not yet spawned.
     Entity *base;
 
+    // Frozen base HUD values retained after the base entity is swept so the
+    // destroyed base can keep showing a 0/max status bar.
+    bool hasBaseHudSnapshot;
+    int baseHudHP;
+    int baseHudMaxHP;
+    int baseHudLevel;
+
     // Sustenance scoring (incremented on deposit or carrying-farmer death)
     int sustenanceCollected;
 };

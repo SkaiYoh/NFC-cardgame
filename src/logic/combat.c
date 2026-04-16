@@ -337,6 +337,7 @@ bool entity_take_damage(Entity *entity, int damage) {
         entity->hp = 0;
         entity->alive = false;
         entity_set_state(entity, ESTATE_DEAD);
+        entity->markedForRemoval = true;
         return true;
     }
     return false;

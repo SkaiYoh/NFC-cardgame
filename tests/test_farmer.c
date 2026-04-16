@@ -167,6 +167,7 @@ static Vector2 g_lastMoveGoal = { 0.0f, 0.0f };
 static float g_lastMoveRadius = 0.0f;
 static int g_claimCallCount = 0;
 static int g_lastClaimedNodeId = -1;
+static int g_animUpdateCalls = 0;
 static NavField g_navField;
 static bool g_navFieldEnabled = false;
 static float g_navUnreachableGoalX = 0.0f;
@@ -183,6 +184,7 @@ static void reset_move_stub(bool arrived) {
 static void reset_sustenance_stub(void) {
     g_claimCallCount = 0;
     g_lastClaimedNodeId = -1;
+    g_animUpdateCalls = 0;
     g_navFieldEnabled = false;
     g_navUnreachableGoalX = 0.0f;
     g_navReachableGoalX = 0.0f;
@@ -226,6 +228,7 @@ void entity_restart_clip(Entity *e) {
 AnimPlaybackEvent anim_state_update(AnimState *anim, float deltaTime) {
     (void)anim;
     (void)deltaTime;
+    g_animUpdateCalls++;
     return (AnimPlaybackEvent){ 0 };
 }
 
@@ -502,6 +505,22 @@ static void test_seek_prefers_nav_reachable_sustenance_over_straight_line_neares
     assert(farmer.state == ESTATE_WALKING);
 }
 
+static void test_dead_farmer_returns_without_animating(void) {
+    Entity base = make_base(904, (Vector2){ 540.0f, 1616.0f }, SIDE_BOTTOM);
+    GameState gs = make_game_state(&base);
+    Entity farmer = make_farmer(601, (Vector2){ 540.0f, 1542.0f });
+
+    reset_sustenance_stub();
+    reset_move_stub(false);
+    farmer.alive = false;
+
+    farmer_update(&farmer, &gs, 1.0f / 60.0f);
+
+    assert(g_animUpdateCalls == 0);
+    assert(g_moveCallCount == 0);
+    assert(farmer.markedForRemoval == false);
+}
+
 int main(void) {
     printf("Running farmer tests...\n");
     test_open_primary_slots_do_not_queue();
@@ -512,6 +531,8 @@ int main(void) {
     printf("  PASS: test_debug_goal_matches_runtime_goal_for_primary_and_queue\n");
     test_seek_prefers_nav_reachable_sustenance_over_straight_line_nearest();
     printf("  PASS: test_seek_prefers_nav_reachable_sustenance_over_straight_line_nearest\n");
+    test_dead_farmer_returns_without_animating();
+    printf("  PASS: test_dead_farmer_returns_without_animating\n");
     printf("All farmer tests passed\n");
     return 0;
 }

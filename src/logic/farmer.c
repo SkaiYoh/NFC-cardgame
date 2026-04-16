@@ -416,18 +416,7 @@ bool farmer_debug_nav_goal(const Entity *e, const GameState *gs,
 // --- Public API ---
 
 void farmer_update(Entity *e, GameState *gs, float deltaTime) {
-    if (!e || e->markedForRemoval) return;
-
-    // Dead farmer: play death animation, then mark for removal.
-    // This mirrors the generic ESTATE_DEAD branch in entity_update.
-    if (!e->alive) {
-        e->spriteRotationDegrees = farmer_sprite_rotation(e);
-        AnimPlaybackEvent evt = anim_state_update(&e->anim, deltaTime);
-        if (evt.finishedThisTick) {
-            e->markedForRemoval = true;
-        }
-        return;
-    }
+    if (!e || e->markedForRemoval || !e->alive) return;
 
     e->spriteRotationDegrees = farmer_sprite_rotation(e);
 

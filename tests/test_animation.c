@@ -437,13 +437,13 @@ static void test_sheet_lookup_resolves_idle_and_run_to_walk(void) {
     assert(sprite_sheet_get(&cs, ANIM_RUN) == &cs.anims[ANIM_WALK]);
 }
 
-static void test_sheet_lookup_resolves_death_to_hurt(void) {
+static void test_sheet_lookup_does_not_fallback_death(void) {
     CharacterSprite cs = {0};
     cs.anims[ANIM_HURT].frameCount = 4;
     cs.anims[ANIM_HURT].frameWidth = 79;
     cs.anims[ANIM_HURT].frameHeight = 79;
 
-    assert(sprite_sheet_get(&cs, ANIM_DEATH) == &cs.anims[ANIM_HURT]);
+    assert(sprite_sheet_get(&cs, ANIM_DEATH) == &cs.anims[ANIM_DEATH]);
 }
 
 static void test_sheet_lookup_prefers_authored_clip(void) {
@@ -1178,7 +1178,7 @@ int main(void) {
     RUN_TEST(test_spec_lookup_death_oneshot);
     RUN_TEST(test_spec_lookup_out_of_bounds);
     RUN_TEST(test_sheet_lookup_resolves_idle_and_run_to_walk);
-    RUN_TEST(test_sheet_lookup_resolves_death_to_hurt);
+    RUN_TEST(test_sheet_lookup_does_not_fallback_death);
     RUN_TEST(test_sheet_lookup_prefers_authored_clip);
     RUN_TEST(test_sheet_lookup_resolves_walk_to_idle_when_needed);
     RUN_TEST(test_single_row_sheet_reuses_row_zero_for_all_directions);

@@ -82,8 +82,8 @@ Important caveat:
   - applies damage when the clip crosses its configured hit marker
   - chains the next swing or falls back to walking
 - `ESTATE_DEAD`
-  - plays the death clip once
-  - sets `markedForRemoval` only after the clip finishes
+  - is used as kill bookkeeping only
+  - is marked for removal immediately and swept at end of tick
 
 ## Combat Model
 

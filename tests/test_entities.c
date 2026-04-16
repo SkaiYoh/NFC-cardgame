@@ -300,6 +300,7 @@ static int g_applyKingBurstCalls = 0;
 static Entity *g_lastKingBurstBase = NULL;
 static float g_lastKingBurstRadius = 0.0f;
 static int g_lastKingBurstDamage = 0;
+static int g_spriteDrawCalls = 0;
 
 /* ---- Stubs required by entities.c ---- */
 enum { DEBUG_EVT_STATE_CHANGE = 0, DEBUG_EVT_HIT = 1, DEBUG_EVT_DEATH_FINISH = 2 };
@@ -691,6 +692,7 @@ void sprite_draw(const CharacterSprite *cs, const AnimState *state,
     (void)pos;
     (void)scale;
     (void)rotationDegrees;
+    g_spriteDrawCalls++;
 }
 
 void entity_set_state(Entity *e, EntityState newState);
@@ -733,6 +735,7 @@ static void reset_globals(void) {
     g_lastKingBurstBase = NULL;
     g_lastKingBurstRadius = 0.0f;
     g_lastKingBurstDamage = 0;
+    g_spriteDrawCalls = 0;
 }
 
 static void battlefield_add(Battlefield *bf, Entity *entity) {
@@ -798,7 +801,7 @@ static Entity make_healer(int id, Vector2 pos) {
     healer.projectileSpeed = 240.0f;
     healer.projectileHitRadius = 14.0f;
     healer.projectileRenderScale = 1.0f;
-    healer.projectileLaunchOffset = (Vector2){12.0f, -8.0f};
+    healer.projectileLaunchOffset = (Vector2){0.0f, -12.0f};
     anim_state_init(&healer.anim, ANIM_ATTACK, DIR_SIDE, 1.0f, true);
     healer.anim.elapsed = 0.49f;
     healer.anim.normalizedTime = 0.49f;
@@ -1607,6 +1610,30 @@ static void test_building_attack_finish_clears_pending_king_burst_without_dispat
     assert(base.anim.oneShot == false);
 }
 
+static void test_marked_entity_skips_update_and_draw(void) {
+    reset_globals();
+    GameState gs = make_game_state();
+
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 0.0f});
+    attacker.state = ESTATE_ATTACKING;
+    attacker.attackTargetId = target.id;
+    attacker.markedForRemoval = true;
+    attacker.sprite = (const CharacterSprite *)&target;
+    attacker.anim.elapsed = 0.49f;
+    attacker.anim.normalizedTime = 0.49f;
+
+    battlefield_add(&gs.battlefield, &target);
+
+    entity_update(&attacker, &gs, 0.05f);
+    entity_draw(&attacker);
+
+    assert(attacker.anim.elapsed == 0.49f);
+    assert(attacker.anim.normalizedTime == 0.49f);
+    assert(g_applyHitCalls == 0);
+    assert(g_spriteDrawCalls == 0);
+}
+
 static void test_entity_sync_animation_applies_base_idle_burst_spec(void) {
     Entity base = make_base_building(1, 0, (Vector2){540.0f, 1800.0f});
     base.anim.dir = DIR_DOWN;
@@ -1659,6 +1686,7 @@ int main(void) {
     RUN_TEST(test_building_attack_clip_finishes_and_returns_to_idle);
     RUN_TEST(test_building_attack_hit_marker_dispatches_queued_king_burst_once);
     RUN_TEST(test_building_attack_finish_clears_pending_king_burst_without_dispatch);
+    RUN_TEST(test_marked_entity_skips_update_and_draw);
     RUN_TEST(test_entity_sync_animation_applies_base_idle_burst_spec);
 
     RUN_TEST(test_walking_unit_acquires_movement_target_in_aggro_radius);

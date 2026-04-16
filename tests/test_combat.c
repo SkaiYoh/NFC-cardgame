@@ -821,6 +821,7 @@ static void test_take_damage_kills(void) {
     assert(e.hp == 0);
     assert(e.alive == false);
     assert(e.state == ESTATE_DEAD);
+    assert(e.markedForRemoval == true);
 }
 
 static void test_take_damage_clamps_zero(void) {

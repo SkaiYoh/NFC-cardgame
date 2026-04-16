@@ -271,6 +271,10 @@ typedef struct Player {
     float maxEnergy;
     float energyRegenRate;
     Entity *base;
+    bool hasBaseHudSnapshot;
+    int baseHudHP;
+    int baseHudMaxHP;
+    int baseHudLevel;
     int sustenanceCollected;
 } Player;
 
@@ -664,6 +668,27 @@ static void test_base_bar_near_empty_health_draws_tiny_fill(void) {
     assert(approx_eq(g_drawSrcs[2].y, STATUS_BAR_ENERGY_EMPTY_CELL_Y, 0.001f));
     assert(g_drawDsts[1].width > 0.0f);
     assert(g_drawDsts[1].width < 0.1f);
+}
+
+static void test_destroyed_base_snapshot_keeps_bar_visible(void) {
+    GameState gs = make_game_state();
+    Camera2D camera = {0};
+
+    gs.players[0].base = NULL;
+    gs.players[0].hasBaseHudSnapshot = true;
+    gs.players[0].baseHudHP = 0;
+    gs.players[0].baseHudMaxHP = 5000;
+    gs.players[0].baseHudLevel = 4;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    /* 1 health shell + 1 energy shell + 7 energy pips + 1 ghost regen pip = 10. */
+    assert(g_drawCalls == 10);
+    assert(g_textCalls == 8);
+    assert(strcmp(g_textStrings[0], "0/5000") == 0);
+    assert(strcmp(g_textStrings[2], "LVL 4") == 0);
 }
 
 /* Core motivating requirement: small HP damage must visibly move the bar.
@@ -1345,6 +1370,7 @@ int main(void) {
     RUN_TEST(test_base_bars_health_fill_and_energy_pips);
     RUN_TEST(test_base_bar_full_health_and_energy);
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
+    RUN_TEST(test_destroyed_base_snapshot_keeps_bar_visible);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
     RUN_TEST(test_base_bar_centers_anchor_to_viewport_edge_by_side);
     RUN_TEST(test_base_bar_centers_ignore_base_world_position);
