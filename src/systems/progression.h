@@ -12,9 +12,13 @@
 // larger sustenance jumps, and level 10 unlocks at 200 total sustenance.
 #define PROGRESSION_REGEN_LEVEL1         0.5f
 #define PROGRESSION_REGEN_LEVEL_MAX      2.0f
-#define PROGRESSION_KING_DMG_LEVEL1      54
-#define PROGRESSION_KING_DMG_LEVEL_MAX   90
-#define PROGRESSION_KING_BURST_RADIUS    160.0f
+// King burst is tuned to one-shot most troops at low levels and delete even
+// Brutes at high levels.
+#define PROGRESSION_KING_DMG_LEVEL1      220
+#define PROGRESSION_KING_DMG_LEVEL_MAX   355
+// Burst radius is measured from the base pivot, so this needs to exceed the
+// shifted base interaction anchor used by ranged attackers.
+#define PROGRESSION_KING_BURST_RADIUS    280.0f
 
 // Pure helpers. No side effects, no GameState dependency.
 int   progression_level_from_sustenance(int sustenance);
