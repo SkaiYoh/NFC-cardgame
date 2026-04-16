@@ -53,8 +53,6 @@ typedef struct {
 
 typedef struct Player {
     int id;
-    int sustenanceBank;
-    int sustenanceCollected;
     BattleSide side;
     Rectangle screenArea;
     Rectangle battlefieldArea;
@@ -68,7 +66,17 @@ typedef struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+    float baseEnergyRegenRate;
+    float energyRegenBoostMultiplier;
+    float energyRegenBoostRemaining;
+    float rottenRoastIconRemaining;
+    int sustenanceBank;
     Entity *base;
+    bool hasBaseHudSnapshot;
+    int baseHudHP;
+    int baseHudMaxHP;
+    int baseHudLevel;
+    int sustenanceCollected;
 } Player;
 
 typedef struct GameState {

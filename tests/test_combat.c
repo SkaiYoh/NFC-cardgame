@@ -189,6 +189,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    CombatProfileId sourceCombatProfileId;
     bool canHitAir;
 } CombatEffectPayload;
 
@@ -201,6 +202,7 @@ struct Entity {
     float moveSpeed;
     int hp, maxHP;
     int attack;
+    int bonusDamageVsFarmers;
     float attackSpeed;
     float attackRange;
     float attackCooldown;

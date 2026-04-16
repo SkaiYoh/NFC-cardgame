@@ -76,6 +76,8 @@ typedef struct SpriteAtlas {
 typedef struct Entity {
     int id;
     Vector2 position;
+    int hp;
+    int maxHP;
     int lane;
     float laneProgress;
     int waypointIndex;
@@ -99,6 +101,10 @@ typedef struct Player {
     float energy;
     float maxEnergy;
     float energyRegenRate;
+    float baseEnergyRegenRate;
+    float energyRegenBoostMultiplier;
+    float energyRegenBoostRemaining;
+    float rottenRoastIconRemaining;
     int sustenanceBank;
     Entity *base;
     CardSlot slots[NUM_CARD_SLOTS];
@@ -163,6 +169,14 @@ bool energy_consume(Player *p, int cost) {
     return true;
 }
 
+void energy_restore(Player *p, float amount) {
+    if (!p || amount <= 0.0f) return;
+    p->energy += amount;
+    if (p->energy > p->maxEnergy) {
+        p->energy = p->maxEnergy;
+    }
+}
+
 bool player_can_afford_cost(const Player *p, int amount, CardCostResource resource) {
     if (!p) return false;
     if (amount <= 0) return true;
@@ -181,6 +195,20 @@ bool player_consume_cost(Player *p, int amount, CardCostResource resource) {
         return true;
     }
     return energy_consume(p, amount);
+}
+
+bool player_energy_regen_boost_is_active(const Player *p) {
+    return p &&
+           p->energyRegenBoostRemaining > 0.0f &&
+           p->energyRegenBoostMultiplier > 1.0f;
+}
+
+bool player_try_activate_energy_regen_boost(Player *p, float multiplier, float durationSeconds) {
+    if (!p || multiplier <= 1.0f || durationSeconds <= 0.0f) return false;
+    if (player_energy_regen_boost_is_active(p)) return false;
+    p->energyRegenBoostMultiplier = multiplier;
+    p->energyRegenBoostRemaining = durationSeconds;
+    return true;
 }
 
 BattleSide bf_side_for_player(int playerIndex) {
@@ -245,7 +273,7 @@ void entity_restart_clip(Entity *e) {
 int progression_king_burst_damage_for_level(int level) {
     if (level < 1) level = 1;
     if (level > 10) level = 10;
-    return 48 + (level - 1) * 3;
+    return 220 + (level - 1) * 15;
 }
 
 /* ---- Production code under test ---- */
@@ -279,6 +307,8 @@ static GameState make_game_state(void) {
 static Entity make_base(EntityState state) {
     Entity base;
     memset(&base, 0, sizeof(base));
+    base.hp = 1000;
+    base.maxHP = 1000;
     base.alive = true;
     base.state = state;
     base.attackTargetId = 77;
@@ -327,10 +357,10 @@ static void test_king_dispatch_consumes_energy_and_enters_attack(void) {
     assert(gs.players[0].energy == 6.0f);
     assert(base.state == ESTATE_ATTACKING);
     assert(base.attackTargetId == -1);
-    /* Level 1 base queues the level-1 burst (48 damage) but does not apply
+    /* Level 1 base queues the level-1 burst (220 damage) but does not apply
      * it yet — the hit-marker branch in entities.c resolves damage later. */
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 48);
+    assert(base.basePendingKingBurstDamage == 220);
     assert(g_entity_set_state_calls == 1);
     assert(g_entity_restart_clip_calls == 0);
     assert(g_player_hand_restart_calls == 1);
@@ -353,7 +383,7 @@ static void test_king_burst_damage_scales_with_base_level(void) {
 
     assert(ok);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 75);
+    assert(base.basePendingKingBurstDamage == 355);
 }
 
 static void test_king_burst_overwrites_pending_on_replay(void) {
@@ -368,7 +398,7 @@ static void test_king_burst_overwrites_pending_on_replay(void) {
 
     assert(ok);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 48);  /* overwritten, not stacked */
+    assert(base.basePendingKingBurstDamage == 220);  /* overwritten, not stacked */
     assert(g_entity_restart_clip_calls == 1);
 }
 
@@ -509,7 +539,7 @@ static void test_king_can_consume_sustenance_without_touching_energy(void) {
     assert(gs.players[0].energy == 10.0f);
     assert(gs.players[0].sustenanceBank == 5);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 48);
+    assert(base.basePendingKingBurstDamage == 220);
     assert(g_entity_set_state_calls == 1);
     assert(g_player_hand_restart_calls == 1);
 }

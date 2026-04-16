@@ -422,7 +422,7 @@ static void test_sparse_hand_compacts_draw_positions(void) {
     assert(approx_eq(g_drawn_rotation[0], 270.0f, 0.01f));
     assert(approx_eq(g_drawn_rotation[1], 270.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].y, 160.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[1].y, 1120.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[1].y, 960.0f, 0.01f));
 
     Vector2 expected0 = expected_visual_center(p.handArea, 2, 0, p.side, &cardB, 0.0f, 1.0f);
     Vector2 expected1 = expected_visual_center(p.handArea, 2, 1, p.side, &cardA, 0.0f, 1.0f);
@@ -473,7 +473,7 @@ static void test_assassin_uses_mapped_sheet_row(void) {
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
     assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 960.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
     assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
 
@@ -526,8 +526,8 @@ static void test_fishfing_uses_mapped_sheet_row(void) {
     printf("  PASS: test_fishfing_uses_mapped_sheet_row\n");
 }
 
-/* ---- Test: king cards use their authored row in the shared sheet ---- */
-static void test_king_uses_mapped_sheet_row(void) {
+/* ---- Test: hidden cards skip shared-sheet drawing but keep the fill ---- */
+static void test_hidden_card_skips_shared_sheet_draw(void) {
     Player p = {0};
     Card king = { .card_id = "KING_01", .type = "king" };
     Texture2D cardSheet = { .id = 22, .width = 768, .height = 1280, .mipmaps = 1, .format = 0 };
@@ -539,14 +539,10 @@ static void test_king_uses_mapped_sheet_row(void) {
     reset_draw_capture();
     hand_ui_draw(&p, (Texture2D){0}, cardSheet);
 
-    assert(g_draw_texture_calls == 1);
-    assert(g_drawn_texture_id[0] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[0].x, 0.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 800.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].width, 128.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].height, 160.0f, 0.01f));
+    assert(g_draw_rectangle_calls == 1);
+    assert(g_draw_texture_calls == 0);
 
-    printf("  PASS: test_king_uses_mapped_sheet_row\n");
+    printf("  PASS: test_hidden_card_skips_shared_sheet_draw\n");
 }
 
 /* ---- Test: animation helper follows 0->4->0 once, then clamps ---- */
@@ -595,7 +591,7 @@ static void test_animating_mapped_card_scales_around_center(void) {
 
     assert(g_draw_texture_calls == 1);
     assert(g_drawn_texture_id[0] == cardSheet.id);
-    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 960.0f, 0.01f));
     Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin,
                                               peakTime, HAND_CARD_PLAY_LIFT_PEAK_SCALE);
     assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
@@ -627,7 +623,7 @@ static void test_frame_four_non_row_zero_card_recenters_visual_bounds(void) {
 
     assert(g_draw_texture_calls == 1);
     assert(approx_eq(g_drawn_src[0].x, 512.0f, 0.01f));
-    assert(approx_eq(g_drawn_src[0].y, 1120.0f, 0.01f));
+    assert(approx_eq(g_drawn_src[0].y, 960.0f, 0.01f));
     Vector2 expected = expected_visual_center(p.handArea, 1, 0, p.side, &assassin, elapsed, drawScale);
     assert(approx_eq(g_drawn_dst[0].x, expected.x, 0.01f));
     assert(approx_eq(g_drawn_dst[0].y, expected.y, 0.01f));
@@ -784,7 +780,7 @@ int main(void) {
     test_assassin_uses_mapped_sheet_row();
     test_bird_uses_mapped_sheet_row();
     test_fishfing_uses_mapped_sheet_row();
-    test_king_uses_mapped_sheet_row();
+    test_hidden_card_skips_shared_sheet_draw();
     test_frame_sequence_once_then_static();
     test_play_lift_scale_pulses_then_returns_to_rest();
     test_animating_mapped_card_scales_around_center();

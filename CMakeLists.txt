@@ -16,6 +16,7 @@ include_directories(
 # --- Libraries ---
 find_package(SQLite3 REQUIRED)
 find_package(PkgConfig QUIET)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 
 set(RAYLIB_TARGET "")
 if(PkgConfig_FOUND)
@@ -153,11 +154,43 @@ set(ALL_SOURCES
     ${SRC_CORE} ${SRC_DATA} ${SRC_RENDERING} ${SRC_ENTITIES}
     ${SRC_SYSTEMS} ${SRC_LOGIC} ${SRC_HARDWARE} ${SRC_LIB})
 
+set(CARD_PREVIEW_SOURCES
+    tools/card_preview.c
+    tools/card_psd_export.c
+    src/rendering/card_renderer.c
+    third_party/cjson/cJSON.c)
+
+set(BIOME_PREVIEW_SOURCES
+    tools/biome_preview.c
+    src/rendering/biome.c
+    src/rendering/tilemap_renderer.c)
+
+set(CARD_ENROLL_SOURCES
+    tools/card_enroll.c
+    src/data/db.c
+    src/data/cards.c
+    src/hardware/nfc_reader.c
+    src/hardware/arduino_protocol.c)
+
 # --- Main game executable ---
 add_executable(cardgame ${ALL_SOURCES})
 target_link_libraries(cardgame PRIVATE SQLite::SQLite3 ${RAYLIB_TARGET})
 cardgame_link_math(cardgame)
 cardgame_add_run_target(run-cardgame cardgame)
+
+# --- Tools ---
+add_executable(card_preview ${CARD_PREVIEW_SOURCES})
+target_link_libraries(card_preview PRIVATE ${RAYLIB_TARGET})
+cardgame_link_math(card_preview)
+
+add_executable(biome_preview ${BIOME_PREVIEW_SOURCES})
+target_link_libraries(biome_preview PRIVATE ${RAYLIB_TARGET})
+cardgame_link_math(biome_preview)
+
+add_executable(card_enroll ${CARD_ENROLL_SOURCES})
+target_link_libraries(card_enroll PRIVATE SQLite::SQLite3)
+cardgame_add_run_target(run-card-enroll card_enroll)
+
 # --- Database init (convenience target) ---
 if(SQLITE3_EXECUTABLE)
     add_custom_target(init-db
@@ -169,3 +202,28 @@ if(SQLITE3_EXECUTABLE)
 else()
     message(WARNING "sqlite3 CLI not found; init-db target will not be generated.")
 endif()
+
+# --- Generated source convenience target ---
+if(Python3_Interpreter_FOUND)
+    add_custom_target(sprite-frame-atlas
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/generate_sprite_frame_atlas.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Regenerating src/rendering/sprite_frame_atlas.h")
+else()
+    message(WARNING "Python3 not found; sprite-frame-atlas target will not be generated.")
+endif()
+
+# --- Tests ---
+enable_testing()
+
+file(GLOB CONFIGURE_DEPENDS TEST_SOURCES "${CMAKE_SOURCE_DIR}/tests/test_*.c")
+list(SORT TEST_SOURCES)
+
+foreach(test_source IN LISTS TEST_SOURCES)
+    get_filename_component(test_name "${test_source}" NAME_WE)
+    add_executable(${test_name} "${test_source}")
+    cardgame_link_math(${test_name})
+    add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
+    set_tests_properties(${test_name} PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endforeach()
