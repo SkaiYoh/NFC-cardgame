@@ -30,9 +30,8 @@ init-db:
 	sqlite3 cardgame.db < sqlite/seed.sql
 	@echo "cardgame.db initialized"
 
-# Single-Arduino test: NFC_PORT=/dev/ttyACM0 ./cardgame
 run: clean cardgame
-	NFC_PORT="/dev/cu.usbserial-A5069RR4" NFC_PORT_P1="/dev/ttyACM0" NFC_PORT_P2="/dev/ttyACM1" ./cardgame
+	NFC_PORT_P1="/dev/ttyUSB1" NFC_PORT_P2="/dev/ttyUSB0" ./cardgame
 
 preview-run: preview
 	./card_preview
@@ -47,7 +46,7 @@ card_enroll: tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc
 	$(CC) $(CFLAGS) $(CPPFLAGS) tools/card_enroll.c src/data/db.c src/data/cards.c src/hardware/nfc_reader.c src/hardware/arduino_protocol.c third_party/cjson/cJSON.c -o card_enroll $(MACFLAGS) -lsqlite3 -lm
 
 card-enroll-run: card_enroll
-	NFC_PORT="/dev/cu.usbserial-A5069RR4" ./card_enroll
+	NFC_PORT_P1="/dev/ttyUSB1" ./card_enroll
 
 # Test targets
 test_pathfinding: tests/test_pathfinding.c src/logic/pathfinding.c
