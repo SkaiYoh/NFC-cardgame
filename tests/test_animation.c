@@ -372,6 +372,16 @@ static void test_spec_lookup_brute_attack(void) {
     assert(approx_eq(spec->hitNormalized, 0.6f, 0.01f)); // brute hits later
 }
 
+static void test_spec_lookup_assassin_attack_timing(void) {
+    const EntityAnimSpec *spec = anim_spec_get(SPRITE_TYPE_ASSASSIN, ANIM_ATTACK);
+    assert(spec != NULL);
+    assert(spec->anim == ANIM_ATTACK);
+    assert(spec->mode == ANIM_PLAY_ONCE);
+    assert(approx_eq(spec->cycleSeconds, 0.60f, 0.01f));
+    assert(approx_eq(spec->hitNormalized, 0.6f, 0.01f));
+    assert(spec->lockFacing == true);
+}
+
 static void test_spec_lookup_healer_blubert_timing(void) {
     const EntityAnimSpec *walk = anim_spec_get(SPRITE_TYPE_HEALER, ANIM_WALK);
     const EntityAnimSpec *attack = anim_spec_get(SPRITE_TYPE_HEALER, ANIM_ATTACK);
@@ -549,6 +559,38 @@ static void test_assassin_walk_manifest_and_atlas_match_baxter_sheet(void) {
 
     assert(atlasEntry != NULL);
     assert(atlasEntry->frameCount == 8);
+    assert(atlasEntry->sourceRowCount == 1);
+}
+
+static void test_assassin_attack_manifest_and_atlas_match_baxter_attack_sheet(void) {
+    const SpriteSheetManifestEntry *manifestEntry = NULL;
+    const SpriteSheetAtlasEntry *atlasEntry = NULL;
+
+    for (int i = 0; i < kSpriteSheetManifestCount; i++) {
+        const SpriteSheetManifestEntry *entry = &kSpriteSheetManifest[i];
+        if (!entry->isBaseFallback &&
+            entry->spriteType == SPRITE_TYPE_ASSASSIN &&
+            entry->anim == ANIM_ATTACK) {
+            manifestEntry = entry;
+            break;
+        }
+    }
+
+    assert(manifestEntry != NULL);
+    assert(strcmp(manifestEntry->path, "src/assets/characters/Assassin/baxter_attack.png") == 0);
+    assert(manifestEntry->frameCount == 4);
+    assert(manifestEntry->sourceRowCount == 1);
+
+    for (int i = 0; i < kSpriteSheetAtlasCount; i++) {
+        const SpriteSheetAtlasEntry *entry = &kSpriteSheetAtlas[i];
+        if (strcmp(entry->path, "src/assets/characters/Assassin/baxter_attack.png") == 0) {
+            atlasEntry = entry;
+            break;
+        }
+    }
+
+    assert(atlasEntry != NULL);
+    assert(atlasEntry->frameCount == 4);
     assert(atlasEntry->sourceRowCount == 1);
 }
 
@@ -1054,6 +1096,7 @@ int main(void) {
     RUN_TEST(test_spec_lookup_base_idle_uses_burst_mode);
     RUN_TEST(test_spec_lookup_knight_attack);
     RUN_TEST(test_spec_lookup_brute_attack);
+    RUN_TEST(test_spec_lookup_assassin_attack_timing);
     RUN_TEST(test_spec_lookup_healer_blubert_timing);
     RUN_TEST(test_spec_lookup_death_oneshot);
     RUN_TEST(test_spec_lookup_out_of_bounds);
@@ -1065,6 +1108,7 @@ int main(void) {
     RUN_TEST(test_knight_attack_manifest_and_atlas_match_uvulite_sheet);
     RUN_TEST(test_brute_walk_manifest_and_atlas_match_nostril_sheet);
     RUN_TEST(test_assassin_walk_manifest_and_atlas_match_baxter_sheet);
+    RUN_TEST(test_assassin_attack_manifest_and_atlas_match_baxter_attack_sheet);
     RUN_TEST(test_bird_walk_manifest_and_atlas_match_birdman_sheet);
     RUN_TEST(test_fishfing_walk_manifest_and_atlas_match_new_sheet);
     RUN_TEST(test_fishfing_attack_manifest_and_atlas_match_new_sheet);
