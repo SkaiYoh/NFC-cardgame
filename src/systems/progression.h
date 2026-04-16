@@ -8,11 +8,8 @@
 #include "../core/types.h"
 
 #define PROGRESSION_MAX_LEVEL            10
-// Tuned from playtest pacing: ~400 sustenance by 7 minutes should land around
-// mid-progression, with level 10 reachable near the 15-minute mark.
-#define PROGRESSION_SUSTENANCE_PER_LEVEL 95
-// Start slower so early card throughput stays constrained, but preserve the
-// level-10 cap for late-game pacing.
+// Front-loaded progression: early levels arrive quickly, later levels require
+// larger sustenance jumps, and level 10 unlocks at 200 total sustenance.
 #define PROGRESSION_REGEN_LEVEL1         0.5f
 #define PROGRESSION_REGEN_LEVEL_MAX      2.0f
 #define PROGRESSION_KING_DMG_LEVEL1      48

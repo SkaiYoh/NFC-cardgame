@@ -4,6 +4,19 @@
 
 #include "progression.h"
 
+static const int s_levelThresholds[PROGRESSION_MAX_LEVEL] = {
+    0,   // level 1
+    7,   // level 2
+    21,  // level 3
+    38,  // level 4
+    59,  // level 5
+    83,  // level 6
+    109, // level 7
+    137, // level 8
+    168, // level 9
+    200  // level 10
+};
+
 static int clamp_level(int level) {
     if (level < 1) return 1;
     if (level > PROGRESSION_MAX_LEVEL) return PROGRESSION_MAX_LEVEL;
@@ -12,8 +25,14 @@ static int clamp_level(int level) {
 
 int progression_level_from_sustenance(int sustenance) {
     if (sustenance < 0) sustenance = 0;
-    int level = 1 + sustenance / PROGRESSION_SUSTENANCE_PER_LEVEL;
-    return clamp_level(level);
+
+    for (int i = PROGRESSION_MAX_LEVEL - 1; i > 0; i--) {
+        if (sustenance >= s_levelThresholds[i]) {
+            return i + 1;
+        }
+    }
+
+    return 1;
 }
 
 float progression_regen_rate_for_level(int level) {
