@@ -40,10 +40,10 @@ static float smoothstep01(float t) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-// Spawn Y lives inside the shortened playable rect (territory minus the
-// player-edge hand-bar inset), so spawn/base/waypoint geometry never projects
-// under the hand bar.
-static float lane_spawn_y_from_play(Rectangle play, BattleSide side) {
+// Default lane spawn Y lives inside the shortened playable rect (territory
+// minus the player-edge hand-bar inset), so spawn/base/waypoint geometry never
+// projects under the hand bar.
+static float default_lane_spawn_y_from_play(Rectangle play, BattleSide side) {
     if (side == SIDE_BOTTOM) {
         return play.y + play.height * 0.8f;
     }
@@ -51,10 +51,32 @@ static float lane_spawn_y_from_play(Rectangle play, BattleSide side) {
 }
 
 static float base_anchor_y_from_play(Rectangle play, BattleSide side) {
-    float spawnY = lane_spawn_y_from_play(play, side);
+    float spawnY = default_lane_spawn_y_from_play(play, side);
     return spawnY + ((side == SIDE_TOP)
         ? -BASE_HOME_OFFSET_FROM_SPAWN
         : BASE_HOME_OFFSET_FROM_SPAWN);
+}
+
+// Center-lane troops need to clear the owning base blocker even if the base
+// itself is moved without retuning the spawn row. Keep the base anchored at
+// its authored position and push only the middle lane's spawn out in front of
+// the base toward the battlefield interior.
+static float center_lane_spawn_y_from_play(Rectangle play, BattleSide side) {
+    float baseY = base_anchor_y_from_play(play, side);
+    float blockerCenterY = baseY + ((side == SIDE_TOP)
+        ? -BASE_NAV_BLOCKER_BACK_OFFSET_TOP
+        : BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM);
+    float battlefieldSign = (side == SIDE_BOTTOM) ? -1.0f : 1.0f;
+    float clearance = BASE_NAV_RADIUS + DEFAULT_MELEE_BODY_RADIUS +
+                      PATHFIND_CONTACT_GAP;
+    return blockerCenterY + battlefieldSign * clearance;
+}
+
+static float lane_spawn_y_from_play(Rectangle play, BattleSide side, int lane) {
+    if (lane == 1) {
+        return center_lane_spawn_y_from_play(play, side);
+    }
+    return default_lane_spawn_y_from_play(play, side);
 }
 
 static float outer_lane_base_approach(int lane, float t) {
@@ -122,16 +144,7 @@ static void generate_canonical_waypoints(Battlefield *bf, BattleSide side) {
                 // First waypoint matches slot spawn position exactly
                 // (same convention as pathfinding.c: waypointIndex=1 at spawn)
                 float localX = t->bounds.x + (slot + 0.5f) * laneWidth;
-                float localY;
-
-                if (side == SIDE_BOTTOM) {
-                    // P1 spawn at 80% depth from seam inside the shortened play rect
-                    localY = play.y + play.height * 0.8f;
-                } else {
-                    // P2 spawn in local space: 20% from the player-edge inside
-                    // the shortened play rect (player edge = top of rect).
-                    localY = play.y + play.height * 0.2f;
-                }
+                float localY = lane_spawn_y_from_play(play, side, lane);
 
                 SideLocalPos local = { .v = { localX, localY }, .side = side };
                 CanonicalPos canonical = bf_to_canonical(local, bf->boardWidth);
@@ -309,14 +322,13 @@ CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int w
 }
 
 CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side) {
-    // Center lane (lane 1), first waypoint = spawn position
-    CanonicalPos spawn = bf->laneWaypoints[side][1][0];
-    CanonicalPos base = spawn;
-    if (side == SIDE_TOP) {
-        base.v.y = spawn.v.y - BASE_HOME_OFFSET_FROM_SPAWN;
-    } else {
-        base.v.y = spawn.v.y + BASE_HOME_OFFSET_FROM_SPAWN;
-    }
+    Rectangle play = bf_play_bounds(bf, side);
+    CanonicalPos base = {
+        .v = {
+            bf->boardWidth * 0.5f,
+            base_anchor_y_from_play(play, side)
+        }
+    };
     return base;
 }
 

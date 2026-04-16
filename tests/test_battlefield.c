@@ -26,6 +26,11 @@
 #define BOARD_HEIGHT       1920
 #define SEAM_Y             960
 #define BASE_HOME_OFFSET_FROM_SPAWN -48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM 48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_TOP 64.0f
+#define BASE_NAV_RADIUS   56.0f
+#define DEFAULT_MELEE_BODY_RADIUS 14.0f
+#define PATHFIND_CONTACT_GAP 2.0f
 #define LANE_WAYPOINT_COUNT  8
 #define LANE_BOW_INTENSITY   0.3f
 #define LANE_OUTER_INSET_RATIO 0.25f
@@ -150,7 +155,8 @@ static Battlefield create_test_battlefield(void) {
  * and Y inside the shortened play bounds.
  *
  * Shortened play bounds for SIDE_BOTTOM: {0, SEAM_Y, BOARD_WIDTH, 960 - HAND_UI_DEPTH_PX}
- * = {0, 960, 1080, 780}. Spawn at 80% depth from seam = 960 + 780*0.8 = 1584. */
+ * = {0, 960, 1080, 780}. Outer-lane spawns stay at 80% depth from seam
+ * (= 1584), while the center lane shifts forward toward the seam to 1512. */
 static void test_bf_spawn_anchors_bottom(void) {
     Battlefield bf = create_test_battlefield();
     float laneWidth = (float)BOARD_WIDTH / 3.0f;
@@ -161,12 +167,17 @@ static void test_bf_spawn_anchors_bottom(void) {
     // P1 is SIDE_BOTTOM (identity mapping, no lateral mirror)
     float expectedX[3] = { 180.0f + outerInset, 540.0f, 900.0f - outerInset };
     float playHeight = (float)(BOARD_HEIGHT - SEAM_Y - HAND_UI_DEPTH_PX); // 780
-    float expectedY = (float)SEAM_Y + playHeight * 0.8f;  // 1584.0
+    float outerSpawnY = (float)SEAM_Y + playHeight * 0.8f;  // 1584.0
+    float expectedY[3] = {
+        outerSpawnY,
+        1512.0f,
+        outerSpawnY
+    };
 
     for (int slot = 0; slot < 3; slot++) {
         CanonicalPos anchor = bf_spawn_pos(&bf, SIDE_BOTTOM, slot);
         assert(approx_eq(anchor.v.x, expectedX[slot], 1.0f));
-        assert(approx_eq(anchor.v.y, expectedY, 5.0f));
+        assert(approx_eq(anchor.v.y, expectedY[slot], 5.0f));
     }
 
     printf("  PASS: test_bf_spawn_anchors_bottom\n");
@@ -178,7 +189,8 @@ static void test_bf_spawn_anchors_bottom(void) {
  * and Y inside the shortened play bounds.
  *
  * Shortened play bounds for SIDE_TOP: {0, HAND_UI_DEPTH_PX, BOARD_WIDTH, SEAM_Y - HAND_UI_DEPTH_PX}
- * = {0, 180, 1080, 780}. Spawn at 20% depth from player edge = 180 + 780*0.2 = 336. */
+ * = {0, 180, 1080, 780}. Outer-lane spawns stay at 20% depth from player
+ * edge (= 336), while the center lane shifts forward toward the seam to 392. */
 static void test_bf_spawn_anchors_top(void) {
     Battlefield bf = create_test_battlefield();
     float laneWidth = (float)BOARD_WIDTH / 3.0f;
@@ -189,12 +201,17 @@ static void test_bf_spawn_anchors_top(void) {
     float expectedX[3] = { 900.0f - outerInset, 540.0f, 180.0f + outerInset };
 
     float playHeight = (float)(SEAM_Y - HAND_UI_DEPTH_PX);  // 780
-    float expectedY = (float)HAND_UI_DEPTH_PX + playHeight * 0.2f;  // 336.0
+    float outerSpawnY = (float)HAND_UI_DEPTH_PX + playHeight * 0.2f;  // 336.0
+    float expectedY[3] = {
+        outerSpawnY,
+        392.0f,
+        outerSpawnY
+    };
 
     for (int slot = 0; slot < 3; slot++) {
         CanonicalPos anchor = bf_spawn_pos(&bf, SIDE_TOP, slot);
         assert(approx_eq(anchor.v.x, expectedX[slot], 1.0f));
-        assert(approx_eq(anchor.v.y, expectedY, 5.0f));
+        assert(approx_eq(anchor.v.y, expectedY[slot], 5.0f));
     }
 
     printf("  PASS: test_bf_spawn_anchors_top\n");
@@ -399,8 +416,8 @@ static void test_bf_seam_screen_placement(void) {
 }
 
 /* ---- Test: bf_base_anchor_bottom ---- */
-/* Verify P1 (SIDE_BOTTOM) base anchor sits 48 px inward from the center-lane
- * spawn depth. Center lane spawn Y = 960 + 780*0.8 = 1584; base = 1536. */
+/* Verify P1 (SIDE_BOTTOM) base anchor remains at the authored base position
+ * even after the center-lane spawn was moved behind the base blocker. */
 static void test_bf_base_anchor_bottom(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_BOTTOM);
@@ -412,8 +429,8 @@ static void test_bf_base_anchor_bottom(void) {
 }
 
 /* ---- Test: bf_base_anchor_top ---- */
-/* Verify P2 (SIDE_TOP) base anchor sits 48 px inward from the center-lane
- * spawn depth. Center lane spawn Y = 180 + 780*0.2 = 336; base = 384. */
+/* Verify P2 (SIDE_TOP) base anchor remains at the authored base position
+ * even after the center-lane spawn was moved behind the base blocker. */
 static void test_bf_base_anchor_top(void) {
     Battlefield bf = create_test_battlefield();
     CanonicalPos anchor = bf_base_anchor(&bf, SIDE_TOP);
@@ -424,22 +441,37 @@ static void test_bf_base_anchor_top(void) {
     printf("  PASS: test_bf_base_anchor_top\n");
 }
 
-/* ---- Test: bf_base_anchor_gap ---- */
-/* Verify base anchor and spawn anchor remain separated by the authored
- * inward home-base offset. */
-static void test_bf_base_anchor_gap(void) {
+/* ---- Test: bf_center_spawn_decoupled_from_base_anchor ---- */
+/* Verify the middle spawn now clears the owning base blocker on the seam side
+ * while the base anchor remains at the pre-retune authored position. */
+static void test_bf_center_spawn_decoupled_from_base_anchor(void) {
     Battlefield bf = create_test_battlefield();
+    float clearance = BASE_NAV_RADIUS + DEFAULT_MELEE_BODY_RADIUS +
+                      PATHFIND_CONTACT_GAP;
 
     for (int side = 0; side < 2; side++) {
         CanonicalPos spawn = bf_spawn_pos(&bf, (BattleSide)side, 1); // center slot
         CanonicalPos base = bf_base_anchor(&bf, (BattleSide)side);
-        float gap = fabsf(base.v.y - spawn.v.y);
-        assert(approx_eq(gap, fabsf(BASE_HOME_OFFSET_FROM_SPAWN), 0.1f));
-        // X should be the same
+
         assert(approx_eq(base.v.x, spawn.v.x, 0.1f));
+
+        if (side == SIDE_BOTTOM) {
+            float blockerCenterY = base.v.y + BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM;
+            assert(approx_eq(base.v.y, 1536.0f, 0.1f));
+            assert(approx_eq(spawn.v.y, 1512.0f, 0.1f));
+            assert(approx_eq(blockerCenterY - spawn.v.y, clearance, 0.1f));
+        } else {
+            float blockerCenterY = base.v.y - BASE_NAV_BLOCKER_BACK_OFFSET_TOP;
+            assert(approx_eq(base.v.y, 384.0f, 0.1f));
+            assert(approx_eq(spawn.v.y, 392.0f, 0.1f));
+            assert(approx_eq(spawn.v.y - blockerCenterY, clearance, 0.1f));
+        }
+
+        assert(!approx_eq(fabsf(base.v.y - spawn.v.y),
+                          fabsf(BASE_HOME_OFFSET_FROM_SPAWN), 0.1f));
     }
 
-    printf("  PASS: test_bf_base_anchor_gap\n");
+    printf("  PASS: test_bf_center_spawn_decoupled_from_base_anchor\n");
 }
 
 /* ---- main ---- */
@@ -457,7 +489,7 @@ int main(void) {
     test_bf_seam_screen_placement();
     test_bf_base_anchor_bottom();
     test_bf_base_anchor_top();
-    test_bf_base_anchor_gap();
+    test_bf_center_spawn_decoupled_from_base_anchor();
     printf("\nAll 13 tests passed!\n");
     return 0;
 }

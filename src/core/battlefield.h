@@ -101,7 +101,8 @@ CanonicalPos bf_spawn_pos(const Battlefield *bf, BattleSide side, int slotIndex)
 CanonicalPos bf_waypoint(const Battlefield *bf, BattleSide side, int lane, int waypointIdx);
 
 // Get canonical home-base anchor for a given side.
-// Positioned at the center-lane spawn depth, plus BASE_HOME_OFFSET_FROM_SPAWN.
+// This remains the authored base position even if the center-lane troop spawn
+// is retuned independently.
 CanonicalPos bf_base_anchor(const Battlefield *bf, BattleSide side);
 
 // Get shortened playable bounds for a side -- territory minus the

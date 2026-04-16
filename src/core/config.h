@@ -42,10 +42,12 @@
 
 // Base geometry
 // Negative values pull the home base inward toward the seam relative to the
-// center-lane spawn depth. Troops spawned from the center slot already resolve
-// to the nearest legal offset if the base overlaps that anchor.
+// legacy center-lane spawn depth. The live center-lane troop spawn is authored
+// separately so base moves do not force units to spawn inside the base blocker.
 #define BASE_HOME_OFFSET_FROM_SPAWN -48.0f
 #define BASE_INTERACTION_BACK_OFFSET 48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM 48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_TOP    64.0f
 #define BASE_NAV_RADIUS 56.0f   // authored pathfinding footprint, independent of sprite size
 #define DEFAULT_MELEE_BODY_RADIUS         14.0f
 

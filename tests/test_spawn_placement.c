@@ -23,6 +23,10 @@
 #define MAX_ENTITIES            64
 #define BOARD_WIDTH             1080
 #define BOARD_HEIGHT            1920
+#define BASE_INTERACTION_BACK_OFFSET 48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM 48.0f
+#define BASE_NAV_BLOCKER_BACK_OFFSET_TOP 64.0f
+#define BASE_NAV_RADIUS         56.0f
 #define PATHFIND_CONTACT_GAP    2.0f
 
 /* ---- Minimal type stubs ---- */
@@ -37,6 +41,8 @@ typedef struct Entity {
     EntityType type;
     Vector2 position;
     float bodyRadius;
+    float navRadius;
+    BattleSide presentationSide;
     bool alive;
     bool markedForRemoval;
 } Entity;
@@ -89,7 +95,18 @@ static Entity make_blocker(Vector2 pos, float radius) {
     e.type = ENTITY_TROOP;
     e.position = pos;
     e.bodyRadius = radius;
+    e.navRadius = 0.0f;
+    e.presentationSide = SIDE_BOTTOM;
     e.alive = true;
+    return e;
+}
+
+static Entity make_base(Vector2 pos, BattleSide side, float bodyRadius,
+                        float navRadius) {
+    Entity e = make_blocker(pos, bodyRadius);
+    e.type = ENTITY_BUILDING;
+    e.presentationSide = side;
+    e.navRadius = navRadius;
     return e;
 }
 
@@ -201,28 +218,36 @@ static void test_dead_blockers_are_ignored(void) {
     assert(fabsf(out.y - 1700.0f) < 0.001f);
 }
 
-static void test_base_near_anchor_keeps_center_spawn_legal(void) {
+static void test_base_blocker_center_and_nav_radius_are_respected(void) {
     GameState gs;
     memset(&gs, 0, sizeof(gs));
     gs.battlefield = make_bf();
 
-    /* Match the live game: the home base sits 48 px inward from the raw
-     * center-slot spawn depth, which leaves the exact anchor just legal. */
-    Entity base = make_blocker((Vector2){ 540.0f, 1652.0f }, 16.0f);
-    base.type = ENTITY_BUILDING;
+    /* Raw anchor is inside the base blocker once we respect the authored
+     * blocker-center offset and nav radius. */
+    Entity base = make_base((Vector2){ 540.0f, 1652.0f }, SIDE_BOTTOM,
+                            16.0f, BASE_NAV_RADIUS);
     bf_add(&gs.battlefield, &base);
+
+    Vector2 anchor = gs.battlefield.slotSpawnAnchors[SIDE_BOTTOM][0].v;
+    Vector2 blockerCenter = {
+        base.position.x,
+        base.position.y + BASE_NAV_BLOCKER_BACK_OFFSET_BOTTOM
+    };
+    float rawDx = anchor.x - blockerCenter.x;
+    float rawDy = anchor.y - blockerCenter.y;
+    float minDist = 14.0f + BASE_NAV_RADIUS + PATHFIND_CONTACT_GAP;
+    assert(rawDx * rawDx + rawDy * rawDy < minDist * minDist);
 
     Vector2 out = {0};
     bool found = spawn_find_free_anchor(&gs, SIDE_BOTTOM, 0, 14.0f, &out);
 
     assert(found == true);
-    assert(fabsf(out.x - 540.0f) < 0.001f);
-    assert(fabsf(out.y - 1700.0f) < 0.001f);
+    assert(fabsf(out.x - anchor.x) > 0.001f || fabsf(out.y - anchor.y) > 0.001f);
 
-    float dx = out.x - base.position.x;
-    float dy = out.y - base.position.y;
+    float dx = out.x - blockerCenter.x;
+    float dy = out.y - blockerCenter.y;
     float dist = sqrtf(dx * dx + dy * dy);
-    float minDist = 14.0f + 16.0f + PATHFIND_CONTACT_GAP;
     assert(dist >= minDist);
 }
 
@@ -249,8 +274,8 @@ int main(void) {
     printf("  PASS: test_first_two_rows_blocked_finds_deeper_row\n");
     test_dead_blockers_are_ignored();
     printf("  PASS: test_dead_blockers_are_ignored\n");
-    test_base_near_anchor_keeps_center_spawn_legal();
-    printf("  PASS: test_base_near_anchor_keeps_center_spawn_legal\n");
+    test_base_blocker_center_and_nav_radius_are_respected();
+    printf("  PASS: test_base_blocker_center_and_nav_radius_are_respected\n");
     test_null_safety();
     printf("  PASS: test_null_safety\n");
     printf("\nAll 7 tests passed!\n");

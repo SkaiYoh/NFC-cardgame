@@ -6,20 +6,39 @@
 #include "../core/battlefield.h"
 #include "../core/battlefield_math.h"
 #include "../core/config.h"
+#include "../logic/base_geometry.h"
 
 // Check if placing a circle of `bodyRadius` at `pos` would overlap any
 // living, unmarked entity in the registry. Mirrors pathfinding's blocker
 // overlap check so spawned troops land in the same non-overlapping
 // geometry that local steering enforces per tick.
+static Vector2 spawn_blocker_center(const Entity *other) {
+    if (!other) return (Vector2){ 0.0f, 0.0f };
+    if (other->type == ENTITY_BUILDING) {
+        return base_nav_blocker_center(other);
+    }
+    return other->position;
+}
+
+static float spawn_blocker_radius(const Entity *other) {
+    if (!other) return 0.0f;
+    if (other->type == ENTITY_BUILDING) {
+        return (other->navRadius > 0.0f) ? other->navRadius : other->bodyRadius;
+    }
+    return other->bodyRadius;
+}
+
 static bool spawn_pos_overlaps(const Battlefield *bf, Vector2 pos,
                                float bodyRadius) {
     for (int i = 0; i < bf->entityCount; i++) {
         const Entity *other = bf->entities[i];
         if (!other || !other->alive || other->markedForRemoval) continue;
         if (other->type == ENTITY_PROJECTILE) continue;
-        float dx = other->position.x - pos.x;
-        float dy = other->position.y - pos.y;
-        float minDist = bodyRadius + other->bodyRadius + PATHFIND_CONTACT_GAP;
+        Vector2 blockerCenter = spawn_blocker_center(other);
+        float blockerRadius = spawn_blocker_radius(other);
+        float dx = blockerCenter.x - pos.x;
+        float dy = blockerCenter.y - pos.y;
+        float minDist = bodyRadius + blockerRadius + PATHFIND_CONTACT_GAP;
         if (dx * dx + dy * dy < minDist * minDist) return true;
     }
     return false;
