@@ -8,22 +8,25 @@
 typedef struct {
     const char *card_id;
     const char *type;
-    int hand_sheet_row;
+    int hand_sheet_row; // -1 when the card remains playable but has no hand-sheet art.
 } CardCatalogEntry;
 
-// Source row order inside card_sheet.png.
+// Source row order inside card_sheet.png. King remains playable but no longer
+// has a row in the shared hand sheet.
 static const CardCatalogEntry CARD_CATALOG_ENTRIES[] = {
     {"BIRD_01", "bird", 0},
     {"HEALER_01", "healer", 1},
     {"KNIGHT_01", "knight", 2},
     {"FARMER_01", "farmer", 3},
     {"FISHFING_01", "fishfing", 4},
-    {"KING_01", "king", 5},
-    {"BRUTE_01", "brute", 6},
-    {"ASSASSIN_01", "assassin", 7},
+    {"KING_01", "king", -1},
+    {"BRUTE_01", "brute", 5},
+    {"ASSASSIN_01", "assassin", 6},
 };
 
-// Presentation order in the visible hand and debug/demo bindings.
+// Presentation order for debug/demo bindings and playable hand contents. Cards
+// without hand-sheet art (currently King) stay in this order but are hidden
+// from the rendered hand strip.
 static const char *const CARD_HAND_PRESENTATION_ORDER[] = {
     "FARMER_01",
     "HEALER_01",
@@ -61,8 +64,15 @@ static inline const CardCatalogEntry *card_catalog_entry_for_card(const Card *ca
 }
 
 static inline const char *card_catalog_card_id_for_row(int rowIndex) {
-    if (rowIndex < 0 || rowIndex >= card_catalog_count()) return NULL;
-    return CARD_CATALOG_ENTRIES[rowIndex].card_id;
+    if (rowIndex < 0) return NULL;
+
+    for (int i = 0; i < card_catalog_count(); i++) {
+        if (CARD_CATALOG_ENTRIES[i].hand_sheet_row == rowIndex) {
+            return CARD_CATALOG_ENTRIES[i].card_id;
+        }
+    }
+
+    return NULL;
 }
 
 static inline const char *card_catalog_card_id_for_presentation_index(int presentationIndex) {
@@ -94,7 +104,7 @@ static inline int card_catalog_hand_presentation_rank_for_card(const Card *card)
 
 static inline int card_catalog_hand_sheet_row_for_card(const Card *card) {
     const CardCatalogEntry *entry = card_catalog_entry_for_card(card);
-    return entry ? entry->hand_sheet_row : 0;
+    return entry ? entry->hand_sheet_row : -1;
 }
 
 #endif // NFC_CARDGAME_CARD_CATALOG_H

@@ -217,9 +217,10 @@ static void game_handle_debug_input(void) {
 }
 
 static void game_handle_spawn_input(GameState *g) {
-    // Demo-hand smoke path: keys 1..8 fire P1's visible hand cards, keys
-    // Q W E R T Y U I fire P2's, in hand-presentation order. Every card plays through
-    // slot 0 so they share one cooldown lane.
+    // Demo-hand smoke path: keys 1..8 fire P1's playable hand cards, keys
+    // Q W E R T Y U I fire P2's, in hand-presentation order. Cards hidden from
+    // the rendered hand strip (currently King) still keep their keyboard binding.
+    // Every card plays through slot 0 so they share one cooldown lane.
     const int p1Keys[HAND_MAX_CARDS] = {
         KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR,
         KEY_FIVE, KEY_SIX, KEY_SEVEN, KEY_EIGHT,

@@ -174,7 +174,7 @@
 #define HAND_CARD_HEIGHT               160
 #define HAND_CARD_GAP                  4
 #define HAND_CARD_SHEET_PATH           "src/assets/cards/card_sheet.png"
-#define HAND_CARD_SHEET_ROWS           8
+#define HAND_CARD_SHEET_ROWS           7
 #define HAND_CARD_FRAME_COUNT          6
 #define HAND_CARD_FRAME_TIME           0.05f
 #define HAND_CARD_PLAY_LIFT_PEAK_SCALE 1.06f
