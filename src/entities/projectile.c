@@ -246,6 +246,8 @@ static void projectile_detonate_at(GameState *gs, Projectile *projectile, Vector
     if (projectile_emits_explosion(projectile)) {
         spawn_fx_emit_explosion(&gs->spawnFx, center, kBirdBombExplosionScale);
     }
+    // Keep detonation visuals at the impact point. Per-target blood comes from
+    // combat resolution so it stays anchored to each damaged entity instead.
     if (projectile_uses_splash(projectile)) {
         combat_apply_enemy_burst(center, projectile->splashRadius,
                                  projectile->payload.amount, projectile->sourceId,

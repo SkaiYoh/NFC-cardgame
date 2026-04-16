@@ -8,6 +8,7 @@
 #include "../logic/pathfinding.h"
 #include "cJSON.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
