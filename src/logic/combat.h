@@ -105,7 +105,8 @@ void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *
 bool entity_take_damage(Entity *entity, int damage);
 
 // Returns true if target is a currently valid friendly heal target for attacker.
-// Requires a supporter unit, another living friendly troop, and hp < maxHP.
+// Requires a supporter unit, another living friendly troop, hp < maxHP,
+// and blocks healer-profile units from healing healer-profile allies.
 bool combat_can_heal_target(const Entity *attacker, const Entity *target);
 
 // Restore HP to an entity, clamped to maxHP. No-op on dead/marked entities.

@@ -143,7 +143,7 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `hp` | int | `100` | Starting health. Also sets `maxHP` if `maxHP` is omitted |
 | `maxHP` | int | `hp` | Maximum health (only needed if different from `hp`) |
 | `attack` | int | `10` | Damage dealt per hit |
-| `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
+| `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. Healer-profile units cannot heal healer-profile allies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
 | `attackSpeed` | float | `1.0` | Attacks per second |
 | `attackRange` | float | `40.0` | Melee range in pixels |
 | `moveSpeed` | float | `60.0` | Movement speed in pixels per second |
