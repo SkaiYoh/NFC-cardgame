@@ -326,6 +326,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
     e->engagementMode = ATTACK_ENGAGEMENT_CONTACT;
     e->deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e->bonusDamageVsFarmers = 0;
     e->projectileVisualType = PROJECTILE_VISUAL_NONE;
     e->projectileSpeed = 0.0f;
     e->projectileHitRadius = 0.0f;

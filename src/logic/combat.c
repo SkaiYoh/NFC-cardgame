@@ -514,6 +514,16 @@ static bool combat_is_invalid_supporter_friendly_target(const Entity *attacker, 
     return !combat_can_heal_target(attacker, target);
 }
 
+static int combat_damage_amount_for_target(const Entity *attacker, const Entity *target) {
+    if (!attacker) return 0;
+
+    int damage = attacker->attack;
+    if (target && target->unitRole == UNIT_ROLE_FARMER) {
+        damage += attacker->bonusDamageVsFarmers;
+    }
+    return damage;
+}
+
 bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
                                  CombatEffectPayload *outPayload) {
     if (!attacker || !target || !outPayload) return false;
@@ -538,7 +548,7 @@ bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
 
     *outPayload = (CombatEffectPayload){
         .kind = PROJECTILE_EFFECT_DAMAGE,
-        .amount = attacker->attack,
+        .amount = combat_damage_amount_for_target(attacker, target),
         .sourceEntityId = attacker->id,
         .sourceOwnerId = attacker->ownerID,
         .canHitAir = combat_attacker_can_hit_air(attacker),

@@ -28,7 +28,7 @@ The following types are registered in `src/logic/card_effects.c`. Using an unreg
 |------|----------|
 | `knight` | Spawns a troop using the shared troop pipeline |
 | `healer` | Spawns a troop using the shared troop pipeline; no healer-specific ability yet |
-| `assassin` | Spawns a troop using the shared troop pipeline; no assassin-specific ability yet |
+| `assassin` | Spawns a troop using the shared troop pipeline; gameplay difference comes from JSON stats, targeting, and optional farmer-only bonus damage |
 | `brute` | Spawns a troop using the shared troop pipeline; gameplay difference currently comes from JSON stats and targeting |
 | `farmer` | Spawns a troop using the shared troop pipeline; no farmer-specific ability yet |
 | `bird` | Spawns a ranged troop that releases a bomb projectile on attack; the bomb deals enemy-only splash damage on activation |
@@ -143,6 +143,7 @@ Applies to all troop types: `knight`, `healer`, `assassin`, `brute`, `farmer`.
 | `hp` | int | `100` | Starting health. Also sets `maxHP` if `maxHP` is omitted |
 | `maxHP` | int | `hp` | Maximum health (only needed if different from `hp`) |
 | `attack` | int | `10` | Damage dealt per hit |
+| `bonusDamageVsFarmers` | int | `0` | Extra hostile damage added only when the current target has the farmer runtime role |
 | `healAmount` | int | `0` | HP restored per hit when the target is a friendly troop. Any value > 0 turns the unit into a supporter that prefers injured allies in range over enemies. Healer-profile units cannot heal healer-profile allies. For `type: "healer"` cards, omitting this field falls back to the `attack` value so older databases stay functional. |
 | `attackSpeed` | float | `1.0` | Attacks per second |
 | `attackRange` | float | `40.0` | Melee range in pixels |

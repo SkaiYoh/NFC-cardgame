@@ -175,6 +175,7 @@ struct Entity {
     // Stats
     int hp, maxHP;
     int attack;
+    int bonusDamageVsFarmers;  // bonus hostile damage applied only when the target is a farmer-role unit
     float attackSpeed;
     float attackRange;
     float attackCooldown;       // time remaining before next attack

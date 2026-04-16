@@ -83,6 +83,7 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
     "hp":          140,
     "maxHP":       140,
     "attack":      16,
+    "bonusDamageVsFarmers": 8,
     "attackSpeed": 1.55,
     "attackRange": 38.0,
     "moveSpeed":   92.0,
