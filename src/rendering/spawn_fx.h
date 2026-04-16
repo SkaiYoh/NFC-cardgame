@@ -10,6 +10,8 @@
 
 #define SPAWN_FX_CAPACITY 32
 
+typedef struct Battlefield Battlefield;
+
 typedef struct {
     Vector2 position;
     float scale;
@@ -26,8 +28,11 @@ typedef struct {
 
 typedef struct {
     Vector2 position;
+    Vector2 attachedOffset;
     float scale;
     float elapsed;
+    int attachedEntityId;
+    bool attached;
     bool active;
 } SpawnBloodFx;
 
@@ -49,6 +54,9 @@ void spawn_fx_update(SpawnFxSystem *fx, float dt);
 void spawn_fx_emit_smoke(SpawnFxSystem *fx, Vector2 position, float scale);
 void spawn_fx_emit_explosion(SpawnFxSystem *fx, Vector2 position, float scale);
 void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale);
+void spawn_fx_emit_blood_attached(SpawnFxSystem *fx, Vector2 position, float scale,
+                                  int entityId, Vector2 offset);
+void spawn_fx_sync_blood_attachments(SpawnFxSystem *fx, Battlefield *bf);
 void spawn_fx_draw(const SpawnFxSystem *fx, float rotationDegrees);
 void spawn_fx_draw_overlay(const SpawnFxSystem *fx, float rotationDegrees);
 

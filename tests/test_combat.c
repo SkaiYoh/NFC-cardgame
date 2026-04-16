@@ -150,6 +150,9 @@ typedef struct {
     int bloodEmitCount;
     Vector2 lastBloodPos;
     float lastBloodScale;
+    int lastBloodEntityId;
+    Vector2 lastBloodOffset;
+    bool lastBloodAttached;
 } SpawnFxSystem;
 
 /* ---- Battlefield math stubs (must precede Player for BattleSide field) ---- */
@@ -379,6 +382,9 @@ static GameState *s_lastFarmerOnDeathGameState = NULL;
 static int s_bloodEmitCalls = 0;
 static Vector2 s_lastBloodEmitPos = {0};
 static float s_lastBloodEmitScale = 0.0f;
+static int s_lastBloodEmitEntityId = -1;
+static Vector2 s_lastBloodEmitOffset = {0};
+static int s_bloodAttachedEmitCalls = 0;
 
 /* farmer_on_death stub -- combat.c now calls this on farmer kills */
 void farmer_on_death(Entity *farmer, GameState *gs) {
@@ -392,15 +398,22 @@ const SpriteSheet *sprite_sheet_get(const CharacterSprite *cs, AnimationType ani
     return &cs->sheets[anim];
 }
 
-void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale) {
+void spawn_fx_emit_blood_attached(SpawnFxSystem *fx, Vector2 position, float scale,
+                                  int entityId, Vector2 offset) {
     if (!fx) return;
 
     fx->bloodEmitCount++;
     fx->lastBloodPos = position;
     fx->lastBloodScale = scale;
+    fx->lastBloodEntityId = entityId;
+    fx->lastBloodOffset = offset;
+    fx->lastBloodAttached = true;
     s_bloodEmitCalls++;
     s_lastBloodEmitPos = position;
     s_lastBloodEmitScale = scale;
+    s_lastBloodEmitEntityId = entityId;
+    s_lastBloodEmitOffset = offset;
+    s_bloodAttachedEmitCalls++;
 }
 
 /* ---- Include combat.c directly ---- */
@@ -540,6 +553,9 @@ static void reset_test_observers(void) {
     s_bloodEmitCalls = 0;
     s_lastBloodEmitPos = (Vector2){0};
     s_lastBloodEmitScale = 0.0f;
+    s_lastBloodEmitEntityId = -1;
+    s_lastBloodEmitOffset = (Vector2){0};
+    s_bloodAttachedEmitCalls = 0;
 }
 
 static void test_in_range_same_space(void) {
@@ -949,6 +965,8 @@ static void test_apply_hit_deals_damage(void) {
     assert(target.hp == 75);
     assert(target.alive == true);
     assert(s_bloodEmitCalls == 1);
+    assert(s_bloodAttachedEmitCalls == 1);
+    assert(s_lastBloodEmitEntityId == target.id);
     assert(fabsf(s_lastBloodEmitPos.x - target.position.x) < 0.001f);
     assert(fabsf(s_lastBloodEmitPos.y - target.position.y) < 0.001f);
     assert(fabsf(s_lastBloodEmitScale - 1.0f) < 0.001f);
@@ -1031,8 +1049,12 @@ static void test_apply_hit_offsets_blood_up_using_sprite_height(void) {
 
     assert(target.hp == 75);
     assert(s_bloodEmitCalls == 1);
+    assert(s_bloodAttachedEmitCalls == 1);
+    assert(s_lastBloodEmitEntityId == target.id);
     assert(fabsf(s_lastBloodEmitPos.x - target.position.x) < 0.001f);
     assert(fabsf(s_lastBloodEmitPos.y - (target.position.y - 32.0f)) < 0.001f);
+    assert(fabsf(s_lastBloodEmitOffset.x - 0.0f) < 0.001f);
+    assert(fabsf(s_lastBloodEmitOffset.y - (-32.0f)) < 0.001f);
     assert(fabsf(s_lastBloodEmitScale - 2.0f) < 0.001f);
 }
 

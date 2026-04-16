@@ -458,23 +458,35 @@ static float combat_entity_sprite_height(const Entity *target) {
     return (float)sheet->frameHeight * target->spriteScale;
 }
 
+static Vector2 combat_damage_fx_offset(const Entity *target) {
+    Vector2 offset = { 0.0f, 0.0f };
+    if (!target) return offset;
+
+    float spriteHeight = combat_entity_sprite_height(target);
+    if (spriteHeight > 0.0f) {
+        offset.y -= spriteHeight * 0.20f;
+    }
+    return offset;
+}
+
 static Vector2 combat_damage_fx_position(const Entity *target) {
     if (!target) return (Vector2){ 0.0f, 0.0f };
 
-    Vector2 position = target->position;
-    float spriteHeight = combat_entity_sprite_height(target);
-    if (spriteHeight > 0.0f) {
-        position.y -= spriteHeight * 0.20f;
-    }
-    return position;
+    Vector2 offset = combat_damage_fx_offset(target);
+    return (Vector2){
+        target->position.x + offset.x,
+        target->position.y + offset.y,
+    };
 }
 
 static void combat_emit_damage_fx(Entity *target, GameState *gs) {
     if (!target || !gs) return;
     if (target->type == ENTITY_BUILDING) return;
 
+    Vector2 offset = combat_damage_fx_offset(target);
     float scale = (target->spriteScale > 0.0f) ? target->spriteScale : 1.0f;
-    spawn_fx_emit_blood(&gs->spawnFx, combat_damage_fx_position(target), scale);
+    spawn_fx_emit_blood_attached(&gs->spawnFx, combat_damage_fx_position(target), scale,
+                                 target->id, offset);
 }
 
 // Handle post-kill consequences for any entity type.

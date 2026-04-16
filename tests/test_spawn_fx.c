@@ -88,6 +88,7 @@ static void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
 #define NFC_CARDGAME_TYPES_H
 
 typedef struct Entity {
+    int id;
     Vector2 position;
     float spriteScale;
 } Entity;
@@ -103,6 +104,7 @@ typedef struct GameState {
 } GameState;
 
 void bf_add_entity(Battlefield *bf, Entity *e);
+Entity *bf_find_entity(Battlefield *bf, int entityID);
 
 /* ---- Include production code ---- */
 #include "../src/rendering/spawn_fx.c"
@@ -111,6 +113,15 @@ void bf_add_entity(Battlefield *bf, Entity *e);
 /* ---- Battlefield stub implementation ---- */
 void bf_add_entity(Battlefield *bf, Entity *e) {
     bf->entities[bf->entityCount++] = e;
+}
+
+Entity *bf_find_entity(Battlefield *bf, int entityID) {
+    if (!bf) return NULL;
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *candidate = bf->entities[i];
+        if (candidate && candidate->id == entityID) return candidate;
+    }
+    return NULL;
 }
 
 /* ---- Test helpers ---- */
@@ -326,6 +337,89 @@ static void test_overlay_draw_uses_first_blood_frame(void) {
     spawn_fx_cleanup(&fx);
 }
 
+static void test_attached_blood_tracks_entity_position(void) {
+    SpawnFxSystem fx = {0};
+    Battlefield bf = {0};
+    Entity entity = {
+        .id = 7,
+        .position = {175.0f, 275.0f},
+        .spriteScale = 2.0f,
+    };
+    spawn_fx_init(&fx);
+    bf_add_entity(&bf, &entity);
+    spawn_fx_emit_blood_attached(&fx, (Vector2){175.0f, 243.0f}, 2.0f,
+                                 entity.id, (Vector2){0.0f, -32.0f});
+
+    entity.position = (Vector2){210.0f, 330.0f};
+    spawn_fx_sync_blood_attachments(&fx, &bf);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+
+    assert(g_drawCalls == 1);
+    assert(approx_eq(fx.blood[0].position.x, 210.0f, 0.001f));
+    assert(approx_eq(fx.blood[0].position.y, 298.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.x, 210.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.y, 298.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_attached_blood_freezes_after_entity_disappears(void) {
+    SpawnFxSystem fx = {0};
+    Battlefield bf = {0};
+    Entity entity = {
+        .id = 8,
+        .position = {120.0f, 240.0f},
+        .spriteScale = 1.0f,
+    };
+    spawn_fx_init(&fx);
+    bf_add_entity(&bf, &entity);
+    spawn_fx_emit_blood_attached(&fx, (Vector2){120.0f, 224.0f}, 1.0f,
+                                 entity.id, (Vector2){0.0f, -16.0f});
+
+    spawn_fx_sync_blood_attachments(&fx, &bf);
+    assert(approx_eq(fx.blood[0].position.x, 120.0f, 0.001f));
+    assert(approx_eq(fx.blood[0].position.y, 224.0f, 0.001f));
+
+    bf.entityCount = 0;
+    entity.position = (Vector2){999.0f, 999.0f};
+    spawn_fx_sync_blood_attachments(&fx, &bf);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+
+    assert(g_drawCalls == 1);
+    assert(approx_eq(fx.blood[0].position.x, 120.0f, 0.001f));
+    assert(approx_eq(fx.blood[0].position.y, 224.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.x, 120.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.y, 224.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
+static void test_detached_blood_stays_static_during_sync(void) {
+    SpawnFxSystem fx = {0};
+    Battlefield bf = {0};
+    Entity entity = {
+        .id = 9,
+        .position = {300.0f, 400.0f},
+        .spriteScale = 1.0f,
+    };
+    spawn_fx_init(&fx);
+    bf_add_entity(&bf, &entity);
+    spawn_fx_emit_blood(&fx, (Vector2){175.0f, 275.0f}, 2.0f);
+
+    entity.position = (Vector2){500.0f, 600.0f};
+    spawn_fx_sync_blood_attachments(&fx, &bf);
+    spawn_fx_draw_overlay(&fx, 0.0f);
+
+    assert(g_drawCalls == 1);
+    assert(!fx.blood[0].attached);
+    assert(approx_eq(fx.blood[0].position.x, 175.0f, 0.001f));
+    assert(approx_eq(fx.blood[0].position.y, 275.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.x, 175.0f, 0.001f));
+    assert(approx_eq(g_lastDrawDst.y, 275.0f, 0.001f));
+
+    spawn_fx_cleanup(&fx);
+}
+
 static void test_blood_frame_selection_advances_and_clamps_to_last_frame(void) {
     SpawnFxSystem fx = {0};
     spawn_fx_init(&fx);
@@ -433,6 +527,9 @@ int main(void) {
     RUN_TEST(test_explosion_frame_selection_advances_and_clamps_to_last_frame);
     RUN_TEST(test_explosion_effect_expires_at_duration);
     RUN_TEST(test_overlay_draw_uses_first_blood_frame);
+    RUN_TEST(test_attached_blood_tracks_entity_position);
+    RUN_TEST(test_attached_blood_freezes_after_entity_disappears);
+    RUN_TEST(test_detached_blood_stays_static_during_sync);
     RUN_TEST(test_blood_frame_selection_advances_and_clamps_to_last_frame);
     RUN_TEST(test_blood_effect_expires_at_duration);
     RUN_TEST(test_smoke_and_overlay_draws_stay_separate);

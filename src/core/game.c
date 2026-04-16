@@ -324,6 +324,10 @@ void game_update(GameState *g) {
     // Defensive fallback: catch base deaths from non-combat paths
     win_check(g);
 
+    // Blood FX should follow damaged entities for the rest of the frame, then
+    // freeze once the entity is gone after the sweep below.
+    spawn_fx_sync_blood_attachments(&g->spawnFx, bf);
+
     // Sweep dead/removed entities (runs once on the trigger frame, then frozen)
     for (int i = bf->entityCount - 1; i >= 0; i--) {
         if (bf->entities[i]->markedForRemoval) {

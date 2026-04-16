@@ -7,6 +7,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifndef NFC_CARDGAME_TYPES_H
+#include "../core/types.h"
+#endif
+
 enum {
     SPAWN_SMOKE_FRAME_WIDTH = 64,
     SPAWN_SMOKE_FRAME_HEIGHT = 64,
@@ -59,6 +63,21 @@ static void spawn_fx_update_blood(SpawnBloodFx *blood, float dt) {
     if (blood->elapsed >= kSpawnBloodDurationSeconds) {
         blood->active = false;
     }
+}
+
+static void spawn_fx_write_blood(SpawnBloodFx *blood, Vector2 position, float scale,
+                                 bool attached, int attachedEntityId, Vector2 attachedOffset) {
+    if (!blood) return;
+
+    *blood = (SpawnBloodFx){
+        .position = position,
+        .attachedOffset = attachedOffset,
+        .scale = scale,
+        .elapsed = 0.0f,
+        .attachedEntityId = attachedEntityId,
+        .attached = attached,
+        .active = true,
+    };
 }
 
 void spawn_fx_init(SpawnFxSystem *fx) {
@@ -182,14 +201,36 @@ void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale) {
     if (!fx) return;
 
     SpawnBloodFx *blood = &fx->blood[fx->nextBloodIndex];
-    *blood = (SpawnBloodFx){
-        .position = position,
-        .scale = scale,
-        .elapsed = 0.0f,
-        .active = true,
-    };
+    spawn_fx_write_blood(blood, position, scale, false, -1, (Vector2){0.0f, 0.0f});
 
     fx->nextBloodIndex = (fx->nextBloodIndex + 1) % SPAWN_FX_CAPACITY;
+}
+
+void spawn_fx_emit_blood_attached(SpawnFxSystem *fx, Vector2 position, float scale,
+                                  int entityId, Vector2 offset) {
+    if (!fx) return;
+
+    SpawnBloodFx *blood = &fx->blood[fx->nextBloodIndex];
+    spawn_fx_write_blood(blood, position, scale, true, entityId, offset);
+
+    fx->nextBloodIndex = (fx->nextBloodIndex + 1) % SPAWN_FX_CAPACITY;
+}
+
+void spawn_fx_sync_blood_attachments(SpawnFxSystem *fx, Battlefield *bf) {
+    if (!fx || !bf) return;
+
+    for (int i = 0; i < SPAWN_FX_CAPACITY; i++) {
+        SpawnBloodFx *blood = &fx->blood[i];
+        if (!blood->active || !blood->attached) continue;
+
+        Entity *entity = bf_find_entity(bf, blood->attachedEntityId);
+        if (!entity) continue;
+
+        blood->position = (Vector2){
+            entity->position.x + blood->attachedOffset.x,
+            entity->position.y + blood->attachedOffset.y,
+        };
+    }
 }
 
 void spawn_fx_draw(const SpawnFxSystem *fx, float rotationDegrees) {
