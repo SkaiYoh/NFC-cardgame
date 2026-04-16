@@ -38,8 +38,8 @@ typedef struct GameState {
 /* Pull the constants and function prototypes from the header without using
  * the include guard (we already set NFC_CARDGAME_PROGRESSION_H above). */
 #define PROGRESSION_MAX_LEVEL            10
-#define PROGRESSION_SUSTENANCE_PER_LEVEL 10
-#define PROGRESSION_REGEN_LEVEL1         1.0f
+#define PROGRESSION_SUSTENANCE_PER_LEVEL 95
+#define PROGRESSION_REGEN_LEVEL1         0.5f
 #define PROGRESSION_REGEN_LEVEL_MAX      2.0f
 #define PROGRESSION_KING_DMG_LEVEL1      48
 #define PROGRESSION_KING_DMG_LEVEL_MAX   75
@@ -67,28 +67,37 @@ static bool approx_eq(float a, float b, float eps) {
 /* ---- Tests ---- */
 static void test_level_thresholds(void) {
     assert(progression_level_from_sustenance(0) == 1);
-    assert(progression_level_from_sustenance(9) == 1);
-    assert(progression_level_from_sustenance(10) == 2);
-    assert(progression_level_from_sustenance(19) == 2);
-    assert(progression_level_from_sustenance(20) == 3);
-    assert(progression_level_from_sustenance(89) == 9);
-    assert(progression_level_from_sustenance(90) == 10);
+    assert(progression_level_from_sustenance(94) == 1);
+    assert(progression_level_from_sustenance(95) == 2);
+    assert(progression_level_from_sustenance(189) == 2);
+    assert(progression_level_from_sustenance(190) == 3);
+    assert(progression_level_from_sustenance(400) == 5);
+    assert(progression_level_from_sustenance(854) == 9);
+    assert(progression_level_from_sustenance(855) == 10);
     assert(progression_level_from_sustenance(9999) == 10); /* clamp */
     assert(progression_level_from_sustenance(-50) == 1);   /* defensive */
 }
 
 static void test_regen_rate_curve(void) {
-    assert(approx_eq(progression_regen_rate_for_level(1), 1.0f, 0.0001f));
-    assert(approx_eq(progression_regen_rate_for_level(10), 2.0f, 0.0001f));
+    assert(approx_eq(progression_regen_rate_for_level(1),
+                     PROGRESSION_REGEN_LEVEL1, 0.0001f));
+    assert(approx_eq(progression_regen_rate_for_level(10),
+                     PROGRESSION_REGEN_LEVEL_MAX, 0.0001f));
 
     float lv5 = progression_regen_rate_for_level(5);
-    assert(lv5 > 1.0f && lv5 < 2.0f);
+    assert(lv5 > PROGRESSION_REGEN_LEVEL1 && lv5 < PROGRESSION_REGEN_LEVEL_MAX);
     /* level 5 sits at (5-1)/9 = 0.4444 of the span. */
-    assert(approx_eq(lv5, 1.0f + (4.0f / 9.0f), 0.0001f));
+    assert(approx_eq(lv5,
+                     PROGRESSION_REGEN_LEVEL1 +
+                     (PROGRESSION_REGEN_LEVEL_MAX - PROGRESSION_REGEN_LEVEL1) *
+                     (4.0f / 9.0f),
+                     0.0001f));
 
     /* Clamp below/above bounds. */
-    assert(approx_eq(progression_regen_rate_for_level(0), 1.0f, 0.0001f));
-    assert(approx_eq(progression_regen_rate_for_level(99), 2.0f, 0.0001f));
+    assert(approx_eq(progression_regen_rate_for_level(0),
+                     PROGRESSION_REGEN_LEVEL1, 0.0001f));
+    assert(approx_eq(progression_regen_rate_for_level(99),
+                     PROGRESSION_REGEN_LEVEL_MAX, 0.0001f));
 }
 
 static void test_king_burst_damage_curve(void) {
@@ -110,18 +119,23 @@ static void test_sync_player_updates_base_level_and_regen(void) {
 
     progression_sync_player(&gs, 0);
     assert(base.baseLevel == 1);
-    assert(approx_eq(gs.players[0].energyRegenRate, 1.0f, 0.0001f));
-
-    gs.players[0].sustenanceCollected = 30;
-    progression_sync_player(&gs, 0);
-    assert(base.baseLevel == 4);
     assert(approx_eq(gs.players[0].energyRegenRate,
-                     1.0f + (3.0f / 9.0f), 0.0001f));
+                     PROGRESSION_REGEN_LEVEL1, 0.0001f));
 
-    gs.players[0].sustenanceCollected = 200;
+    gs.players[0].sustenanceCollected = 400;
+    progression_sync_player(&gs, 0);
+    assert(base.baseLevel == 5);
+    assert(approx_eq(gs.players[0].energyRegenRate,
+                     PROGRESSION_REGEN_LEVEL1 +
+                     (PROGRESSION_REGEN_LEVEL_MAX - PROGRESSION_REGEN_LEVEL1) *
+                     (4.0f / 9.0f),
+                     0.0001f));
+
+    gs.players[0].sustenanceCollected = 855;
     progression_sync_player(&gs, 0);
     assert(base.baseLevel == 10);
-    assert(approx_eq(gs.players[0].energyRegenRate, 2.0f, 0.0001f));
+    assert(approx_eq(gs.players[0].energyRegenRate,
+                     PROGRESSION_REGEN_LEVEL_MAX, 0.0001f));
 }
 
 static void test_sync_player_ignores_spendable_sustenance_bank(void) {
@@ -129,20 +143,20 @@ static void test_sync_player_ignores_spendable_sustenance_bank(void) {
     memset(&gs, 0, sizeof(gs));
     Entity base = { .alive = true, .markedForRemoval = false, .baseLevel = 1 };
     gs.players[0].base = &base;
-    gs.players[0].sustenanceCollected = 30;
+    gs.players[0].sustenanceCollected = 400;
     gs.players[0].sustenanceBank = 0;
 
     progression_sync_player(&gs, 0);
-    assert(base.baseLevel == 4);
+    assert(base.baseLevel == 5);
     assert(approx_eq(gs.players[0].energyRegenRate,
-                     progression_regen_rate_for_level(4), 0.0001f));
+                     progression_regen_rate_for_level(5), 0.0001f));
 }
 
 static void test_sync_player_without_live_base_still_updates_regen(void) {
     GameState gs;
     memset(&gs, 0, sizeof(gs));
     gs.players[1].base = NULL;
-    gs.players[1].sustenanceCollected = 50;
+    gs.players[1].sustenanceCollected = 475;
 
     progression_sync_player(&gs, 1);
     assert(gs.players[1].base == NULL);
@@ -155,12 +169,13 @@ static void test_sync_player_skips_dead_base(void) {
     memset(&gs, 0, sizeof(gs));
     Entity base = { .alive = false, .markedForRemoval = false, .baseLevel = 4 };
     gs.players[0].base = &base;
-    gs.players[0].sustenanceCollected = 90;
+    gs.players[0].sustenanceCollected = 855;
 
     progression_sync_player(&gs, 0);
     assert(base.baseLevel == 4);          /* stale level preserved; base is dead */
     /* Regen still reflects current sustenance. */
-    assert(approx_eq(gs.players[0].energyRegenRate, 2.0f, 0.0001f));
+    assert(approx_eq(gs.players[0].energyRegenRate,
+                     PROGRESSION_REGEN_LEVEL_MAX, 0.0001f));
 }
 
 static void test_sync_player_ignores_bad_index(void) {

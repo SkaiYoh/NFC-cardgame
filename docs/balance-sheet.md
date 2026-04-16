@@ -47,8 +47,8 @@ King burst damage by base level:
 | System | Value | Notes |
 |---|---|---|
 | Max energy | `10.0` | Players start full |
-| Energy regen | `1.0` to `2.0` per second | Scales linearly from base level 1 to 10 |
-| Level threshold | `10` sustenance per level | `1 + lifetime sustenance / 10`, clamped to level 10 |
+| Energy regen | `0.5` to `2.0` per second | Scales linearly from base level 1 to 10 |
+| Level threshold | `95` sustenance per level | `1 + lifetime sustenance / 95`, clamped to level 10 (`855` total for max level) |
 | Farmer gather value | `1` sustenance | Default node value |
 | Farmer node durability | `1` | One gather clears a default node |
 | Base deposit slots | `4` primary, `6` queue | Controls farmer throughput at home base |

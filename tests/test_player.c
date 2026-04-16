@@ -21,7 +21,7 @@
 #define HAND_CARD_FRAME_COUNT 6
 #define NUM_CARD_SLOTS 3
 #define HAND_MAX_CARDS 8
-#define PROGRESSION_REGEN_LEVEL1 1.0f
+#define PROGRESSION_REGEN_LEVEL1 0.5f
 
 /* ---- Minimal type stubs ---- */
 typedef struct { float x; float y; } Vector2;
