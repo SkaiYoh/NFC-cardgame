@@ -12,6 +12,7 @@
 #define STATUS_BAR_TROOP_DRAW_HEIGHT      16.0f
 #define STATUS_BAR_TOP_GAP                 6.0f
 #define STATUS_BAR_BASE_TOP_GAP            8.0f
+#define STATUS_BAR_BASE_HAND_UI_PADDING   16.0f
 #define STATUS_BAR_BASE_STACK_GAP          6.0f
 #define TROOP_HEALTH_BAR_FRAME_X_OFFSET    1.0f
 #define TROOP_HEALTH_BAR_CELL_STRIDE      14.0f
@@ -218,17 +219,6 @@ static Rectangle entity_stable_visible_world_bounds_from_sheet(const Entity *e,
     }
 
     return (Rectangle){ minX, minY, maxX - minX, maxY - minY };
-}
-
-static Rectangle entity_stable_visible_world_bounds_for_anim(const Entity *e,
-                                                             AnimationType anim) {
-    if (!e || !e->sprite || anim < 0 || anim >= ANIM_COUNT) {
-        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
-    }
-
-    return entity_stable_visible_world_bounds_from_sheet(
-        e, &e->sprite->anims[anim]
-    );
 }
 
 static Rectangle entity_stable_visible_world_bounds(const Entity *e) {
@@ -679,25 +669,26 @@ static void draw_troop_health_bar_fallback(const Entity *troop, Camera2D camera,
                            reverseFillDirection);
 }
 
-// Compute the two stacked base-bar centers for a given base entity.
-// Shared by the atlas and fallback renderers so placement stays in sync.
-static void base_bar_centers(const Entity *base, Camera2D camera,
+// Compute the two stacked base-bar centers for a fixed HUD anchor inside the
+// viewport rect. Shared by the atlas and fallback renderers so placement stays
+// in sync regardless of base art or animation bounds.
+static void base_bar_centers(BattleSide hudSide, Rectangle viewportRect,
                              Vector2 *outHealth, Vector2 *outEnergy) {
-    Vector2 headDirection = entity_screen_head_direction(base, camera);
-    Rectangle baseScreenBounds = world_rect_to_screen(
-        entity_stable_visible_world_bounds_for_anim(base, ANIM_IDLE), camera
-    );
-    Vector2 anchor = screen_anchor_from_bounds(
-        baseScreenBounds, base, camera, headDirection
-    );
+    bool anchorRight = hudSide == SIDE_TOP;
+    float outerInset = STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f +
+                       STATUS_BAR_BASE_TOP_GAP +
+                       STATUS_BAR_BASE_HAND_UI_PADDING;
+    float inwardStep = STATUS_BAR_BASE_DRAW_HEIGHT + STATUS_BAR_BASE_STACK_GAP;
+    float inwardSign = anchorRight ? -1.0f : 1.0f;
+    float energyCenterX = anchorRight
+        ? (viewportRect.x + viewportRect.width - outerInset)
+        : (viewportRect.x + outerInset);
+    float centerY = viewportRect.y + viewportRect.height * 0.5f;
 
-    float firstOffset  = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
-    float secondOffset = STATUS_BAR_BASE_TOP_GAP + STATUS_BAR_BASE_DRAW_HEIGHT +
-                         STATUS_BAR_BASE_STACK_GAP + STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
-    outHealth->x = anchor.x + headDirection.x * firstOffset;
-    outHealth->y = anchor.y + headDirection.y * firstOffset;
-    outEnergy->x = anchor.x + headDirection.x * secondOffset;
-    outEnergy->y = anchor.y + headDirection.y * secondOffset;
+    outEnergy->x = energyCenterX;
+    outEnergy->y = centerY;
+    outHealth->x = energyCenterX + inwardStep * inwardSign;
+    outHealth->y = centerY;
 }
 
 // Format an integer "cur/max" label into the caller's buffer.
@@ -731,14 +722,14 @@ static float regen_label_normal_offset(float labelRotationDegrees) {
 }
 
 static void draw_base_bars(const GameState *gs, const Entity *base, const Player *owner,
-                           Camera2D camera,
+                           Rectangle viewportRect,
                            float rotationDegrees,
                            float labelRotationDegrees,
                            bool reverseFillDirection) {
     if (!base || !owner) return;
 
     Vector2 healthCenter, energyCenter;
-    base_bar_centers(base, camera, &healthCenter, &energyCenter);
+    base_bar_centers(owner->side, viewportRect, &healthCenter, &energyCenter);
 
     float hpRatio = (base->maxHP > 0)
         ? ((float)base->hp / (float)base->maxHP)
@@ -895,13 +886,13 @@ static void draw_base_energy_fallback(Vector2 screenCenter, float energy,
 }
 
 static void draw_base_bars_fallback(const Entity *base, const Player *owner,
-                                    Camera2D camera, float rotationDegrees,
+                                    Rectangle viewportRect, float rotationDegrees,
                                     float labelRotationDegrees,
                                     bool reverseFillDirection) {
     if (!base || !owner) return;
 
     Vector2 healthCenter, energyCenter;
-    base_bar_centers(base, camera, &healthCenter, &energyCenter);
+    base_bar_centers(owner->side, viewportRect, &healthCenter, &energyCenter);
 
     float hpRatio = (base->maxHP > 0)
         ? ((float)base->hp / (float)base->maxHP)
@@ -992,11 +983,13 @@ void troop_health_bar_unload(Texture2D texture) {
     }
 }
 
-void status_bars_draw_screen(const GameState *gs, Camera2D camera,
+void status_bars_draw_screen(const GameState *gs, const Player *hudPlayer,
+                             Camera2D camera,
+                             Rectangle viewportRect,
                              float rotationDegrees,
                              float labelRotationDegrees,
                              bool reverseFillDirection) {
-    if (!gs) return;
+    if (!gs || !hudPlayer) return;
 
     bool hasBaseTexture = (gs->statusBarsTexture.id != 0);
     bool hasTroopTexture = (gs->troopHealthBarTexture.id != 0);
@@ -1015,18 +1008,16 @@ void status_bars_draw_screen(const GameState *gs, Camera2D camera,
         }
     }
 
-    for (int i = 0; i < 2; i++) {
-        const Player *player = &gs->players[i];
-        const Entity *base = player->base;
-        if (!base || base->markedForRemoval) continue;
-        if (hasBaseTexture) {
-            draw_base_bars(gs, base, player, camera,
-                           rotationDegrees, labelRotationDegrees,
-                           reverseFillDirection);
-        } else {
-            draw_base_bars_fallback(base, player, camera,
-                                    rotationDegrees, labelRotationDegrees,
-                                    reverseFillDirection);
-        }
+    const Entity *base = hudPlayer->base;
+    if (!base || base->markedForRemoval) return;
+
+    if (hasBaseTexture) {
+        draw_base_bars(gs, base, hudPlayer, viewportRect,
+                       rotationDegrees, labelRotationDegrees,
+                       reverseFillDirection);
+    } else {
+        draw_base_bars_fallback(base, hudPlayer, viewportRect,
+                                rotationDegrees, labelRotationDegrees,
+                                reverseFillDirection);
     }
 }

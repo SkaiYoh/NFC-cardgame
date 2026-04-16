@@ -392,7 +392,9 @@ void game_render(GameState *g) {
         (int)g->players[0].battlefieldArea.width,
         (int)g->players[0].battlefieldArea.height
     );
-    status_bars_draw_screen(g, g->players[0].camera, 90.0f, 90.0f, false);
+    status_bars_draw_screen(g, &g->players[0], g->players[0].camera,
+                            g->players[0].battlefieldArea,
+                            90.0f, 90.0f, false);
     EndScissorMode();
 
     // --- Player 2 viewport (SIDE_TOP) — render to texture, then composite ---
@@ -420,7 +422,14 @@ void game_render(GameState *g) {
     if (s_showLaneDebug) {
         debug_draw_lane_paths_screen(bf, SIDE_TOP, p2CamRT);
     }
-    status_bars_draw_screen(g, p2CamRT, 90.0f, 270.0f, true);
+    status_bars_draw_screen(g, &g->players[1], p2CamRT,
+                            (Rectangle){
+                                0.0f,
+                                0.0f,
+                                g->players[1].battlefieldArea.width,
+                                g->players[1].battlefieldArea.height
+                            },
+                            90.0f, 270.0f, true);
     EndTextureMode();
 
     // Composite P2 RT to the P2 battlefield sub-rect (not the full half-screen).

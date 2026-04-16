@@ -221,6 +221,7 @@ static Rectangle sprite_visible_bounds(const CharacterSprite *cs, const AnimStat
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
+typedef enum { SIDE_BOTTOM, SIDE_TOP } BattleSide;
 
 typedef struct Entity {
     int id;
@@ -286,7 +287,39 @@ typedef struct GameState {
 } GameState;
 
 /* ---- Include production code ---- */
+#define base_bar_centers base_bar_centers_impl
+#define status_bars_draw_screen status_bars_draw_screen_impl
 #include "../src/rendering/status_bars.c"
+#undef base_bar_centers
+#undef status_bars_draw_screen
+
+static Rectangle test_viewport_rect_for_side(int side) {
+    if (side == SIDE_TOP) {
+        return (Rectangle){0.0f, 0.0f, 780.0f, 1080.0f};
+    }
+    return (Rectangle){180.0f, 0.0f, 780.0f, 1080.0f};
+}
+
+static void base_bar_centers(const Entity *base, Camera2D camera,
+                             Vector2 *outHealth, Vector2 *outEnergy) {
+    (void)camera;
+    int side = base ? base->presentationSide : SIDE_BOTTOM;
+    base_bar_centers_impl((BattleSide)side, test_viewport_rect_for_side(side),
+                          outHealth, outEnergy);
+}
+
+static void status_bars_draw_screen(const GameState *gs, Camera2D camera,
+                                    float rotationDegrees,
+                                    float labelRotationDegrees,
+                                    bool reverseFillDirection) {
+    int side = reverseFillDirection ? SIDE_TOP : SIDE_BOTTOM;
+    const Player *hudPlayer = reverseFillDirection ? &gs->players[1] : &gs->players[0];
+    status_bars_draw_screen_impl(gs, hudPlayer, camera,
+                                 test_viewport_rect_for_side(side),
+                                 rotationDegrees,
+                                 labelRotationDegrees,
+                                 reverseFillDirection);
+}
 
 /* ---- Test helpers ---- */
 static int tests_run = 0;
@@ -325,6 +358,17 @@ static void reset_draw_state(void) {
     }
 }
 
+static void assert_rotated_base_shell_inside_viewport(Rectangle shellCenter,
+                                                      Rectangle viewportRect) {
+    float halfExtentX = STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f;
+    float halfExtentY = STATUS_BAR_BASE_DRAW_WIDTH * 0.5f;
+
+    assert(shellCenter.x - halfExtentX >= viewportRect.x - 0.001f);
+    assert(shellCenter.x + halfExtentX <= viewportRect.x + viewportRect.width + 0.001f);
+    assert(shellCenter.y - halfExtentY >= viewportRect.y - 0.001f);
+    assert(shellCenter.y + halfExtentY <= viewportRect.y + viewportRect.height + 0.001f);
+}
+
 static void set_sheet_visible_bounds(SpriteSheet *sheet, Rectangle *bounds,
                                      int frameCount, int frameWidth, int frameHeight,
                                      Rectangle visibleBounds) {
@@ -357,6 +401,7 @@ static Entity make_base(int hp, int maxHP) {
     base.maxHP = maxHP;
     base.alive = true;
     base.position = (Vector2){400.0f, 500.0f};
+    base.presentationSide = SIDE_BOTTOM;
     return base;
 }
 
@@ -364,6 +409,8 @@ static GameState make_game_state(void) {
     GameState gs = {0};
     gs.statusBarsTexture = (Texture2D){ .id = 1, .width = 2048, .height = 64, .mipmaps = 1, .format = 7 };
     gs.troopHealthBarTexture = (Texture2D){ .id = 2, .width = 113, .height = 5, .mipmaps = 1, .format = 7 };
+    gs.players[0].side = SIDE_BOTTOM;
+    gs.players[1].side = SIDE_TOP;
     gs.players[0].maxEnergy = 10.0f;
     gs.players[1].maxEnergy = 10.0f;
     return gs;
@@ -650,6 +697,56 @@ static void test_base_bar_granularity_moves_on_small_hit(void) {
     assert(fullFillWidth - hitFillWidth >= 1.0f);
 }
 
+static void test_base_bar_centers_anchor_to_viewport_edge_by_side(void) {
+    Camera2D camera = {0};
+    Entity bottomBase = make_base(4500, 5000);
+    Entity topBase = make_base(4500, 5000);
+    Vector2 bottomHealthCenter, bottomEnergyCenter;
+    Vector2 topHealthCenter, topEnergyCenter;
+    Rectangle bottomViewport = test_viewport_rect_for_side(SIDE_BOTTOM);
+    Rectangle topViewport = test_viewport_rect_for_side(SIDE_TOP);
+    float outerInset = STATUS_BAR_BASE_DRAW_HEIGHT * 0.5f +
+                       STATUS_BAR_BASE_TOP_GAP +
+                       STATUS_BAR_BASE_HAND_UI_PADDING;
+    float inwardStep = STATUS_BAR_BASE_DRAW_HEIGHT + STATUS_BAR_BASE_STACK_GAP;
+
+    bottomBase.presentationSide = SIDE_BOTTOM;
+    topBase.presentationSide = SIDE_TOP;
+
+    base_bar_centers(&bottomBase, camera, &bottomHealthCenter, &bottomEnergyCenter);
+    base_bar_centers(&topBase, camera, &topHealthCenter, &topEnergyCenter);
+
+    assert(approx_eq(bottomEnergyCenter.x, bottomViewport.x + outerInset, 0.001f));
+    assert(approx_eq(bottomHealthCenter.x, bottomEnergyCenter.x + inwardStep, 0.001f));
+    assert(approx_eq(bottomEnergyCenter.y, bottomViewport.y + bottomViewport.height * 0.5f, 0.001f));
+    assert(approx_eq(bottomHealthCenter.y, bottomEnergyCenter.y, 0.001f));
+
+    assert(approx_eq(topEnergyCenter.x,
+                     topViewport.x + topViewport.width - outerInset, 0.001f));
+    assert(approx_eq(topHealthCenter.x, topEnergyCenter.x - inwardStep, 0.001f));
+    assert(approx_eq(topEnergyCenter.y, topViewport.y + topViewport.height * 0.5f, 0.001f));
+    assert(approx_eq(topHealthCenter.y, topEnergyCenter.y, 0.001f));
+}
+
+static void test_base_bar_centers_ignore_base_world_position(void) {
+    Camera2D camera = {0};
+    Entity nearBase = make_base(4500, 5000);
+    Entity farBase = make_base(4500, 5000);
+    Vector2 nearHealthCenter, nearEnergyCenter;
+    Vector2 farHealthCenter, farEnergyCenter;
+
+    nearBase.position = (Vector2){120.0f, 320.0f};
+    farBase.position = (Vector2){940.0f, 1640.0f};
+
+    base_bar_centers(&nearBase, camera, &nearHealthCenter, &nearEnergyCenter);
+    base_bar_centers(&farBase, camera, &farHealthCenter, &farEnergyCenter);
+
+    assert(approx_eq(nearHealthCenter.x, farHealthCenter.x, 0.001f));
+    assert(approx_eq(nearHealthCenter.y, farHealthCenter.y, 0.001f));
+    assert(approx_eq(nearEnergyCenter.x, farEnergyCenter.x, 0.001f));
+    assert(approx_eq(nearEnergyCenter.y, farEnergyCenter.y, 0.001f));
+}
+
 static void test_base_bar_centers_stay_fixed_when_base_anim_changes(void) {
     CharacterSprite sprite = {0};
     Rectangle idleBounds[DIR_COUNT] = {0};
@@ -720,6 +817,88 @@ static void test_base_bar_draw_positions_stay_fixed_when_base_attacks(void) {
     assert(approx_eq(g_drawDsts[2].y, idleEnergyShell.y, 0.001f));
 }
 
+static void test_viewport_draws_only_owner_base_bars(void) {
+    GameState gs = make_game_state();
+    Entity bottomBase = make_base(4500, 5000);
+    Entity topBase = make_base(3200, 5000);
+    Camera2D camera = {0};
+
+    topBase.presentationSide = SIDE_TOP;
+
+    gs.players[0].base = &bottomBase;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    gs.players[1].base = &topBase;
+    gs.players[1].energy = 3.0f;
+    gs.players[1].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert(g_drawCalls == 11);
+    assert(g_textCalls == 8);
+    assert(strcmp(g_textStrings[0], "4500/5000") == 0);
+    assert(strcmp(g_textStrings[4], "7/10") == 0);
+
+    reset_draw_state();
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+    assert(g_drawCalls == 7);
+    assert(g_textCalls == 8);
+    assert(strcmp(g_textStrings[0], "3200/5000") == 0);
+    assert(strcmp(g_textStrings[4], "3/10") == 0);
+}
+
+static void test_live_base_bars_stay_inside_viewport_for_both_sides(void) {
+    GameState gs = make_game_state();
+    Entity bottomBase = make_base(4500, 5000);
+    Entity topBase = make_base(4500, 5000);
+    Camera2D camera = {0};
+
+    gs.players[0].base = &bottomBase;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    assert_rotated_base_shell_inside_viewport(g_drawDsts[0],
+                                              test_viewport_rect_for_side(SIDE_BOTTOM));
+    assert_rotated_base_shell_inside_viewport(g_drawDsts[2],
+                                              test_viewport_rect_for_side(SIDE_BOTTOM));
+
+    reset_draw_state();
+    gs.players[1].base = &topBase;
+    gs.players[1].base->presentationSide = SIDE_TOP;
+    gs.players[1].energy = 7.0f;
+    gs.players[1].energyRegenRate = 1.0f;
+    status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
+    assert_rotated_base_shell_inside_viewport(g_drawDsts[0],
+                                              test_viewport_rect_for_side(SIDE_TOP));
+    assert_rotated_base_shell_inside_viewport(g_drawDsts[2],
+                                              test_viewport_rect_for_side(SIDE_TOP));
+}
+
+static void test_fallback_base_bars_match_textured_anchor_centers(void) {
+    GameState gs = make_game_state();
+    Entity base = make_base(3420, 5000);
+    Camera2D camera = {0};
+    Rectangle texturedHealthShell, texturedEnergyShell;
+
+    gs.players[0].base = &base;
+    gs.players[0].energy = 7.0f;
+    gs.players[0].energyRegenRate = 1.0f;
+
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+    texturedHealthShell = g_drawDsts[0];
+    texturedEnergyShell = g_drawDsts[2];
+
+    reset_draw_state();
+    gs.statusBarsTexture.id = 0;
+    status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
+
+    assert(approx_eq(g_rectDsts[1].x, texturedHealthShell.x, 0.001f));
+    assert(approx_eq(g_rectDsts[1].y, texturedHealthShell.y, 0.001f));
+    assert(approx_eq(g_rectDsts[4].x, texturedEnergyShell.x, 0.001f));
+    assert(approx_eq(g_rectDsts[4].y, texturedEnergyShell.y, 0.001f));
+}
+
 /* Fractional energy quantizes down to whole pips: 6.9 → 6 drawn + "6/10"
  * label text. Prevents the previous 7/10 round-up from showing energy the
  * player cannot yet spend. */
@@ -782,9 +961,10 @@ static void test_fractional_regen_cue_reverses_for_p2(void) {
     Entity base = make_base(5000, 5000);
     Camera2D camera = {0};
 
-    gs.players[0].base = &base;
-    gs.players[0].energy = 1.25f;
-    gs.players[0].energyRegenRate = 1.0f;
+    gs.players[1].base = &base;
+    gs.players[1].base->presentationSide = SIDE_TOP;
+    gs.players[1].energy = 1.25f;
+    gs.players[1].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
 
@@ -831,12 +1011,11 @@ static void test_label_placement_health_inside_energy_outside(void) {
     assert(approx_eq(healthDx, -1.0f, 0.001f));
     assert(approx_eq(healthDy, -1.0f, 0.001f));
 
-    /* Energy and health labels sit on separate bars stacked along the base's
-     * head direction. At rotation 0 the head direction is -Y, so the two
-     * bar centers differ in Y by (cellHeight + stackGap) = 20 + 6 = 26. */
+    /* With fixed viewport anchoring, the two bar centers stay on the same
+     * horizontal row. */
     float energyY = g_textPositions[5].y;
     float healthY = g_textPositions[1].y;
-    assert(fabsf(energyY - healthY) > 20.0f);
+    assert(fabsf(energyY - healthY) < 1.0f);
 
     /* LVL label lives on the health bar (same Y as hp label) and is pushed
      * OUTSIDE on the same authored side as the energy label (-X for P1). */
@@ -905,9 +1084,10 @@ static void test_live_p2_energy_label_uses_bar_axis_not_text_rotation(void) {
     Entity base = make_base(4500, 5000);
     Camera2D camera = {0};
 
-    gs.players[0].base = &base;
-    gs.players[0].energy = 7.0f;
-    gs.players[0].energyRegenRate = 1.0f;
+    gs.players[1].base = &base;
+    gs.players[1].base->presentationSide = SIDE_TOP;
+    gs.players[1].energy = 7.0f;
+    gs.players[1].energyRegenRate = 1.0f;
 
     status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
 
@@ -949,21 +1129,27 @@ static void test_live_primary_label_spacing_is_mirrored_between_p1_and_p2(void) 
     gs.players[0].energy = 7.0f;
     gs.players[0].energyRegenRate = 1.0f;
 
-    Vector2 healthCenter, energyCenter;
-    base_bar_centers(&base, camera, &healthCenter, &energyCenter);
+    Vector2 p1HealthCenter, p1EnergyCenter;
+    Vector2 p2HealthCenter, p2EnergyCenter;
+    base_bar_centers(&base, camera, &p1HealthCenter, &p1EnergyCenter);
 
     status_bars_draw_screen(&gs, camera, 90.0f, 90.0f, false);
-    float p1LevelDx = g_textPositions[3].x - healthCenter.x;
-    float p1LevelDy = g_textPositions[3].y - healthCenter.y;
-    float p1EnergyDx = g_textPositions[5].x - energyCenter.x;
-    float p1EnergyDy = g_textPositions[5].y - energyCenter.y;
+    float p1LevelDx = g_textPositions[3].x - p1HealthCenter.x;
+    float p1LevelDy = g_textPositions[3].y - p1HealthCenter.y;
+    float p1EnergyDx = g_textPositions[5].x - p1EnergyCenter.x;
+    float p1EnergyDy = g_textPositions[5].y - p1EnergyCenter.y;
 
     reset_draw_state();
+    base.presentationSide = SIDE_TOP;
+    gs.players[1].base = &base;
+    gs.players[1].energy = 7.0f;
+    gs.players[1].energyRegenRate = 1.0f;
+    base_bar_centers(&base, camera, &p2HealthCenter, &p2EnergyCenter);
     status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
-    float p2LevelDx = g_textPositions[3].x - healthCenter.x;
-    float p2LevelDy = g_textPositions[3].y - healthCenter.y;
-    float p2EnergyDx = g_textPositions[5].x - energyCenter.x;
-    float p2EnergyDy = g_textPositions[5].y - energyCenter.y;
+    float p2LevelDx = g_textPositions[3].x - p2HealthCenter.x;
+    float p2LevelDy = g_textPositions[3].y - p2HealthCenter.y;
+    float p2EnergyDx = g_textPositions[5].x - p2EnergyCenter.x;
+    float p2EnergyDy = g_textPositions[5].y - p2EnergyCenter.y;
 
     assert(fabsf(p1LevelDx) < 0.01f);
     assert(fabsf(p2LevelDx) < 0.01f);
@@ -1134,6 +1320,9 @@ static void test_reversed_energy_fill_direction_for_flipped_viewport(void) {
     float forwardPipY = g_drawDsts[3].y;
 
     reset_draw_state();
+    base.presentationSide = SIDE_TOP;
+    gs.players[1].base = &base;
+    gs.players[1].energy = 1.0f;
     status_bars_draw_screen(&gs, camera, 90.0f, 270.0f, true);
     float reversedShellY = g_drawDsts[2].y;
     float reversedPipY = g_drawDsts[3].y;
@@ -1157,8 +1346,12 @@ int main(void) {
     RUN_TEST(test_base_bar_full_health_and_energy);
     RUN_TEST(test_base_bar_near_empty_health_draws_tiny_fill);
     RUN_TEST(test_base_bar_granularity_moves_on_small_hit);
+    RUN_TEST(test_base_bar_centers_anchor_to_viewport_edge_by_side);
+    RUN_TEST(test_base_bar_centers_ignore_base_world_position);
     RUN_TEST(test_base_bar_centers_stay_fixed_when_base_anim_changes);
     RUN_TEST(test_base_bar_draw_positions_stay_fixed_when_base_attacks);
+    RUN_TEST(test_viewport_draws_only_owner_base_bars);
+    RUN_TEST(test_live_base_bars_stay_inside_viewport_for_both_sides);
     RUN_TEST(test_fractional_energy_shows_whole_pips);
     RUN_TEST(test_fractional_energy_draws_regen_ghost_and_progress);
     RUN_TEST(test_fractional_regen_cue_reverses_for_p2);
@@ -1168,6 +1361,7 @@ int main(void) {
     RUN_TEST(test_live_primary_label_spacing_is_mirrored_between_p1_and_p2);
     RUN_TEST(test_regen_label_values);
     RUN_TEST(test_fallback_renders_bars_and_labels);
+    RUN_TEST(test_fallback_base_bars_match_textured_anchor_centers);
     RUN_TEST(test_fallback_fractional_energy_draws_regen_cue);
     RUN_TEST(test_fallback_zero_energy_draws_shell_only);
     RUN_TEST(test_reversed_energy_fill_direction_for_flipped_viewport);
