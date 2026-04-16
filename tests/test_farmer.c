@@ -149,6 +149,7 @@ typedef struct {
 
 typedef struct Player {
     Entity *base;
+    int sustenanceBank;
     int sustenanceCollected;
 } Player;
 
@@ -292,6 +293,7 @@ void sustenance_release_claims_for_entity(Battlefield *bf, int entityId) {
 }
 
 void player_award_sustenance(GameState *gs, int ownerID, int amount) {
+    gs->players[ownerID].sustenanceBank += amount;
     gs->players[ownerID].sustenanceCollected += amount;
 }
 

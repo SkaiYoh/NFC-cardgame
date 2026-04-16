@@ -41,8 +41,8 @@ typedef struct GameState {
 #define PROGRESSION_SUSTENANCE_PER_LEVEL 10
 #define PROGRESSION_REGEN_LEVEL1         1.0f
 #define PROGRESSION_REGEN_LEVEL_MAX      2.0f
-#define PROGRESSION_KING_DMG_LEVEL1      28
-#define PROGRESSION_KING_DMG_LEVEL_MAX   55
+#define PROGRESSION_KING_DMG_LEVEL1      48
+#define PROGRESSION_KING_DMG_LEVEL_MAX   75
 #define PROGRESSION_KING_BURST_RADIUS    160.0f
 
 int   progression_level_from_sustenance(int sustenance);
@@ -92,13 +92,13 @@ static void test_regen_rate_curve(void) {
 }
 
 static void test_king_burst_damage_curve(void) {
-    int expected[11] = { 0, 28, 31, 34, 37, 40, 43, 46, 49, 52, 55 };
+    int expected[11] = { 0, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75 };
     for (int lv = 1; lv <= 10; lv++) {
         assert(progression_king_burst_damage_for_level(lv) == expected[lv]);
     }
     /* Clamp. */
-    assert(progression_king_burst_damage_for_level(0) == 28);
-    assert(progression_king_burst_damage_for_level(42) == 55);
+    assert(progression_king_burst_damage_for_level(0) == 48);
+    assert(progression_king_burst_damage_for_level(42) == 75);
 }
 
 static void test_sync_player_updates_base_level_and_regen(void) {

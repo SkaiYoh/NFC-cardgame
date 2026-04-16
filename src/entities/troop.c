@@ -51,7 +51,7 @@ static const CombatProfile kFishfingCombatProfile = {
     .engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE,
     .deliveryMode = ATTACK_DELIVERY_PROJECTILE,
     .projectileVisualType = PROJECTILE_VISUAL_FISH,
-    .projectileSpeed = 280.0f,
+    .projectileSpeed = 300.0f,
     .projectileHitRadius = 12.0f,
     .projectileSplashRadius = 0.0f,
     .projectileRenderScale = 1.5f,
@@ -63,9 +63,9 @@ static const CombatProfile kBirdCombatProfile = {
     .engagementMode = ATTACK_ENGAGEMENT_DIRECT_RANGE,
     .deliveryMode = ATTACK_DELIVERY_PROJECTILE,
     .projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB,
-    .projectileSpeed = 240.0f,
+    .projectileSpeed = 220.0f,
     .projectileHitRadius = 12.0f,
-    .projectileSplashRadius = 48.0f,
+    .projectileSplashRadius = 40.0f,
     .projectileRenderScale = 1.0f,
     .projectileLaunchOffset = { 8.0f, -8.0f },
 };
@@ -177,10 +177,16 @@ TroopData troop_create_data_from_card(const Card *card) {
             data.targeting = TARGET_BUILDING;
         else if (strcmp(tgt->valuestring, "specific") == 0)
             data.targeting = TARGET_SPECIFIC_TYPE;
+        else if (strcmp(tgt->valuestring, "farmer_first_lowest_hp") == 0 ||
+                 strcmp(tgt->valuestring, "anti_air_first") == 0) {
+            data.targeting = TARGET_SPECIFIC_TYPE;
+            data.targetType = strdup(tgt->valuestring);
+        }
     }
 
     cJSON *tgtType = cJSON_GetObjectItem(root, "targetType");
     if (tgtType && cJSON_IsString(tgtType)) {
+        free((char *)data.targetType);
         data.targetType = strdup(tgtType->valuestring);
     }
 

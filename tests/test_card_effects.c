@@ -245,7 +245,7 @@ void entity_restart_clip(Entity *e) {
 int progression_king_burst_damage_for_level(int level) {
     if (level < 1) level = 1;
     if (level > 10) level = 10;
-    return 28 + (level - 1) * 3;
+    return 48 + (level - 1) * 3;
 }
 
 /* ---- Production code under test ---- */
@@ -327,10 +327,10 @@ static void test_king_dispatch_consumes_energy_and_enters_attack(void) {
     assert(gs.players[0].energy == 6.0f);
     assert(base.state == ESTATE_ATTACKING);
     assert(base.attackTargetId == -1);
-    /* Level 1 base queues the level-1 burst (28 damage) but does not apply
+    /* Level 1 base queues the level-1 burst (48 damage) but does not apply
      * it yet — the hit-marker branch in entities.c resolves damage later. */
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 28);
+    assert(base.basePendingKingBurstDamage == 48);
     assert(g_entity_set_state_calls == 1);
     assert(g_entity_restart_clip_calls == 0);
     assert(g_player_hand_restart_calls == 1);
@@ -353,7 +353,7 @@ static void test_king_burst_damage_scales_with_base_level(void) {
 
     assert(ok);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 55);
+    assert(base.basePendingKingBurstDamage == 75);
 }
 
 static void test_king_burst_overwrites_pending_on_replay(void) {
@@ -368,7 +368,7 @@ static void test_king_burst_overwrites_pending_on_replay(void) {
 
     assert(ok);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 28);  /* overwritten, not stacked */
+    assert(base.basePendingKingBurstDamage == 48);  /* overwritten, not stacked */
     assert(g_entity_restart_clip_calls == 1);
 }
 
@@ -509,7 +509,7 @@ static void test_king_can_consume_sustenance_without_touching_energy(void) {
     assert(gs.players[0].energy == 10.0f);
     assert(gs.players[0].sustenanceBank == 5);
     assert(base.basePendingKingBurst == true);
-    assert(base.basePendingKingBurstDamage == 28);
+    assert(base.basePendingKingBurstDamage == 48);
     assert(g_entity_set_state_calls == 1);
     assert(g_player_hand_restart_calls == 1);
 }

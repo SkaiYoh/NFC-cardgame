@@ -94,6 +94,7 @@ static Entity *entity_validate_enemy_pursuit(Entity *e, const Entity *candidate,
     if (!bf) return NULL;
     if (!candidate->alive || candidate->markedForRemoval) return NULL;
     if (candidate->ownerID == e->ownerID) return NULL;
+    if (!combat_can_damage_target(e, candidate)) return NULL;
     if (maxRadius < 0.0f) return NULL;
 
     if (e->lane >= 0 && e->lane < 3) {
@@ -120,6 +121,7 @@ static bool entity_should_seed_pursuit_for_target(Entity *e, GameState *gs,
                                                    Entity *target) {
     if (!e || !gs || !target) return false;
     if (target->ownerID == e->ownerID) return false;
+    if (e->healAmount > 0) return false;
     if (entity_target_uses_static_assault_cloud(target)) return true;
     return entity_validate_enemy_pursuit(
         e, target, &gs->battlefield,
@@ -130,6 +132,7 @@ static bool entity_should_seed_pursuit_for_target(Entity *e, GameState *gs,
 static Entity *entity_find_forward_pursuit_target(Entity *e, GameState *gs, float maxRadius) {
     if (!e || !gs) return NULL;
     if (maxRadius < 0.0f) return NULL;
+    if (e->healAmount > 0) return NULL;
 
     Battlefield *bf = &gs->battlefield;
     Entity *bestTarget = NULL;
@@ -143,26 +146,10 @@ static Entity *entity_find_forward_pursuit_target(Entity *e, GameState *gs, floa
         float dy = candidate->position.y - e->position.y;
         float distSq = dx * dx + dy * dy;
 
-        switch (e->targeting) {
-            case TARGET_BUILDING:
-                if (candidate->type == ENTITY_BUILDING) {
-                    if (distSq < bestDistSq || (bestTarget && bestTarget->type != ENTITY_BUILDING)) {
-                        bestTarget = candidate;
-                        bestDistSq = distSq;
-                    }
-                    continue;
-                }
-                if (bestTarget && bestTarget->type == ENTITY_BUILDING) {
-                    continue;
-                }
-                // fallthrough
-            case TARGET_NEAREST:
-            case TARGET_SPECIFIC_TYPE:
-                if (!bestTarget || distSq < bestDistSq) {
-                    bestTarget = candidate;
-                    bestDistSq = distSq;
-                }
-                break;
+        if (combat_enemy_target_is_better(e, candidate, distSq,
+                                          bestTarget, bestDistSq)) {
+            bestTarget = candidate;
+            bestDistSq = distSq;
         }
     }
 
@@ -172,6 +159,7 @@ static Entity *entity_find_forward_pursuit_target(Entity *e, GameState *gs, floa
 static Entity *entity_select_post_attack_pursuit(Entity *e, GameState *gs,
                                                  Entity *staleTarget) {
     if (!e || !gs) return NULL;
+    if (e->healAmount > 0) return entity_find_base_objective_fallback(e, gs);
 
     Entity *pursuit = entity_validate_enemy_pursuit(
         e, staleTarget, &gs->battlefield,
@@ -192,6 +180,11 @@ static Entity *entity_select_post_attack_pursuit(Entity *e, GameState *gs,
 // chases cannot strand it in idle.
 static Entity *entity_refresh_enemy_pursuit(Entity *e, GameState *gs) {
     if (!e || !gs) return NULL;
+    if (e->healAmount > 0) {
+        Entity *fallback = entity_find_base_objective_fallback(e, gs);
+        entity_apply_enemy_pursuit(e, gs, fallback);
+        return fallback;
+    }
 
     Battlefield *bf = &gs->battlefield;
     Entity *pursuit = entity_validate_enemy_pursuit_id(

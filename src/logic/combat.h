@@ -51,11 +51,21 @@ bool combat_engagement_goal(const Entity *attacker, const Entity *target,
 // Find the best target for attacker among the enemy player's entities
 Entity *combat_find_target(Entity *attacker, GameState *gs);
 
+// Returns true if attacker can deal hostile damage to target. This enforces
+// special cases like anti-air restrictions and skips invalid enemy types.
+bool combat_can_damage_target(const Entity *attacker, const Entity *target);
+
+// Compare two enemy candidates using the attacker's targeting policy. Returns
+// true when `candidate` should replace `bestTarget`. Distances may use any
+// consistent metric as long as both values use the same units.
+bool combat_enemy_target_is_better(const Entity *attacker,
+                                   const Entity *candidate, float candidateDist,
+                                   const Entity *bestTarget, float bestDist);
+
 // Enemy-only nearest-valid probe bounded by maxRadius (center-to-center).
 // Used by the local steering aggro probe. Unlike combat_find_target, this
 // does NOT run the heal-first branch: walking healers do not chase injured
-// allies. TARGET_BUILDING priority is still preserved for building-focused
-// attackers whose nearest building falls inside maxRadius.
+// allies. Unit-specific enemy priorities are still preserved.
 Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float maxRadius);
 
 // Apply one attack from attacker to target (respects cooldown).

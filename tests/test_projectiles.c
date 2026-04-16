@@ -64,6 +64,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    bool canHitAir;
 } CombatEffectPayload;
 
 typedef struct {
@@ -98,6 +99,9 @@ typedef struct {
     int explosionEmitCount;
     Vector2 lastExplosionPos;
     float lastExplosionScale;
+    int bloodEmitCount;
+    Vector2 lastBloodPos;
+    float lastBloodScale;
 } SpawnFxSystem;
 
 typedef struct Entity {
@@ -144,6 +148,7 @@ static int g_drawCalls = 0;
 static int g_applyCalls = 0;
 static int g_burstCalls = 0;
 static int g_explosionEmitCalls = 0;
+static int g_bloodEmitCalls = 0;
 static const CombatEffectPayload *g_lastPayload = NULL;
 static Entity *g_lastAppliedTarget = NULL;
 static bool g_nextImpactEndsGame = false;
@@ -153,6 +158,15 @@ static float g_lastBurstRadius = 0.0f;
 static int g_lastBurstDamage = 0;
 static Vector2 g_lastExplosionPos;
 static float g_lastExplosionScale = 0.0f;
+static Vector2 g_bloodPositions[8];
+static float g_bloodScales[8];
+
+static void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale);
+
+static Vector2 combat_damage_fx_position(const Entity *target) {
+    if (!target) return (Vector2){0.0f, 0.0f};
+    return target->position;
+}
 
 static Texture2D LoadTexture(const char *fileName) {
     if (strcmp(fileName, PROJECTILE_FISH_PATH) == 0) {
@@ -200,6 +214,17 @@ static float combat_target_contact_radius(const Entity *target) {
     return target->bodyRadius;
 }
 
+static bool combat_target_is_airborne(const Entity *target) {
+    if (!target) return false;
+    return target->projectileVisualType == PROJECTILE_VISUAL_BIRD_BOMB;
+}
+
+static bool combat_attacker_can_hit_air(const Entity *attacker) {
+    if (!attacker) return false;
+    return attacker->type == ENTITY_BUILDING ||
+           attacker->projectileVisualType == PROJECTILE_VISUAL_FISH;
+}
+
 static bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
                                         CombatEffectPayload *outPayload) {
     if (g_forceBuildPayloadFailure) return false;
@@ -211,6 +236,7 @@ static bool combat_build_effect_payload(const Entity *attacker, const Entity *ta
     outPayload->kind = (target->ownerID == attacker->ownerID)
         ? PROJECTILE_EFFECT_HEAL
         : PROJECTILE_EFFECT_DAMAGE;
+    outPayload->canHitAir = combat_attacker_can_hit_air(attacker);
     return true;
 }
 
@@ -231,7 +257,12 @@ static bool combat_apply_effect_payload(const CombatEffectPayload *payload,
     }
 
     if (!target->alive || target->markedForRemoval) return false;
+    if (combat_target_is_airborne(target) && !payload->canHitAir) return false;
     target->hp -= payload->amount;
+    if (target->type != ENTITY_BUILDING) {
+        spawn_fx_emit_blood(&gs->spawnFx, combat_damage_fx_position(target),
+                            (target->spriteScale > 0.0f) ? target->spriteScale : 1.0f);
+    }
     if (target->hp <= 0) {
         target->hp = 0;
         target->alive = false;
@@ -253,12 +284,16 @@ static void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
     g_lastBurstRadius = radius;
     g_lastBurstDamage = damage;
 
+    Entity *source = bf_find_entity(&gs->battlefield, sourceEntityId);
+    bool canHitAir = combat_attacker_can_hit_air(source);
+
     for (int i = 0; i < gs->battlefield.entityCount; i++) {
         Entity *target = gs->battlefield.entities[i];
         if (!target) continue;
         if (!target->alive || target->markedForRemoval) continue;
         if (target->type == ENTITY_PROJECTILE) continue;
         if (target->ownerID == sourceOwnerId) continue;
+        if (combat_target_is_airborne(target) && !canHitAir) continue;
 
         float dx = target->position.x - center.x;
         float dy = target->position.y - center.y;
@@ -270,6 +305,7 @@ static void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
             .amount = damage,
             .sourceEntityId = sourceEntityId,
             .sourceOwnerId = sourceOwnerId,
+            .canHitAir = canHitAir,
         };
         combat_apply_effect_payload(&payload, target, gs);
     }
@@ -286,6 +322,20 @@ static void spawn_fx_emit_explosion(SpawnFxSystem *fx, Vector2 position, float s
     g_lastExplosionScale = scale;
 }
 
+static void spawn_fx_emit_blood(SpawnFxSystem *fx, Vector2 position, float scale) {
+    if (!fx) return;
+
+    fx->bloodEmitCount++;
+    fx->lastBloodPos = position;
+    fx->lastBloodScale = scale;
+
+    if (g_bloodEmitCalls < (int)(sizeof(g_bloodPositions) / sizeof(g_bloodPositions[0]))) {
+        g_bloodPositions[g_bloodEmitCalls] = position;
+        g_bloodScales[g_bloodEmitCalls] = scale;
+    }
+    g_bloodEmitCalls++;
+}
+
 #include "../src/entities/projectile.c"
 
 static void reset_observers(void) {
@@ -297,6 +347,7 @@ static void reset_observers(void) {
     g_applyCalls = 0;
     g_burstCalls = 0;
     g_explosionEmitCalls = 0;
+    g_bloodEmitCalls = 0;
     g_lastPayload = NULL;
     g_lastAppliedTarget = NULL;
     g_nextImpactEndsGame = false;
@@ -306,6 +357,8 @@ static void reset_observers(void) {
     g_lastBurstDamage = 0;
     g_lastExplosionPos = (Vector2){0};
     g_lastExplosionScale = 0.0f;
+    memset(g_bloodPositions, 0, sizeof(g_bloodPositions));
+    memset(g_bloodScales, 0, sizeof(g_bloodScales));
 }
 
 static GameState make_game_state(void) {
@@ -382,8 +435,35 @@ static void test_update_uses_swept_collision_against_live_target(void) {
     assert(g_applyCalls == 1);
     assert(g_lastAppliedTarget == &target);
     assert(g_explosionEmitCalls == 0);
+    assert(g_bloodEmitCalls == 1);
+    assert(fabsf(g_bloodPositions[0].x - target.position.x) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - target.position.y) < 0.001f);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_update_uses_swept_collision_against_live_target\n");
+}
+
+static void test_direct_projectile_blood_stays_on_target_not_contact_point(void) {
+    reset_observers();
+    GameState gs = make_game_state();
+    Entity attacker = make_entity(1, 0, ENTITY_TROOP, (Vector2){0.0f, 0.0f});
+    Entity target = make_entity(2, 1, ENTITY_TROOP, (Vector2){10.0f, 4.0f});
+    attacker.projectileSpeed = 20.0f;
+    attacker.projectileHitRadius = 1.0f;
+    target.bodyRadius = 4.5f;
+
+    battlefield_add(&gs.battlefield, &target);
+    assert(projectile_spawn_for_attack(&gs, &attacker, &target));
+
+    target.position = (Vector2){10.0f, 4.0f};
+    projectile_system_update(&gs, 1.0f);
+
+    assert(g_applyCalls == 1);
+    assert(g_bloodEmitCalls == 1);
+    assert(fabsf(g_bloodPositions[0].x - 10.0f) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - 4.0f) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - 0.0f) > 0.001f);
+    assert(!gs.projectileSystem.projectiles[0].active);
+    printf("  PASS: test_direct_projectile_blood_stays_on_target_not_contact_point\n");
 }
 
 static void test_heal_projectile_noops_when_target_is_full(void) {
@@ -572,6 +652,7 @@ static void test_bird_bomb_splash_damages_multiple_enemies_on_impact(void) {
     assert(g_burstCalls == 1);
     assert(g_explosionEmitCalls == 1);
     assert(g_applyCalls == 2);
+    assert(g_bloodEmitCalls == 2);
     assert(target.hp == 13);
     assert(nearbyEnemy.hp == 13);
     assert(fabsf(g_lastBurstCenter.x - 20.0f) < 0.001f);
@@ -581,6 +662,10 @@ static void test_bird_bomb_splash_damages_multiple_enemies_on_impact(void) {
     assert(fabsf(g_lastExplosionPos.x - 20.0f) < 0.001f);
     assert(fabsf(g_lastExplosionPos.y - 0.0f) < 0.001f);
     assert(fabsf(g_lastExplosionScale - 2.0f) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].x - target.position.x) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - target.position.y) < 0.001f);
+    assert(fabsf(g_bloodPositions[1].x - nearbyEnemy.position.x) < 0.001f);
+    assert(fabsf(g_bloodPositions[1].y - nearbyEnemy.position.y) < 0.001f);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_bird_bomb_splash_damages_multiple_enemies_on_impact\n");
 }
@@ -637,8 +722,11 @@ static void test_bird_bomb_splash_damages_enemy_buildings(void) {
     assert(g_burstCalls == 1);
     assert(g_explosionEmitCalls == 1);
     assert(g_applyCalls == 2);
+    assert(g_bloodEmitCalls == 1);
     assert(target.hp == 13);
     assert(building.hp == 13);
+    assert(fabsf(g_bloodPositions[0].x - target.position.x) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - target.position.y) < 0.001f);
     printf("  PASS: test_bird_bomb_splash_damages_enemy_buildings\n");
 }
 
@@ -665,12 +753,15 @@ static void test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_de
     assert(g_burstCalls == 1);
     assert(g_explosionEmitCalls == 1);
     assert(g_applyCalls == 1);
+    assert(g_bloodEmitCalls == 1);
     assert(deadTarget.hp == 0);
     assert(nearbyEnemy.hp == 13);
     assert(fabsf(g_lastBurstCenter.x - 20.0f) < 0.001f);
     assert(fabsf(g_lastExplosionPos.x - 20.0f) < 0.001f);
     assert(fabsf(g_lastExplosionPos.y - 0.0f) < 0.001f);
     assert(fabsf(g_lastExplosionScale - 2.0f) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].x - nearbyEnemy.position.x) < 0.001f);
+    assert(fabsf(g_bloodPositions[0].y - nearbyEnemy.position.y) < 0.001f);
     assert(!gs.projectileSystem.projectiles[0].active);
     printf("  PASS: test_bird_bomb_reaches_snapshot_and_still_explodes_when_target_is_dead\n");
 }
@@ -749,6 +840,7 @@ int main(void) {
     printf("Running projectile tests...\n");
     test_spawn_uses_launch_offset_and_snapshot_target();
     test_update_uses_swept_collision_against_live_target();
+    test_direct_projectile_blood_stays_on_target_not_contact_point();
     test_heal_projectile_noops_when_target_is_full();
     test_bird_bomb_spawn_uses_beak_offset();
     test_reserved_slot_is_ignored_until_activated();

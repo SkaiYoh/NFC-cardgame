@@ -12,6 +12,7 @@
 #include "../entities/entities.h"
 #include <math.h>
 #include <float.h>
+#include <limits.h>
 #include <stdio.h>
 
 static float combat_center_distance(Vector2 a, Vector2 b) {
@@ -37,6 +38,83 @@ static bool combat_uses_direct_range(const Entity *attacker, const Entity *targe
     (void)target;
     if (!attacker) return true;
     return attacker->engagementMode == ATTACK_ENGAGEMENT_DIRECT_RANGE;
+}
+
+bool combat_can_damage_target(const Entity *attacker, const Entity *target);
+bool combat_enemy_target_is_better(const Entity *attacker,
+                                   const Entity *candidate, float candidateDist,
+                                   const Entity *bestTarget, float bestDist);
+
+static bool combat_target_is_airborne(const Entity *target) {
+    if (!target) return false;
+    return target->combatProfileId == COMBAT_PROFILE_BIRD ||
+           target->projectileVisualType == PROJECTILE_VISUAL_BIRD_BOMB;
+}
+
+static bool combat_attacker_can_hit_air(const Entity *attacker) {
+    if (!attacker) return false;
+    return attacker->type == ENTITY_BUILDING ||
+           attacker->combatProfileId == COMBAT_PROFILE_FISHFING ||
+           attacker->projectileVisualType == PROJECTILE_VISUAL_FISH;
+}
+
+static bool combat_target_mode_is(const Entity *attacker, const char *mode) {
+    if (!attacker || !mode) return false;
+    if (attacker->targeting != TARGET_SPECIFIC_TYPE) return false;
+    if (!attacker->targetType) return false;
+    return strcmp(attacker->targetType, mode) == 0;
+}
+
+static float combat_health_ratio(const Entity *target) {
+    if (!target || target->maxHP <= 0) return 1.0f;
+    return (float)target->hp / (float)target->maxHP;
+}
+
+static int combat_enemy_target_category(const Entity *attacker, const Entity *candidate) {
+    if (!attacker || !candidate) return INT_MAX;
+
+    if (attacker->targeting == TARGET_BUILDING) {
+        return (candidate->type == ENTITY_BUILDING) ? 0 : 1;
+    }
+
+    if (combat_target_mode_is(attacker, "farmer_first_lowest_hp")) {
+        if (candidate->type == ENTITY_BUILDING) return 2;
+        if (candidate->unitRole == UNIT_ROLE_FARMER) return 0;
+        return 1;
+    }
+
+    if (combat_target_mode_is(attacker, "anti_air_first")) {
+        return combat_target_is_airborne(candidate) ? 0 : 1;
+    }
+
+    return 0;
+}
+
+static bool combat_enemy_target_prefers_low_health(const Entity *attacker,
+                                                   int category) {
+    return combat_target_mode_is(attacker, "farmer_first_lowest_hp") &&
+           category == 1;
+}
+
+static Entity *combat_find_source_entity(GameState *gs, int sourceEntityId) {
+    if (!gs || sourceEntityId < 0) return NULL;
+
+    Battlefield *bf = &gs->battlefield;
+    for (int i = 0; i < bf->entityCount; i++) {
+        Entity *source = bf->entities[i];
+        if (source && source->id == sourceEntityId) {
+            return source;
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        Entity *base = gs->players[i].base;
+        if (base && base->id == sourceEntityId) {
+            return base;
+        }
+    }
+
+    return NULL;
 }
 
 float combat_target_contact_radius(const Entity *target) {
@@ -242,6 +320,7 @@ static Entity *combat_find_heal_target(Entity *attacker, GameState *gs) {
     Battlefield *bf = &gs->battlefield;
     Entity *bestTarget = NULL;
     float bestDist = FLT_MAX;
+    float bestRatio = FLT_MAX;
     CanonicalPos attackerPos = { attacker->position };
 
     for (int i = 0; i < bf->entityCount; i++) {
@@ -252,7 +331,10 @@ static Entity *combat_find_heal_target(Entity *attacker, GameState *gs) {
         float d = bf_distance(attackerPos, candidatePos);
         if (d > attacker->attackRange) continue;                // already in range only
 
-        if (d < bestDist) {
+        float ratio = combat_health_ratio(candidate);
+        if (ratio < bestRatio - 0.0001f ||
+            ((ratio <= bestRatio + 0.0001f) && d < bestDist)) {
+            bestRatio = ratio;
             bestDist = d;
             bestTarget = candidate;
         }
@@ -273,38 +355,16 @@ static Entity *combat_find_enemy_within(Entity *attacker, GameState *gs, float m
 
     for (int i = 0; i < bf->entityCount; i++) {
         Entity *candidate = bf->entities[i];
-        if (!candidate->alive || candidate->markedForRemoval) continue;
-        if (candidate->ownerID == attacker->ownerID) continue; // skip friendlies
+        if (!combat_can_damage_target(attacker, candidate)) continue;
 
         CanonicalPos candidatePos = { candidate->position };
         float d = bf_distance(attackerPos, candidatePos);
         if (d > maxRadius) continue;
 
-        switch (attacker->targeting) {
-            case TARGET_BUILDING:
-                if (candidate->type == ENTITY_BUILDING) {
-                    if (d < bestDist || (bestTarget && bestTarget->type != ENTITY_BUILDING)) {
-                        bestDist = d;
-                        bestTarget = candidate;
-                    }
-                    continue;
-                }
-                // Fall through to nearest for non-buildings as fallback
-                // fallthrough
-            case TARGET_NEAREST:
-            case TARGET_SPECIFIC_TYPE: // No name field on Entity yet -- falls back to nearest
-                if (d < bestDist || bestTarget == NULL) {
-                    if (attacker->targeting == TARGET_BUILDING && bestTarget &&
-                        bestTarget->type == ENTITY_BUILDING) {
-                        // Don't replace a building target with a non-building
-                        continue;
-                    }
-                    if (d < bestDist) {
-                        bestDist = d;
-                        bestTarget = candidate;
-                    }
-                }
-                break;
+        if (combat_enemy_target_is_better(attacker, candidate, d,
+                                          bestTarget, bestDist)) {
+            bestDist = d;
+            bestTarget = candidate;
         }
     }
     return bestTarget;
@@ -327,6 +387,41 @@ Entity *combat_find_target_within_radius(Entity *attacker, GameState *gs, float 
     if (!attacker || !gs) return NULL;
     if (maxRadius < 0.0f) return NULL;
     return combat_find_enemy_within(attacker, gs, maxRadius);
+}
+
+bool combat_can_damage_target(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return false;
+    if (!target->alive || target->markedForRemoval) return false;
+    if (target->ownerID == attacker->ownerID) return false;
+    if (target->type == ENTITY_PROJECTILE) return false;
+    if (combat_target_is_airborne(target) &&
+        !combat_attacker_can_hit_air(attacker)) {
+        return false;
+    }
+    return true;
+}
+
+bool combat_enemy_target_is_better(const Entity *attacker,
+                                   const Entity *candidate, float candidateDist,
+                                   const Entity *bestTarget, float bestDist) {
+    if (!attacker || !candidate) return false;
+    if (!combat_can_damage_target(attacker, candidate)) return false;
+    if (!bestTarget) return true;
+
+    int candidateCategory = combat_enemy_target_category(attacker, candidate);
+    int bestCategory = combat_enemy_target_category(attacker, bestTarget);
+    if (candidateCategory != bestCategory) {
+        return candidateCategory < bestCategory;
+    }
+
+    if (combat_enemy_target_prefers_low_health(attacker, candidateCategory)) {
+        float candidateRatio = combat_health_ratio(candidate);
+        float bestRatio = combat_health_ratio(bestTarget);
+        if (candidateRatio < bestRatio - 0.0001f) return true;
+        if (candidateRatio > bestRatio + 0.0001f) return false;
+    }
+
+    return candidateDist < bestDist;
 }
 
 bool entity_take_damage(Entity *entity, int damage) {
@@ -409,11 +504,15 @@ bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
             .amount = attacker->healAmount,
             .sourceEntityId = attacker->id,
             .sourceOwnerId = attacker->ownerID,
+            .canHitAir = false,
         };
         return true;
     }
 
     if (combat_is_invalid_supporter_friendly_target(attacker, target)) {
+        return false;
+    }
+    if (!combat_can_damage_target(attacker, target)) {
         return false;
     }
 
@@ -422,6 +521,7 @@ bool combat_build_effect_payload(const Entity *attacker, const Entity *target,
         .amount = attacker->attack,
         .sourceEntityId = attacker->id,
         .sourceOwnerId = attacker->ownerID,
+        .canHitAir = combat_attacker_can_hit_air(attacker),
     };
     return true;
 }
@@ -460,6 +560,9 @@ bool combat_apply_effect_payload(const CombatEffectPayload *payload,
     if (target->ownerID == payload->sourceOwnerId) {
         return false;
     }
+    if (combat_target_is_airborne(target) && !payload->canHitAir) {
+        return false;
+    }
 
     bool killed = entity_take_damage(target, payload->amount);
     combat_emit_damage_fx(target, gs);
@@ -485,12 +588,11 @@ void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
     combat_apply_effect_payload(&payload, target, gs);
 }
 
-void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
-                              int sourceEntityId, int sourceOwnerId,
-                              GameState *gs) {
-    if (!gs) return;
-    if (damage <= 0 || radius <= 0.0f) return;
-
+static void combat_apply_enemy_burst_with_air_policy(Vector2 center, float radius,
+                                                     int damage, int sourceEntityId,
+                                                     int sourceOwnerId,
+                                                     bool sourceCanHitAir,
+                                                     GameState *gs) {
     Battlefield *bf = &gs->battlefield;
     CanonicalPos burstPos = { center };
 
@@ -500,6 +602,7 @@ void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
         if (!target->alive || target->markedForRemoval) continue;
         if (target->type == ENTITY_PROJECTILE) continue;
         if (target->ownerID == sourceOwnerId) continue;
+        if (combat_target_is_airborne(target) && !sourceCanHitAir) continue;
 
         CanonicalPos targetPos = { target->position };
         float dist = bf_distance(burstPos, targetPos);
@@ -520,10 +623,25 @@ void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
     }
 }
 
+void combat_apply_enemy_burst(Vector2 center, float radius, int damage,
+                              int sourceEntityId, int sourceOwnerId,
+                              GameState *gs) {
+    if (!gs) return;
+    if (damage <= 0 || radius <= 0.0f) return;
+
+    Entity *source = combat_find_source_entity(gs, sourceEntityId);
+    bool sourceCanHitAir = source && combat_attacker_can_hit_air(source);
+    combat_apply_enemy_burst_with_air_policy(center, radius, damage,
+                                             sourceEntityId, sourceOwnerId,
+                                             sourceCanHitAir, gs);
+}
+
 void combat_apply_king_burst(Entity *base, float radius, int damage, GameState *gs) {
     if (!base || !gs) return;
     if (damage <= 0 || radius <= 0.0f) return;
-    combat_apply_enemy_burst(base->position, radius, damage, base->id, base->ownerID, gs);
+    combat_apply_enemy_burst_with_air_policy(base->position, radius, damage,
+                                             base->id, base->ownerID,
+                                             combat_attacker_can_hit_air(base), gs);
 }
 
 void combat_resolve(Entity *attacker, Entity *target, GameState *gs, float deltaTime) {

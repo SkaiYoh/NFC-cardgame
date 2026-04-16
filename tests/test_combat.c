@@ -186,6 +186,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    bool canHitAir;
 } CombatEffectPayload;
 
 struct Entity {
@@ -517,6 +518,8 @@ static void bf_test_add_entity(GameState *gs, Entity *e) {
 }
 
 static Entity make_healer(int ownerID, Vector2 pos);
+static Entity make_bird(int ownerID, Vector2 pos);
+static Entity make_fishfing(int ownerID, Vector2 pos);
 
 /* ---- Tests ---- */
 static int tests_run = 0;
@@ -710,6 +713,57 @@ static void test_find_target_building_priority(void) {
     assert(target == &building);
 }
 
+static void test_find_target_assassin_prefers_farmer_then_low_health(void) {
+    GameState gs = make_game_state();
+    Entity assassin = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    assassin.targeting = TARGET_SPECIFIC_TYPE;
+    assassin.targetType = "farmer_first_lowest_hp";
+
+    Entity farmer = make_entity(1, ENTITY_TROOP, (Vector2){540, 930});
+    farmer.unitRole = UNIT_ROLE_FARMER;
+
+    Entity bruiser = make_entity(1, ENTITY_TROOP, (Vector2){540, 900});
+    bruiser.hp = 10;
+    bruiser.maxHP = 100;
+
+    bf_test_add_entity(&gs, &farmer);
+    bf_test_add_entity(&gs, &bruiser);
+
+    Entity *target = combat_find_target(&assassin, &gs);
+    assert(target == &farmer);
+
+    farmer.alive = false;
+    target = combat_find_target(&assassin, &gs);
+    assert(target == &bruiser);
+}
+
+static void test_find_target_antiair_prefers_bird(void) {
+    GameState gs = make_game_state();
+    Entity fishfing = make_fishfing(0, (Vector2){540, 970});
+    fishfing.targeting = TARGET_SPECIFIC_TYPE;
+    fishfing.targetType = "anti_air_first";
+
+    Entity troop = make_entity(1, ENTITY_TROOP, (Vector2){540, 930});
+    Entity bird = make_bird(1, (Vector2){540, 900});
+
+    bf_test_add_entity(&gs, &troop);
+    bf_test_add_entity(&gs, &bird);
+
+    Entity *target = combat_find_target(&fishfing, &gs);
+    assert(target == &bird);
+}
+
+static void test_find_target_non_antiair_skips_airborne_enemy(void) {
+    GameState gs = make_game_state();
+    Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    Entity bird = make_bird(1, (Vector2){540, 930});
+
+    bf_test_add_entity(&gs, &bird);
+
+    Entity *target = combat_find_target(&knight, &gs);
+    assert(target == NULL);
+}
+
 static void test_find_target_returns_null_no_enemies(void) {
     GameState gs = make_game_state();
     Entity attacker = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
@@ -747,6 +801,28 @@ static void test_resolve_deals_damage(void) {
 
     assert(target.hp == 75);
     assert(attacker.attackCooldown > 0.0f);
+}
+
+static void test_apply_hit_rejects_air_target_for_non_antiair(void) {
+    GameState gs = make_game_state();
+    Entity knight = make_entity(0, ENTITY_TROOP, (Vector2){540, 970});
+    Entity bird = make_bird(1, (Vector2){540, 930});
+
+    int hp_before = bird.hp;
+    combat_apply_hit(&knight, &bird, &gs);
+
+    assert(bird.hp == hp_before);
+}
+
+static void test_apply_hit_allows_air_target_for_fishfing(void) {
+    GameState gs = make_game_state();
+    Entity fishfing = make_fishfing(0, (Vector2){540, 970});
+    fishfing.attack = 24;
+    Entity bird = make_bird(1, (Vector2){540, 930});
+
+    combat_apply_hit(&fishfing, &bird, &gs);
+
+    assert(bird.hp == 76);
 }
 
 static void test_resolve_respects_cooldown(void) {
@@ -1206,6 +1282,39 @@ static void test_king_burst_null_and_invalid_params_are_noops(void) {
     assert(gs.winnerID == -1);
 }
 
+static void test_enemy_burst_from_bird_ignores_airborne_targets(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity bird = make_bird(0, (Vector2){540, 1600});
+    Entity enemyBird = make_bird(1, (Vector2){560, 1600});
+    Entity enemyTroop = make_entity(1, ENTITY_TROOP, (Vector2){520, 1600});
+
+    bf_test_add_entity(&gs, &bird);
+    bf_test_add_entity(&gs, &enemyBird);
+    bf_test_add_entity(&gs, &enemyTroop);
+
+    combat_apply_enemy_burst(bird.position, 80.0f, 20, bird.id, bird.ownerID, &gs);
+
+    assert(enemyBird.hp == 100);
+    assert(enemyTroop.hp == 80);
+}
+
+static void test_king_burst_hits_airborne_enemy(void) {
+    reset_test_observers();
+    GameState gs = make_game_state();
+
+    Entity base = make_entity(0, ENTITY_BUILDING, (Vector2){540, 1600});
+    Entity enemyBird = make_bird(1, (Vector2){560, 1600});
+
+    bf_test_add_entity(&gs, &base);
+    bf_test_add_entity(&gs, &enemyBird);
+
+    combat_apply_king_burst(&base, 100.0f, 30, &gs);
+
+    assert(enemyBird.hp == 70);
+}
+
 /* ---- Win-latch path tests ---- */
 
 static void test_apply_hit_kills_p1_base_latches_p2_win(void) {
@@ -1339,6 +1448,22 @@ static Entity make_healer(int ownerID, Vector2 pos) {
     return h;
 }
 
+static Entity make_bird(int ownerID, Vector2 pos) {
+    Entity bird = make_entity(ownerID, ENTITY_TROOP, pos);
+    bird.combatProfileId = COMBAT_PROFILE_BIRD;
+    bird.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
+    bird.projectileVisualType = PROJECTILE_VISUAL_BIRD_BOMB;
+    return bird;
+}
+
+static Entity make_fishfing(int ownerID, Vector2 pos) {
+    Entity fishfing = make_entity(ownerID, ENTITY_TROOP, pos);
+    fishfing.combatProfileId = COMBAT_PROFILE_FISHFING;
+    fishfing.deliveryMode = ATTACK_DELIVERY_PROJECTILE;
+    fishfing.projectileVisualType = PROJECTILE_VISUAL_FISH;
+    return fishfing;
+}
+
 static void test_healer_prefers_injured_ally_in_range(void) {
     GameState gs = make_game_state();
     Entity healer = make_healer(0, (Vector2){540, 970});
@@ -1353,6 +1478,28 @@ static void test_healer_prefers_injured_ally_in_range(void) {
 
     Entity *target = combat_find_target(&healer, &gs);
     assert(target == &injured_ally);
+}
+
+static void test_healer_prefers_lowest_health_ratio_ally_in_range(void) {
+    GameState gs = make_game_state();
+    Entity healer = make_healer(0, (Vector2){540, 970});
+
+    Entity near_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 990});
+    near_ally.hp = 40;
+    near_ally.maxHP = 100;
+
+    Entity more_injured_ally = make_entity(0, ENTITY_TROOP, (Vector2){540, 1020});
+    more_injured_ally.hp = 20;
+    more_injured_ally.maxHP = 100;
+
+    Entity enemy = make_entity(1, ENTITY_TROOP, (Vector2){540, 950});
+
+    bf_test_add_entity(&gs, &near_ally);
+    bf_test_add_entity(&gs, &more_injured_ally);
+    bf_test_add_entity(&gs, &enemy);
+
+    Entity *target = combat_find_target(&healer, &gs);
+    assert(target == &more_injured_ally);
 }
 
 static void test_healer_falls_back_to_enemy_when_no_injured_ally(void) {
@@ -1635,6 +1782,22 @@ static void test_find_within_radius_preserves_building_priority(void) {
     assert(target == &building);
 }
 
+static void test_find_within_radius_preserves_antiair_priority(void) {
+    GameState gs = make_game_state();
+    Entity fishfing = make_fishfing(0, (Vector2){540, 970});
+    fishfing.targeting = TARGET_SPECIFIC_TYPE;
+    fishfing.targetType = "anti_air_first";
+
+    Entity troop = make_entity(1, ENTITY_TROOP, (Vector2){540, 940});
+    Entity bird = make_bird(1, (Vector2){540, 900});
+
+    bf_test_add_entity(&gs, &troop);
+    bf_test_add_entity(&gs, &bird);
+
+    Entity *target = combat_find_target_within_radius(&fishfing, &gs, 200.0f);
+    assert(target == &bird);
+}
+
 static void test_find_within_radius_ignores_injured_ally_for_healer(void) {
     /* Walking healers use this probe. It must be enemy-only -- no heal branch --
      * so healers only seek heal targets when already in attack range (via
@@ -1697,6 +1860,9 @@ int main(void) {
     RUN_TEST(test_find_target_skips_dead);
     RUN_TEST(test_find_target_skips_marked);
     RUN_TEST(test_find_target_building_priority);
+    RUN_TEST(test_find_target_assassin_prefers_farmer_then_low_health);
+    RUN_TEST(test_find_target_antiair_prefers_bird);
+    RUN_TEST(test_find_target_non_antiair_skips_airborne_enemy);
     RUN_TEST(test_find_target_returns_null_no_enemies);
     RUN_TEST(test_find_target_skips_friendly);
     RUN_TEST(test_resolve_deals_damage);
@@ -1709,6 +1875,8 @@ int main(void) {
     RUN_TEST(test_take_damage_null_safety);
     RUN_TEST(test_canonical_distance_direct);
     RUN_TEST(test_apply_hit_deals_damage);
+    RUN_TEST(test_apply_hit_rejects_air_target_for_non_antiair);
+    RUN_TEST(test_apply_hit_allows_air_target_for_fishfing);
     RUN_TEST(test_apply_hit_kills);
     RUN_TEST(test_apply_hit_skips_dead);
     RUN_TEST(test_apply_hit_null_safety);
@@ -1724,6 +1892,8 @@ int main(void) {
     RUN_TEST(test_king_burst_kills_enemy_base_latches_win);
     RUN_TEST(test_king_burst_kills_non_base_building_without_match_end);
     RUN_TEST(test_king_burst_null_and_invalid_params_are_noops);
+    RUN_TEST(test_enemy_burst_from_bird_ignores_airborne_targets);
+    RUN_TEST(test_king_burst_hits_airborne_enemy);
     RUN_TEST(test_apply_hit_kills_p1_base_latches_p2_win);
     RUN_TEST(test_resolve_kills_p2_base_latches_p1_win);
     RUN_TEST(test_killing_non_base_building_no_match_end);
@@ -1733,6 +1903,7 @@ int main(void) {
     RUN_TEST(test_building_take_damage_kills_non_base_no_match_end);
 
     RUN_TEST(test_healer_prefers_injured_ally_in_range);
+    RUN_TEST(test_healer_prefers_lowest_health_ratio_ally_in_range);
     RUN_TEST(test_healer_falls_back_to_enemy_when_no_injured_ally);
     RUN_TEST(test_healer_ignores_off_range_injured_ally);
     RUN_TEST(test_healer_ignores_self);
@@ -1752,6 +1923,7 @@ int main(void) {
     RUN_TEST(test_find_within_radius_returns_enemy_inside_limit);
     RUN_TEST(test_find_within_radius_excludes_enemy_outside_limit);
     RUN_TEST(test_find_within_radius_preserves_building_priority);
+    RUN_TEST(test_find_within_radius_preserves_antiair_priority);
     RUN_TEST(test_find_within_radius_ignores_injured_ally_for_healer);
     RUN_TEST(test_find_within_radius_skips_dead_and_marked);
     RUN_TEST(test_find_within_radius_null_safety);

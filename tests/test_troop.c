@@ -370,6 +370,38 @@ static void test_healer_defaults_to_forehead_projectile_launch_offset(void) {
     printf("  PASS: test_healer_defaults_to_forehead_projectile_launch_offset\n");
 }
 
+static void test_bird_defaults_to_air_bomb_profile(void) {
+    Card bird = {
+        .card_id = "BIRD_01",
+        .name = "Bird",
+        .type = "bird",
+        .data = NULL,
+    };
+
+    TroopData data = troop_create_data_from_card(&bird);
+
+    assert(data.projectileVisualType == PROJECTILE_VISUAL_BIRD_BOMB);
+    assert(data.projectileSpeed == 220.0f);
+    assert(data.projectileSplashRadius == 40.0f);
+    printf("  PASS: test_bird_defaults_to_air_bomb_profile\n");
+}
+
+static void test_fishfing_defaults_to_fast_anti_air_profile(void) {
+    Card fishfing = {
+        .card_id = "FISHFING_01",
+        .name = "Fishfing",
+        .type = "fishfing",
+        .data = NULL,
+    };
+
+    TroopData data = troop_create_data_from_card(&fishfing);
+
+    assert(data.projectileVisualType == PROJECTILE_VISUAL_FISH);
+    assert(data.projectileSpeed == 300.0f);
+    assert(data.projectileHitRadius == 12.0f);
+    printf("  PASS: test_fishfing_defaults_to_fast_anti_air_profile\n");
+}
+
 static void test_troop_spawn_copies_render_layer_from_data(void) {
     Player owner = { .id = 0, .side = SIDE_BOTTOM };
     SpriteAtlas atlas = {0};
@@ -396,6 +428,8 @@ static void test_building_create_base_keeps_ground_render_layer(void) {
     Entity *base = building_create_base(&owner, (Vector2){540.0f, 1800.0f}, &atlas);
 
     assert(base != NULL);
+    assert(base->hp == 4000);
+    assert(base->maxHP == 4000);
     assert(base->renderLayer == ENTITY_RENDER_LAYER_GROUND);
     free(base);
     printf("  PASS: test_building_create_base_keeps_ground_render_layer\n");
@@ -406,6 +440,8 @@ int main(void) {
     test_bird_defaults_to_flying_render_layer();
     test_knight_defaults_to_ground_render_layer();
     test_healer_defaults_to_forehead_projectile_launch_offset();
+    test_bird_defaults_to_air_bomb_profile();
+    test_fishfing_defaults_to_fast_anti_air_profile();
     test_troop_spawn_copies_render_layer_from_data();
     test_building_create_base_keeps_ground_render_layer();
     printf("\nAll troop tests passed!\n");

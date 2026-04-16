@@ -130,6 +130,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    bool canHitAir;
 } CombatEffectPayload;
 
 typedef struct {

@@ -36,12 +36,12 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "blue",
       "show_energy_bot":    false
     },
-    "hp":          220,
-    "maxHP":       220,
-    "attack":      28,
-    "attackSpeed": 0.75,
-    "attackRange": 50.0,
-    "moveSpeed":   58.0,
+    "hp":          180,
+    "maxHP":       180,
+    "attack":      20,
+    "attackSpeed": 0.95,
+    "attackRange": 52.0,
+    "moveSpeed":   60.0,
     "targeting":   "nearest",
     "targetType":  null
   }'
@@ -80,14 +80,13 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "magenta",
       "show_energy_bot":    false
     },
-    "hp":          75,
-    "maxHP":       75,
-    "attack":      42,
-    "attackSpeed": 1.8,
-    "attackRange": 32.0,
-    "moveSpeed":   100.0,
-    "targeting":   "nearest",
-    "targetType":  null
+    "hp":          140,
+    "maxHP":       140,
+    "attack":      16,
+    "attackSpeed": 1.55,
+    "attackRange": 38.0,
+    "moveSpeed":   92.0,
+    "targeting":   "farmer_first_lowest_hp"
   }'
 ),
 
@@ -95,9 +94,9 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
   'BRUTE_01',
   'Brute',
   6,
-  'sustenance',
+  'energy',
   'brute',
-  'An unstoppable force of destruction fueled by your gathered sustenance.',
+  'A towering frontline tank that soaks damage and opens space for the rest of your push.',
   '{
     "visual": {
       "border_color":       "red",
@@ -124,13 +123,13 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "red",
       "show_energy_bot":    true
     },
-    "hp":          380,
-    "maxHP":       380,
-    "attack":      55,
-    "attackSpeed": 0.5,
-    "attackRange": 48.0,
-    "moveSpeed":   28.0,
-    "targeting":   "building",
+    "hp":          320,
+    "maxHP":       320,
+    "attack":      16,
+    "attackSpeed": 0.6,
+    "attackRange": 56.0,
+    "moveSpeed":   38.0,
+    "targeting":   "nearest",
     "targetType":  null
   }'
 ),
@@ -168,8 +167,8 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          90,
-    "maxHP":       90,
+    "hp":          150,
+    "maxHP":       150,
     "moveSpeed":   58.0
   }'
 ),
@@ -207,13 +206,13 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          120,
-    "maxHP":       120,
-    "attack":      5,
-    "healAmount":  8,
-    "attackSpeed": 0.5,
-    "attackRange": 85.0,
-    "moveSpeed":   44.0,
+    "hp":          200,
+    "maxHP":       200,
+    "attack":      8,
+    "healAmount":  18,
+    "attackSpeed": 0.7,
+    "attackRange": 135.0,
+    "moveSpeed":   46.0,
     "targeting":   "nearest",
     "targetType":  null
   }'
@@ -252,12 +251,12 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "yellow",
       "show_energy_bot":    false
     },
-    "hp":          220,
-    "maxHP":       220,
-    "attack":      28,
+    "hp":          150,
+    "maxHP":       150,
+    "attack":      20,
     "attackSpeed": 0.75,
-    "attackRange": 50.0,
-    "moveSpeed":   58.0,
+    "attackRange": 145.0,
+    "moveSpeed":   72.0,
     "targeting":   "nearest",
     "targetType":  null
   }'
@@ -296,14 +295,13 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "aqua",
       "show_energy_bot":    false
     },
-    "hp":          220,
-    "maxHP":       220,
-    "attack":      28,
-    "attackSpeed": 0.75,
-    "attackRange": 50.0,
-    "moveSpeed":   58.0,
-    "targeting":   "nearest",
-    "targetType":  null
+    "hp":          110,
+    "maxHP":       110,
+    "attack":      24,
+    "attackSpeed": 0.9,
+    "attackRange": 170.0,
+    "moveSpeed":   54.0,
+    "targeting":   "anti_air_first"
   }'
 ),
 
@@ -311,9 +309,9 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
   'KING_01',
   'King',
   8,
-  'sustenance',
+  'energy',
   'king',
-  'Spend stored sustenance to channel the crown''s wrath through your base.',
+  'Spend a huge burst of energy to channel the crown''s wrath through your base.',
   '{
     "visual": {
       "border_color":       "yellow",

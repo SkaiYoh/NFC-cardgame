@@ -192,6 +192,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    bool canHitAir;
 } CombatEffectPayload;
 
 typedef struct Entity Entity;
@@ -355,6 +356,71 @@ bool combat_can_heal_target(const Entity *attacker, const Entity *target) {
     if (!target->alive || target->markedForRemoval) return false;
     if (target->hp >= target->maxHP) return false;
     return true;
+}
+
+static bool test_entity_is_airborne(const Entity *entity) {
+    if (!entity) return false;
+    return entity->combatProfileId == COMBAT_PROFILE_BIRD ||
+           entity->projectileVisualType == PROJECTILE_VISUAL_BIRD_BOMB ||
+           entity->renderLayer == ENTITY_RENDER_LAYER_FLYING;
+}
+
+static bool test_entity_can_hit_air(const Entity *entity) {
+    if (!entity) return false;
+    return entity->type == ENTITY_BUILDING ||
+           entity->combatProfileId == COMBAT_PROFILE_FISHFING ||
+           entity->projectileVisualType == PROJECTILE_VISUAL_FISH;
+}
+
+static float test_entity_health_ratio(const Entity *entity) {
+    if (!entity || entity->maxHP <= 0) return 1.0f;
+    return (float) entity->hp / (float) entity->maxHP;
+}
+
+bool combat_can_damage_target(const Entity *attacker, const Entity *target) {
+    if (!attacker || !target) return false;
+    if (target == attacker) return false;
+    if (target->ownerID == attacker->ownerID) return false;
+    if (target->type == ENTITY_PROJECTILE) return false;
+    if (!target->alive || target->markedForRemoval) return false;
+    if (test_entity_is_airborne(target) && !test_entity_can_hit_air(attacker)) {
+        return false;
+    }
+    return true;
+}
+
+bool combat_enemy_target_is_better(const Entity *attacker, const Entity *candidate,
+                                   float candidateDist, const Entity *bestTarget,
+                                   float bestDist) {
+    if (!candidate) return false;
+    if (!bestTarget) return true;
+
+    if (attacker && attacker->targeting == TARGET_BUILDING) {
+        bool candidateIsBuilding = candidate->type == ENTITY_BUILDING;
+        bool bestIsBuilding = bestTarget->type == ENTITY_BUILDING;
+        if (candidateIsBuilding != bestIsBuilding) return candidateIsBuilding;
+    }
+
+    if (attacker && attacker->targeting == TARGET_SPECIFIC_TYPE && attacker->targetType) {
+        if (strcmp(attacker->targetType, "anti_air_first") == 0) {
+            bool candidateIsAir = test_entity_is_airborne(candidate);
+            bool bestIsAir = test_entity_is_airborne(bestTarget);
+            if (candidateIsAir != bestIsAir) return candidateIsAir;
+        } else if (strcmp(attacker->targetType, "farmer_first_lowest_hp") == 0) {
+            bool candidateIsFarmer = candidate->unitRole == UNIT_ROLE_FARMER;
+            bool bestIsFarmer = bestTarget->unitRole == UNIT_ROLE_FARMER;
+            if (candidateIsFarmer != bestIsFarmer) return candidateIsFarmer;
+
+            float candidateRatio = test_entity_health_ratio(candidate);
+            float bestRatio = test_entity_health_ratio(bestTarget);
+            if (fabsf(candidateRatio - bestRatio) > 0.0001f) {
+                return candidateRatio < bestRatio;
+            }
+        }
+    }
+
+    if (fabsf(candidateDist - bestDist) > 0.0001f) return candidateDist < bestDist;
+    return candidate->id < bestTarget->id;
 }
 
 void combat_apply_hit(Entity *attacker, Entity *target, GameState *gs) {
@@ -1501,7 +1567,7 @@ static void test_projectile_attacker_still_cancels_when_target_leaves_range(void
 
     assert(healer.state == ESTATE_WALKING);
     assert(healer.attackTargetId == -1);
-    assert(healer.movementTargetId == enemy.id);
+    assert(healer.movementTargetId == -1);
     assert(g_projectileSpawnCalls == 0);
     assert(g_applyHitCalls == 0);
     assert(healer.attackReleaseFired == false);

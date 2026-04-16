@@ -17,8 +17,8 @@ Entity *building_create_base(Player *owner, Vector2 position, const SpriteAtlas 
     if (!e) return NULL;
 
     // Stats: high HP, no attack, stationary
-    e->hp = 5000;
-    e->maxHP = 5000;
+    e->hp = 4000;
+    e->maxHP = 4000;
     e->attack = 0;
     e->attackSpeed = 0.0f;
     e->attackRange = 0.0f;
