@@ -16,14 +16,16 @@
 #define UI_SUSTENANCE_SPACING 1.0f
 #define UI_SUSTENANCE_PADDING 40.0f
 #define UI_SUSTENANCE_STACK_GAP 12.0f
-#define UI_MEGA_BARF_INWARD_NUDGE 8.0f
-#define UI_MEGA_BARF_ICON_SHEET_WIDTH 128
-#define UI_MEGA_BARF_ICON_SHEET_HEIGHT 32
-#define UI_MEGA_BARF_ICON_SIZE 32.0f
-#define UI_MEGA_BARF_ICON_GAP 10.0f
-#define UI_MEGA_BARF_ICON_ROW 0
+#define UI_STATUS_STACK_INITIAL_OFFSET (UI_SUSTENANCE_STACK_GAP + 8.0f)
+#define UI_BUFF_ICON_SHEET_WIDTH 128
+#define UI_BUFF_ICON_SHEET_HEIGHT 32
+#define UI_BUFF_ICON_SIZE 32.0f
+#define UI_BUFF_ICON_GAP 10.0f
+#define UI_BUFF_ICON_ROW 0
 #define UI_MEGA_BARF_ICON_COL 1
-#define UI_MEGA_BARF_ICON_TILE_PIXELS 32.0f
+// Rotten Roast uses the fourth tile in the sheet (1-based column 4).
+#define UI_ROTTEN_ROAST_ICON_COL 3
+#define UI_BUFF_ICON_TILE_PIXELS 32.0f
 #define UI_MATCH_RESULT_SCALE   8.0f
 #define UI_MATCH_RESULT_SPACING 1.0f
 #define UI_MATCH_RESULT_BACKDROP_ALPHA 0.35f
@@ -123,8 +125,8 @@ static Texture2D ui_load_texture_checked(const char *path, int expectedWidth,
 
 Texture2D ui_load_buff_icons(void) {
     return ui_load_texture_checked(BUFF_ICONS_PATH,
-                                   UI_MEGA_BARF_ICON_SHEET_WIDTH,
-                                   UI_MEGA_BARF_ICON_SHEET_HEIGHT,
+                                   UI_BUFF_ICON_SHEET_WIDTH,
+                                   UI_BUFF_ICON_SHEET_HEIGHT,
                                    "buff icon sheet");
 }
 
@@ -168,36 +170,39 @@ static void ui_format_buff_timer(char *buf, size_t bufSize,
     snprintf(buf, bufSize, "%02d:%02d", minutes, seconds);
 }
 
-static Rectangle ui_mega_barf_icon_src_rect(void) {
+static Rectangle ui_buff_icon_src_rect(int iconCol) {
     return (Rectangle){
-        UI_MEGA_BARF_ICON_COL * UI_MEGA_BARF_ICON_TILE_PIXELS,
-        UI_MEGA_BARF_ICON_ROW * UI_MEGA_BARF_ICON_TILE_PIXELS,
-        UI_MEGA_BARF_ICON_TILE_PIXELS,
-        UI_MEGA_BARF_ICON_TILE_PIXELS
+        iconCol * UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_ROW * UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_TILE_PIXELS
     };
 }
 
-static void ui_draw_mega_barf_status(const Player *p, float rotation,
-                                     Texture2D letteringTexture,
-                                     Texture2D buffIconsTexture,
-                                     Vector2 counterBoundsTopLeft,
-                                     Vector2 counterBoundsSize) {
-    if (!p || !player_energy_regen_boost_is_active(p)) return;
+static float ui_draw_buff_status_block(const Player *p, float rotation,
+                                       Texture2D letteringTexture,
+                                       Texture2D buffIconsTexture,
+                                       Vector2 counterBoundsTopLeft,
+                                       Vector2 counterBoundsSize,
+                                       float stackOffset, int iconCol,
+                                       const char *label,
+                                       UvuliteTextStyle textStyle) {
+    const bool hasLabel = (label && label[0] != '\0');
+    const bool hasIcon = (buffIconsTexture.id != 0 && iconCol >= 0);
+    if (!hasIcon && !hasLabel) return 0.0f;
 
-    char timerLabel[16];
-    ui_format_buff_timer(timerLabel, sizeof(timerLabel),
-                         p->energyRegenBoostRemaining);
+    Vector2 labelSize = { 0.0f, 0.0f };
+    if (hasLabel) {
+        labelSize = ui_measure_label(label, letteringTexture,
+                                     UI_SUSTENANCE_SCALE,
+                                     UI_SUSTENANCE_SPACING);
+    }
 
-    Vector2 timerSize = ui_measure_label(timerLabel, letteringTexture,
-                                         UI_SUSTENANCE_SCALE,
-                                         UI_SUSTENANCE_SPACING);
-    const bool hasIcon = (buffIconsTexture.id != 0);
-    const float iconWidth = hasIcon ? UI_MEGA_BARF_ICON_SIZE : 0.0f;
-    const float iconGap = hasIcon ? UI_MEGA_BARF_ICON_GAP : 0.0f;
-    const float counterGap = UI_SUSTENANCE_STACK_GAP + UI_MEGA_BARF_INWARD_NUDGE;
+    const float iconWidth = hasIcon ? UI_BUFF_ICON_SIZE : 0.0f;
+    const float iconGap = (hasIcon && hasLabel) ? UI_BUFF_ICON_GAP : 0.0f;
     Vector2 blockSize = {
-        iconWidth + iconGap + timerSize.x,
-        (iconWidth > timerSize.y) ? iconWidth : timerSize.y
+        iconWidth + iconGap + labelSize.x,
+        fmaxf(iconWidth, labelSize.y)
     };
 
     Vector2 blockBoundsSize = ui_rotated_text_bounds(blockSize, rotation);
@@ -207,19 +212,19 @@ static void ui_draw_mega_barf_status(const Player *p, float rotation,
         // Player-local "below" for a clockwise-rotated HUD block lands on the
         // screen-left side of its rotated AABB.
         blockBoundsTopLeft = (Vector2){
-            counterBoundsTopLeft.x - counterGap - blockBoundsSize.x,
+            counterBoundsTopLeft.x - stackOffset - blockBoundsSize.x,
             counterBoundsTopLeft.y + (counterBoundsSize.y - blockBoundsSize.y) * 0.5f
         };
     } else if (rot == 270) {
         // Mirrored seat: player-local "below" lands on the screen-right side.
         blockBoundsTopLeft = (Vector2){
-            counterBoundsTopLeft.x + counterBoundsSize.x + counterGap,
+            counterBoundsTopLeft.x + counterBoundsSize.x + stackOffset,
             counterBoundsTopLeft.y + (counterBoundsSize.y - blockBoundsSize.y) * 0.5f
         };
     } else {
         blockBoundsTopLeft = (Vector2){
             counterBoundsTopLeft.x + (counterBoundsSize.x - blockBoundsSize.x) * 0.5f,
-            counterBoundsTopLeft.y + counterBoundsSize.y + UI_SUSTENANCE_STACK_GAP
+            counterBoundsTopLeft.y + counterBoundsSize.y + stackOffset
         };
     }
 
@@ -229,34 +234,69 @@ static void ui_draw_mega_barf_status(const Player *p, float rotation,
     if (hasIcon) {
         Vector2 iconLocalOffset = {
             0.0f,
-            (blockSize.y - UI_MEGA_BARF_ICON_SIZE) * 0.5f
+            (blockSize.y - UI_BUFF_ICON_SIZE) * 0.5f
         };
         Vector2 iconRotatedOffset = ui_rotate_local_offset(iconLocalOffset,
                                                            rotation);
         Rectangle dstRect = {
             blockOrigin.x + iconRotatedOffset.x,
             blockOrigin.y + iconRotatedOffset.y,
-            UI_MEGA_BARF_ICON_SIZE,
-            UI_MEGA_BARF_ICON_SIZE
+            UI_BUFF_ICON_SIZE,
+            UI_BUFF_ICON_SIZE
         };
-        DrawTexturePro(buffIconsTexture, ui_mega_barf_icon_src_rect(),
+        DrawTexturePro(buffIconsTexture, ui_buff_icon_src_rect(iconCol),
                        dstRect, (Vector2){0.0f, 0.0f}, rotation, WHITE);
     }
 
-    Vector2 timerLocalOffset = {
-        iconWidth + iconGap,
-        (blockSize.y - timerSize.y) * 0.5f
-    };
-    Vector2 timerRotatedOffset = ui_rotate_local_offset(timerLocalOffset,
-                                                        rotation);
-    Vector2 timerTopLeft = {
-        blockOrigin.x + timerRotatedOffset.x,
-        blockOrigin.y + timerRotatedOffset.y
-    };
-    ui_draw_label(timerLabel, timerTopLeft, rotation, letteringTexture,
-                  UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
-                  UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON,
-                  ui_sustenance_fallback_color(p));
+    if (hasLabel) {
+        Vector2 labelLocalOffset = {
+            iconWidth + iconGap,
+            (blockSize.y - labelSize.y) * 0.5f
+        };
+        Vector2 labelRotatedOffset = ui_rotate_local_offset(labelLocalOffset,
+                                                            rotation);
+        Vector2 labelTopLeft = {
+            blockOrigin.x + labelRotatedOffset.x,
+            blockOrigin.y + labelRotatedOffset.y
+        };
+        ui_draw_label(label, labelTopLeft, rotation, letteringTexture,
+                      UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
+                      textStyle, ui_sustenance_fallback_color(p));
+    }
+
+    return (rot == 90 || rot == 270) ? blockBoundsSize.x : blockBoundsSize.y;
+}
+
+static void ui_draw_buff_statuses(const Player *p, float rotation,
+                                  Texture2D letteringTexture,
+                                  Texture2D buffIconsTexture,
+                                  Vector2 counterBoundsTopLeft,
+                                  Vector2 counterBoundsSize) {
+    if (!p) return;
+
+    float stackOffset = UI_STATUS_STACK_INITIAL_OFFSET;
+    if (player_energy_regen_boost_is_active(p)) {
+        char timerLabel[16];
+        ui_format_buff_timer(timerLabel, sizeof(timerLabel),
+                             p->energyRegenBoostRemaining);
+
+        float consumedSpan = ui_draw_buff_status_block(
+            p, rotation, letteringTexture, buffIconsTexture,
+            counterBoundsTopLeft, counterBoundsSize, stackOffset,
+            UI_MEGA_BARF_ICON_COL, timerLabel,
+            UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON);
+        if (consumedSpan > 0.0f) {
+            stackOffset += consumedSpan + UI_SUSTENANCE_STACK_GAP;
+        }
+    }
+
+    if (p->rottenRoastIconRemaining > 0.0f && buffIconsTexture.id != 0) {
+        ui_draw_buff_status_block(
+            p, rotation, letteringTexture, buffIconsTexture,
+            counterBoundsTopLeft, counterBoundsSize, stackOffset,
+            UI_ROTTEN_ROAST_ICON_COL, NULL,
+            UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON);
+    }
 }
 
 void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
@@ -299,8 +339,8 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
                   UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS,
                   ui_sustenance_fallback_color(p));
 
-    ui_draw_mega_barf_status(p, rotation, letteringTexture,
-                             buffIconsTexture, boundsTopLeft, boundsSize);
+    ui_draw_buff_statuses(p, rotation, letteringTexture,
+                          buffIconsTexture, boundsTopLeft, boundsSize);
 }
 
 void ui_draw_match_result(const Player *p, const char *text, float rotation,

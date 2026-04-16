@@ -290,6 +290,9 @@ struct Player {
     float energyRegenBoostMultiplier;
     float energyRegenBoostRemaining;
 
+    // HUD-only flash used by Rotten Roast; the base HP buff itself is permanent.
+    float rottenRoastIconRemaining;
+
     // Spendable sustenance resource used by sustenance-cost cards.
     int sustenanceBank;
 

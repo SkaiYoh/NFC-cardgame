@@ -81,6 +81,7 @@ void player_init(Player *p, int id, BattleSide side,
     p->baseEnergyRegenRate = PROGRESSION_REGEN_LEVEL1;
     p->energyRegenBoostMultiplier = 1.0f;
     p->energyRegenBoostRemaining = 0.0f;
+    p->rottenRoastIconRemaining = 0.0f;
     player_refresh_energy_regen_rate(p);
 
     printf("Player %d (side %s) initialized\n", id,
@@ -110,6 +111,13 @@ void player_update(Player *p, float deltaTime) {
 
     if (remainingDelta > 0.0f) {
         energy_update(p, remainingDelta);
+    }
+
+    if (p->rottenRoastIconRemaining > 0.0f) {
+        p->rottenRoastIconRemaining -= deltaTime;
+        if (p->rottenRoastIconRemaining < 0.0f) {
+            p->rottenRoastIconRemaining = 0.0f;
+        }
     }
 
     // Update card slot cooldowns

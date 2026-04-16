@@ -23,6 +23,7 @@
 
 static const float MEGA_BARF_REGEN_MULTIPLIER = 2.0f;
 static const float MEGA_BARF_DURATION_SECONDS = 15.0f;
+static const float ROTTEN_ROAST_ICON_FLASH_SECONDS = 1.5f;
 static const int ROTTEN_ROAST_BASE_HP_BONUS = 350;
 
 typedef struct {
@@ -291,6 +292,7 @@ static void play_rotten_roast(const Card *card, GameState *state, int playerInde
 
     base->maxHP += ROTTEN_ROAST_BASE_HP_BONUS;
     base->hp += ROTTEN_ROAST_BASE_HP_BONUS;
+    player->rottenRoastIconRemaining = ROTTEN_ROAST_ICON_FLASH_SECONDS;
 
     player_hand_restart_animation_for_card(player, card);
     printf("[PLAY] rotten_roast '%s' fortified player %d base to %d/%d (paid %d %s)\n",
