@@ -109,6 +109,7 @@ TroopData troop_create_data_from_card(const Card *card) {
     data.hp = 100;
     data.maxHP = 100;
     data.attack = 10;
+    data.bonusDamageVsFarmers = 0;
     data.attackSpeed = 1.0f;
     data.attackRange = 40.0f;
     data.moveSpeed = 60.0f;
@@ -147,6 +148,11 @@ TroopData troop_create_data_from_card(const Card *card) {
     cJSON *atk = cJSON_GetObjectItem(root, "attack");
     if (atk && cJSON_IsNumber(atk)) {
         data.attack = atk->valueint;
+    }
+
+    cJSON *farmerBonus = cJSON_GetObjectItem(root, "bonusDamageVsFarmers");
+    if (farmerBonus && cJSON_IsNumber(farmerBonus)) {
+        data.bonusDamageVsFarmers = farmerBonus->valueint;
     }
 
     cJSON *heal = cJSON_GetObjectItem(root, "healAmount");
@@ -205,6 +211,7 @@ Entity *troop_spawn(Player *owner, const TroopData *data, Vector2 position,
     e->hp = data->hp;
     e->maxHP = data->maxHP;
     e->attack = data->attack;
+    e->bonusDamageVsFarmers = data->bonusDamageVsFarmers;
     e->healAmount = data->healAmount;
     e->attackSpeed = data->attackSpeed;
     e->attackRange = data->attackRange;

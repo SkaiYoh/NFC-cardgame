@@ -326,6 +326,7 @@ Entity *entity_create(EntityType type, Faction faction, Vector2 pos) {
     e->combatProfileId = COMBAT_PROFILE_DEFAULT_MELEE;
     e->engagementMode = ATTACK_ENGAGEMENT_CONTACT;
     e->deliveryMode = ATTACK_DELIVERY_INSTANT;
+    e->bonusDamageVsFarmers = 0;
     e->projectileVisualType = PROJECTILE_VISUAL_NONE;
     e->projectileSpeed = 0.0f;
     e->projectileHitRadius = 0.0f;
@@ -579,9 +580,20 @@ void entity_update(Entity *e, GameState *gs, float deltaTime) {
                 break;
             }
 
-            if (e->healAmount > 0 &&
+            if (targetAvailable &&
+                e->healAmount > 0 &&
                 target->ownerID == e->ownerID &&
                 !combat_can_heal_target(e, target)) {
+                target = entity_retarget_or_walk(e, gs);
+                if (!target) break;
+            }
+
+            // Locked hostile targets can become invalid when healer-profile
+            // units are pointed at farmer-role enemies or when any other
+            // damage restriction no longer allows the hit.
+            if (targetAvailable &&
+                target->ownerID != e->ownerID &&
+                !combat_can_damage_target(e, target)) {
                 target = entity_retarget_or_walk(e, gs);
                 if (!target) break;
             }

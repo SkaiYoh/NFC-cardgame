@@ -12,6 +12,7 @@ typedef struct {
     const char *name;
     int hp, maxHP;
     int attack;
+    int bonusDamageVsFarmers;
     int healAmount;
     float attackSpeed;
     float attackRange;

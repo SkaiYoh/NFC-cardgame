@@ -28,6 +28,14 @@ typedef struct GameState GameState;
 // Entity enums
 typedef enum { ENTITY_TROOP, ENTITY_BUILDING, ENTITY_PROJECTILE } EntityType;
 
+typedef enum {
+    MUSIC_PHASE_1 = 0,
+    MUSIC_PHASE_2,
+    MUSIC_PHASE_3,
+    MUSIC_PHASE_4,
+    MUSIC_PHASE_COUNT
+} MusicPhase;
+
 typedef enum { FACTION_PLAYER1, FACTION_PLAYER2 } Faction;
 
 typedef enum { ESTATE_IDLE, ESTATE_WALKING, ESTATE_ATTACKING, ESTATE_DEAD } EntityState;
@@ -130,6 +138,7 @@ typedef struct {
     int amount;
     int sourceEntityId;
     int sourceOwnerId;
+    CombatProfileId sourceCombatProfileId;
     bool canHitAir;
 } CombatEffectPayload;
 
@@ -175,6 +184,7 @@ struct Entity {
     // Stats
     int hp, maxHP;
     int attack;
+    int bonusDamageVsFarmers;  // bonus hostile damage applied only when the target is a farmer-role unit
     float attackSpeed;
     float attackRange;
     float attackCooldown;       // time remaining before next attack
@@ -275,7 +285,13 @@ struct Player {
     // Energy system
     float energy;
     float maxEnergy;
-    float energyRegenRate;
+    float energyRegenRate;           // effective live regen after progression + temporary boosts
+    float baseEnergyRegenRate;       // progression-derived baseline before temporary boosts
+    float energyRegenBoostMultiplier;
+    float energyRegenBoostRemaining;
+
+    // HUD-only flash used by Rotten Roast; the base HP buff itself is permanent.
+    float rottenRoastIconRemaining;
 
     // Spendable sustenance resource used by sustenance-cost cards.
     int sustenanceBank;
@@ -295,6 +311,30 @@ struct Player {
     // and never decreases when sustenance is spent on cards.
     int sustenanceCollected;
 };
+
+typedef struct {
+    Music tracks[MUSIC_MAX_TRACKS_PER_PHASE];
+    char  trackPaths[MUSIC_MAX_TRACKS_PER_PHASE][MUSIC_MAX_PATH_LENGTH];
+    int   trackCount;
+    int   shuffleOrder[MUSIC_MAX_TRACKS_PER_PHASE];
+    int   nextShuffleIndex;
+    int   lastPlayedTrackIndex;
+} AudioPlaylist;
+
+typedef struct {
+    AudioPlaylist playlists[MUSIC_PHASE_COUNT];
+    MusicPhase currentPhase;
+    int currentTrackIndex;
+    MusicPhase incomingPhase;
+    int incomingTrackIndex;
+    float fadeDurationSeconds;
+    float fadeElapsedSeconds;
+    float baseVolume;
+    bool hasCurrentTrack;
+    bool fadeActive;
+    bool deviceReady;
+    bool enabled;
+} AudioSystem;
 
 // Game state
 struct GameState {
@@ -327,6 +367,7 @@ struct GameState {
     Texture2D sustenanceTexture;
     Texture2D statusBarsTexture;
     Texture2D troopHealthBarTexture;
+    Texture2D buffIconsTexture;
 
     // Shared hand UI textures (shared by hand_ui)
     Texture2D handBarBackgroundTexture;
@@ -345,6 +386,9 @@ struct GameState {
 
     // NFC hardware (two Arduinos, one per player)
     NFCReader nfc;
+
+    // Phase-based background music streaming
+    AudioSystem audio;
 
     // Match result (latched on first lethal base hit, or defensive draw fallback)
     bool gameOver;

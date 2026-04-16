@@ -3,7 +3,10 @@
 //
 
 #include "ui.h"
+#include "../core/config.h"
+#include "../systems/player.h"
 #include "uvulite_font.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +15,17 @@
 #define UI_SUSTENANCE_SCALE   2.0f
 #define UI_SUSTENANCE_SPACING 1.0f
 #define UI_SUSTENANCE_PADDING 40.0f
+#define UI_SUSTENANCE_STACK_GAP 12.0f
+#define UI_STATUS_STACK_INITIAL_OFFSET (UI_SUSTENANCE_STACK_GAP + 8.0f)
+#define UI_BUFF_ICON_SHEET_WIDTH 128
+#define UI_BUFF_ICON_SHEET_HEIGHT 32
+#define UI_BUFF_ICON_SIZE 32.0f
+#define UI_BUFF_ICON_GAP 10.0f
+#define UI_BUFF_ICON_ROW 0
+#define UI_MEGA_BARF_ICON_COL 1
+// Rotten Roast uses the fourth tile in the sheet (1-based column 4).
+#define UI_ROTTEN_ROAST_ICON_COL 3
+#define UI_BUFF_ICON_TILE_PIXELS 32.0f
 #define UI_MATCH_RESULT_SCALE   8.0f
 #define UI_MATCH_RESULT_SPACING 1.0f
 #define UI_MATCH_RESULT_BACKDROP_ALPHA 0.35f
@@ -79,8 +93,215 @@ static float ui_bitmap_spacing_screen(float scale, float sourceSpacing) {
     return scale * sourceSpacing;
 }
 
+static Vector2 ui_rotate_local_offset(Vector2 localOffset, float rotation) {
+    switch (ui_normalize_rotation(rotation)) {
+        case 90:  return (Vector2){ -localOffset.y,  localOffset.x };
+        case 180: return (Vector2){ -localOffset.x, -localOffset.y };
+        case 270: return (Vector2){  localOffset.y, -localOffset.x };
+        default:  return localOffset;
+    }
+}
+
+static Texture2D ui_load_texture_checked(const char *path, int expectedWidth,
+                                         int expectedHeight, const char *label) {
+    Texture2D t = LoadTexture(path);
+    if (t.id == 0) {
+        fprintf(stderr, "[UI] Failed to load %s: %s\n", label, path);
+        return t;
+    }
+
+    if (t.width != expectedWidth || t.height != expectedHeight) {
+        fprintf(stderr,
+                "[UI] Invalid %s texture: %s "
+                "(expected %dx%d, got %dx%d)\n",
+                label, path, expectedWidth, expectedHeight, t.width, t.height);
+        UnloadTexture(t);
+        return (Texture2D){0};
+    }
+
+    SetTextureFilter(t, TEXTURE_FILTER_POINT);
+    return t;
+}
+
+Texture2D ui_load_buff_icons(void) {
+    return ui_load_texture_checked(BUFF_ICONS_PATH,
+                                   UI_BUFF_ICON_SHEET_WIDTH,
+                                   UI_BUFF_ICON_SHEET_HEIGHT,
+                                   "buff icon sheet");
+}
+
+static Vector2 ui_measure_label(const char *label, Texture2D letteringTexture,
+                                float scale, float spacing) {
+    if (letteringTexture.id != 0) {
+        return uvulite_font_measure(label, scale, spacing);
+    }
+
+    float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * scale;
+    return MeasureTextEx(GetFontDefault(), label, fontSize,
+                         ui_bitmap_spacing_screen(scale, spacing));
+}
+
+static void ui_draw_label(const char *label, Vector2 pivot, float rotation,
+                          Texture2D letteringTexture, float scale,
+                          float spacing, UvuliteTextStyle textStyle,
+                          Color fallbackColor) {
+    if (letteringTexture.id != 0) {
+        uvulite_font_draw(letteringTexture, label, pivot, rotation,
+                          scale, spacing, textStyle);
+        return;
+    }
+
+    float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * scale;
+    DrawTextPro(GetFontDefault(), label, pivot, (Vector2){0.0f, 0.0f},
+                rotation, fontSize,
+                ui_bitmap_spacing_screen(scale, spacing),
+                fallbackColor);
+}
+
+static void ui_format_buff_timer(char *buf, size_t bufSize,
+                                 float remainingSeconds) {
+    int totalSeconds = 0;
+    if (remainingSeconds > 0.0f) {
+        totalSeconds = (int)ceilf(remainingSeconds);
+    }
+
+    int minutes = totalSeconds / 60;
+    int seconds = totalSeconds % 60;
+    snprintf(buf, bufSize, "%02d:%02d", minutes, seconds);
+}
+
+static Rectangle ui_buff_icon_src_rect(int iconCol) {
+    return (Rectangle){
+        iconCol * UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_ROW * UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_TILE_PIXELS,
+        UI_BUFF_ICON_TILE_PIXELS
+    };
+}
+
+static float ui_draw_buff_status_block(const Player *p, float rotation,
+                                       Texture2D letteringTexture,
+                                       Texture2D buffIconsTexture,
+                                       Vector2 counterBoundsTopLeft,
+                                       Vector2 counterBoundsSize,
+                                       float stackOffset, int iconCol,
+                                       const char *label,
+                                       UvuliteTextStyle textStyle) {
+    const bool hasLabel = (label && label[0] != '\0');
+    const bool hasIcon = (buffIconsTexture.id != 0 && iconCol >= 0);
+    if (!hasIcon && !hasLabel) return 0.0f;
+
+    Vector2 labelSize = { 0.0f, 0.0f };
+    if (hasLabel) {
+        labelSize = ui_measure_label(label, letteringTexture,
+                                     UI_SUSTENANCE_SCALE,
+                                     UI_SUSTENANCE_SPACING);
+    }
+
+    const float iconWidth = hasIcon ? UI_BUFF_ICON_SIZE : 0.0f;
+    const float iconGap = (hasIcon && hasLabel) ? UI_BUFF_ICON_GAP : 0.0f;
+    Vector2 blockSize = {
+        iconWidth + iconGap + labelSize.x,
+        fmaxf(iconWidth, labelSize.y)
+    };
+
+    Vector2 blockBoundsSize = ui_rotated_text_bounds(blockSize, rotation);
+    Vector2 blockBoundsTopLeft;
+    int rot = ui_normalize_rotation(rotation);
+    if (rot == 90) {
+        // Player-local "below" for a clockwise-rotated HUD block lands on the
+        // screen-left side of its rotated AABB.
+        blockBoundsTopLeft = (Vector2){
+            counterBoundsTopLeft.x - stackOffset - blockBoundsSize.x,
+            counterBoundsTopLeft.y + (counterBoundsSize.y - blockBoundsSize.y) * 0.5f
+        };
+    } else if (rot == 270) {
+        // Mirrored seat: player-local "below" lands on the screen-right side.
+        blockBoundsTopLeft = (Vector2){
+            counterBoundsTopLeft.x + counterBoundsSize.x + stackOffset,
+            counterBoundsTopLeft.y + (counterBoundsSize.y - blockBoundsSize.y) * 0.5f
+        };
+    } else {
+        blockBoundsTopLeft = (Vector2){
+            counterBoundsTopLeft.x + (counterBoundsSize.x - blockBoundsSize.x) * 0.5f,
+            counterBoundsTopLeft.y + counterBoundsSize.y + stackOffset
+        };
+    }
+
+    Vector2 blockOrigin = ui_text_position_from_bounds(blockBoundsTopLeft,
+                                                       blockSize, rotation);
+
+    if (hasIcon) {
+        Vector2 iconLocalOffset = {
+            0.0f,
+            (blockSize.y - UI_BUFF_ICON_SIZE) * 0.5f
+        };
+        Vector2 iconRotatedOffset = ui_rotate_local_offset(iconLocalOffset,
+                                                           rotation);
+        Rectangle dstRect = {
+            blockOrigin.x + iconRotatedOffset.x,
+            blockOrigin.y + iconRotatedOffset.y,
+            UI_BUFF_ICON_SIZE,
+            UI_BUFF_ICON_SIZE
+        };
+        DrawTexturePro(buffIconsTexture, ui_buff_icon_src_rect(iconCol),
+                       dstRect, (Vector2){0.0f, 0.0f}, rotation, WHITE);
+    }
+
+    if (hasLabel) {
+        Vector2 labelLocalOffset = {
+            iconWidth + iconGap,
+            (blockSize.y - labelSize.y) * 0.5f
+        };
+        Vector2 labelRotatedOffset = ui_rotate_local_offset(labelLocalOffset,
+                                                            rotation);
+        Vector2 labelTopLeft = {
+            blockOrigin.x + labelRotatedOffset.x,
+            blockOrigin.y + labelRotatedOffset.y
+        };
+        ui_draw_label(label, labelTopLeft, rotation, letteringTexture,
+                      UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
+                      textStyle, ui_sustenance_fallback_color(p));
+    }
+
+    return (rot == 90 || rot == 270) ? blockBoundsSize.x : blockBoundsSize.y;
+}
+
+static void ui_draw_buff_statuses(const Player *p, float rotation,
+                                  Texture2D letteringTexture,
+                                  Texture2D buffIconsTexture,
+                                  Vector2 counterBoundsTopLeft,
+                                  Vector2 counterBoundsSize) {
+    if (!p) return;
+
+    float stackOffset = UI_STATUS_STACK_INITIAL_OFFSET;
+    if (player_energy_regen_boost_is_active(p)) {
+        char timerLabel[16];
+        ui_format_buff_timer(timerLabel, sizeof(timerLabel),
+                             p->energyRegenBoostRemaining);
+
+        float consumedSpan = ui_draw_buff_status_block(
+            p, rotation, letteringTexture, buffIconsTexture,
+            counterBoundsTopLeft, counterBoundsSize, stackOffset,
+            UI_MEGA_BARF_ICON_COL, timerLabel,
+            UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON);
+        if (consumedSpan > 0.0f) {
+            stackOffset += consumedSpan + UI_SUSTENANCE_STACK_GAP;
+        }
+    }
+
+    if (p->rottenRoastIconRemaining > 0.0f && buffIconsTexture.id != 0) {
+        ui_draw_buff_status_block(
+            p, rotation, letteringTexture, buffIconsTexture,
+            counterBoundsTopLeft, counterBoundsSize, stackOffset,
+            UI_ROTTEN_ROAST_ICON_COL, NULL,
+            UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS_WHITE_COLON);
+    }
+}
+
 void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
-                                float rotation, Texture2D letteringTexture) {
+                                float rotation, Texture2D letteringTexture,
+                                Texture2D buffIconsTexture) {
     char bitmapLabel[32];
     char fallbackLabel[32];
     snprintf(bitmapLabel, sizeof(bitmapLabel), "SUSTENANCE:%d", p->sustenanceBank);
@@ -88,17 +309,9 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
 
     const char *label = (letteringTexture.id != 0) ? bitmapLabel : fallbackLabel;
 
-    Vector2 textSize;
-    if (letteringTexture.id != 0) {
-        textSize = uvulite_font_measure(label, UI_SUSTENANCE_SCALE,
+    Vector2 textSize = ui_measure_label(label, letteringTexture,
+                                        UI_SUSTENANCE_SCALE,
                                         UI_SUSTENANCE_SPACING);
-    } else {
-        // Match the bitmap glyph height so fallback layout stays close.
-        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_SUSTENANCE_SCALE;
-        textSize = MeasureTextEx(GetFontDefault(), label, fontSize,
-                                 ui_bitmap_spacing_screen(UI_SUSTENANCE_SCALE,
-                                                          UI_SUSTENANCE_SPACING));
-    }
     Vector2 boundsSize = ui_rotated_text_bounds(textSize, rotation);
 
     Vector2 boundsTopLeft;
@@ -119,20 +332,15 @@ void ui_draw_sustenance_counter(const Player *p, Rectangle viewport,
 
     Vector2 pivot = ui_text_position_from_bounds(boundsTopLeft, textSize, rotation);
 
-    if (letteringTexture.id != 0) {
-        // Use white digits for the count while keeping the label letters on
-        // the gold rows.
-        uvulite_font_draw(letteringTexture, label, pivot, rotation,
-                          UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
-                          UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS);
-    } else {
-        float fontSize = (float) UVULITE_FONT_GLYPH_PIXELS * UI_SUSTENANCE_SCALE;
-        DrawTextPro(GetFontDefault(), label, pivot, (Vector2){0.0f, 0.0f},
-                    rotation, fontSize,
-                    ui_bitmap_spacing_screen(UI_SUSTENANCE_SCALE,
-                                             UI_SUSTENANCE_SPACING),
-                    ui_sustenance_fallback_color(p));
-    }
+    // Use white digits for the count while keeping the label letters on
+    // the gold rows.
+    ui_draw_label(label, pivot, rotation, letteringTexture,
+                  UI_SUSTENANCE_SCALE, UI_SUSTENANCE_SPACING,
+                  UVULITE_TEXT_WHITE_DIGITS_GOLD_LETTERS,
+                  ui_sustenance_fallback_color(p));
+
+    ui_draw_buff_statuses(p, rotation, letteringTexture,
+                          buffIconsTexture, boundsTopLeft, boundsSize);
 }
 
 void ui_draw_match_result(const Player *p, const char *text, float rotation,

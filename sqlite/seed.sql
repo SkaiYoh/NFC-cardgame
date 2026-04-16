@@ -83,6 +83,7 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
     "hp":          140,
     "maxHP":       140,
     "attack":      16,
+    "bonusDamageVsFarmers": 8,
     "attackSpeed": 1.55,
     "attackRange": 38.0,
     "moveSpeed":   92.0,
@@ -206,8 +207,8 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          200,
-    "maxHP":       200,
+    "hp":          120,
+    "maxHP":       120,
     "attack":      8,
     "healAmount":  18,
     "attackSpeed": 0.7,
@@ -299,7 +300,7 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
     "maxHP":       110,
     "attack":      24,
     "attackSpeed": 0.9,
-    "attackRange": 170.0,
+    "attackRange": 220.0,
     "moveSpeed":   54.0,
     "targeting":   "anti_air_first"
   }'
@@ -308,10 +309,10 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
 (
   'KING_01',
   'King',
-  8,
-  'energy',
+  75,
+  'sustenance',
   'king',
-  'Spend a huge burst of energy to channel the crown''s wrath through your base.',
+  'Spend 75 sustenance from your current stores to channel the crown''s wrath through your base.',
   '{
     "visual": {
       "border_color":       "yellow",
@@ -336,6 +337,78 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_top_color":   "yellow",
       "show_energy_top":    false,
       "energy_bot_color":   "yellow",
+      "show_energy_bot":    false
+    }
+  }'
+),
+
+(
+  'MEGA_BARF_01',
+  'MEGA BARF',
+  100,
+  'sustenance',
+  'mega_barf',
+  'Spend 100 sustenance to double your energy regeneration for 15 seconds. Ignored while already active.',
+  '{
+    "visual": {
+      "border_color":       "magenta",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "green",
+      "show_banner":        true,
+      "corner_color":       "magenta",
+      "show_corner":        true,
+      "container_color":    "green",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "white",
+      "show_innercorner":   true,
+      "gem_color":          "green",
+      "show_gem":           true,
+      "socket_color":       "magenta",
+      "show_socket":        true,
+      "energy_top_color":   "green",
+      "show_energy_top":    false,
+      "energy_bot_color":   "green",
+      "show_energy_bot":    false
+    }
+  }'
+),
+
+(
+  'ROTTEN_ROAST_01',
+  'ROTTEN ROAST',
+  60,
+  'sustenance',
+  'rotten_roast',
+  'Spend 60 sustenance to fortify your base with +350 current HP and +350 max HP.',
+  '{
+    "visual": {
+      "border_color":       "brown",
+      "show_border":        true,
+      "bg_style":           "paper",
+      "show_bg":            true,
+      "banner_color":       "red",
+      "show_banner":        true,
+      "corner_color":       "brown",
+      "show_corner":        true,
+      "container_color":    "red",
+      "container_variant":  1,
+      "show_container":     false,
+      "description_style":  "paper",
+      "show_description":   true,
+      "innercorner_style":  "yellow",
+      "show_innercorner":   true,
+      "gem_color":          "red",
+      "show_gem":           true,
+      "socket_color":       "brown",
+      "show_socket":        true,
+      "energy_top_color":   "red",
+      "show_energy_top":    false,
+      "energy_bot_color":   "red",
       "show_energy_bot":    false
     }
   }'

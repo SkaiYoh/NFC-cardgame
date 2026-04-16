@@ -85,6 +85,7 @@ static int hand_ui_collect_visible_cards(const Player *p, HandVisibleCard *outCa
     for (int i = 0; i < HAND_MAX_CARDS; i++) {
         const Card *card = p->handCards[i];
         if (!card) continue;
+        if (hand_ui_sheet_row_for_card(card) < 0) continue;
 
         int sortKey = card_catalog_hand_presentation_rank_for_card(card);
         if (sortKey < 0) {
@@ -149,6 +150,11 @@ static int hand_ui_frame_for_elapsed(float elapsedSeconds) {
 }
 
 static Rectangle hand_ui_card_src_rect(int rowIndex, int frameIndex) {
+    if (rowIndex < 0 || rowIndex >= HAND_CARD_SHEET_ROWS
+        || frameIndex < 0 || frameIndex >= HAND_CARD_FRAME_COUNT) {
+        return (Rectangle){0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
     return (Rectangle){
         (float)(frameIndex * HAND_CARD_WIDTH),
         (float)(rowIndex * HAND_CARD_HEIGHT),
@@ -254,8 +260,15 @@ void hand_ui_draw(const Player *p, Texture2D handBarTexture, Texture2D cardSheet
         }
 
         const int rowIndex = hand_ui_sheet_row_for_card(card);
+        if (rowIndex < 0) {
+            continue;
+        }
+
         const int frameIndex = hand_ui_frame_for_elapsed(p->handCardAnimElapsed[handSlotIndex]);
         Rectangle srcRect = hand_ui_card_src_rect(rowIndex, frameIndex);
+        if (srcRect.width <= 0.0f || srcRect.height <= 0.0f) {
+            continue;
+        }
         Vector2 center = hand_ui_card_center_for_index(p->handArea, visibleCardCount, visibleIndex);
         const float liftScale = hand_ui_play_lift_scale(p->handCardAnimElapsed[handSlotIndex]);
         // The measured visual-center correction is frame-specific and scales
