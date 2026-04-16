@@ -299,7 +299,7 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
     "maxHP":       110,
     "attack":      24,
     "attackSpeed": 0.9,
-    "attackRange": 170.0,
+    "attackRange": 220.0,
     "moveSpeed":   54.0,
     "targeting":   "anti_air_first"
   }'
