@@ -5,6 +5,7 @@
 //
 
 #include "farmer.h"
+#include "base_geometry.h"
 #include "deposit_slots.h"
 #include "pathfinding.h"
 #include "../core/battlefield.h"
@@ -49,7 +50,7 @@ static void farmer_resolve_return_goal(const Entity *farmer, const Entity *base,
                                        Vector2 *outGoal, float *outRadius) {
     if (!farmer || !base || !outGoal || !outRadius) return;
 
-    *outGoal = base->position;
+    *outGoal = base_interaction_anchor(base);
     *outRadius = farmer_base_wait_radius(farmer, base);
 
     if (farmer->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
@@ -71,6 +72,7 @@ static void farmer_build_sustenance_goal_request(const Entity *farmer,
                                                  const SustenanceNode *node,
                                                  NavFreeGoalRequest *outRequest) {
     if (!farmer || !gs || !node || !outRequest) return;
+    (void)gs;
 
     *outRequest = (NavFreeGoalRequest){
         .goalX = node->worldPos.v.x,
@@ -82,22 +84,6 @@ static void farmer_build_sustenance_goal_request(const Entity *farmer,
         .carveCenterY = 0.0f,
         .carveInnerRadius = 0.0f,
     };
-
-    const Entity *base = gs->players[farmer->ownerID].base;
-    if (!base) return;
-
-    float baseNavRadius = (base->navRadius > 0.0f) ? base->navRadius : base->bodyRadius;
-    float shellRadius = baseNavRadius +
-                        (float)NAV_MAX_MOBILE_BODY_RADIUS +
-                        (float)PATHFIND_CONTACT_GAP;
-    float dx = farmer->position.x - base->position.x;
-    float dy = farmer->position.y - base->position.y;
-    if (dx * dx + dy * dy > shellRadius * shellRadius) return;
-
-    outRequest->carveTargetId = base->id;
-    outRequest->carveCenterX = base->position.x;
-    outRequest->carveCenterY = base->position.y;
-    outRequest->carveInnerRadius = baseNavRadius;
 }
 
 static bool farmer_try_score_sustenance_node(const Entity *farmer,
@@ -323,7 +309,7 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
         if (kind == DEPOSIT_SLOT_NONE) {
             // All deposit tickets are taken. Stage outside the queue ring and
             // retry next tick instead of walking aimlessly at the base pivot.
-            farmer_move_with_steering(e, gs, base->position,
+            farmer_move_with_steering(e, gs, base_interaction_anchor(base),
                                       farmer_base_wait_radius(e, base), deltaTime);
             return;
         }
@@ -331,7 +317,7 @@ static void farmer_return(Entity *e, GameState *gs, float deltaTime) {
         e->reservedDepositSlotKind = kind;
     }
 
-    Vector2 target = base->position;
+    Vector2 target = base_interaction_anchor(base);
     float arriveRadius = 0.0f;
     farmer_resolve_return_goal(e, base, &target, &arriveRadius);
 

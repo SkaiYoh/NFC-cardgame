@@ -1,5 +1,6 @@
 #include "pathfinding.h"
 #include "combat.h"
+#include "base_geometry.h"
 #include "farmer.h"
 #include "../core/config.h"
 #include "../core/battlefield.h"
@@ -323,6 +324,48 @@ static float pathfind_nav_radius(const Entity *e) {
     return (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
 }
 
+static float pathfind_static_traffic_radius(const Entity *target) {
+    return pathfind_nav_radius(target);
+}
+
+static float pathfind_static_hard_core_radius(const Entity *target) {
+    if (!target) return 0.0f;
+    if (target->type == ENTITY_BUILDING) {
+        return base_nav_hard_core_radius(target);
+    }
+    return pathfind_static_traffic_radius(target);
+}
+
+static Vector2 pathfind_static_blocker_center(const Entity *target) {
+    if (!target) return (Vector2){ 0.0f, 0.0f };
+    if (target->type == ENTITY_BUILDING) {
+        return base_nav_blocker_center(target);
+    }
+    return target->position;
+}
+
+static float pathfind_farmer_home_base_cloud_radius(const Entity *e, const Entity *base);
+
+typedef enum {
+    CONTACT_CLOUD_NONE = 0,
+    CONTACT_CLOUD_ASSAULT,
+    CONTACT_CLOUD_FARMER_PRIMARY,
+    CONTACT_CLOUD_FARMER_HOME_BASE,
+} PathfindContactCloudKind;
+
+// Mixed inbound/outbound farmer traffic near the owning base should stay
+// slightly permissive so queued, depositing, and departing farmers can clear
+// the home-base traffic cloud without deadlocking.
+#define PATHFIND_HOME_BASE_TRAFFIC_SOFT_OVERLAP_SCALE 0.5f
+
+static Vector2 pathfind_target_anchor(const Entity *target) {
+    if (!target) return (Vector2){ 0.0f, 0.0f };
+    if (target->type == ENTITY_BUILDING) {
+        return base_interaction_anchor(target);
+    }
+    return target->position;
+}
+
 static bool pathfind_is_current_static_target(const Entity *self, const Entity *other) {
     if (!self || !other) return false;
     if (self->movementTargetId != other->id) return false;
@@ -333,6 +376,9 @@ static float pathfind_blocker_radius_for_self(const Entity *self, const Entity *
     if (!other) return 0.0f;
     if (pathfind_is_current_static_target(self, other)) {
         return combat_target_contact_radius(other);
+    }
+    if (other->type == ENTITY_BUILDING || other->navProfile == NAV_PROFILE_STATIC) {
+        return pathfind_static_hard_core_radius(other);
     }
     return pathfind_nav_radius(other);
 }
@@ -348,44 +394,37 @@ static const Entity *pathfind_contact_cloud_target(const Entity *e, const Battle
     return target;
 }
 
-static float pathfind_contact_cloud_radius_for_entity(const Entity *e, const Entity *target) {
-    if (!e || !target) return 0.0f;
+static bool pathfind_is_farmer_home_base_mover(const Entity *e) {
+    if (!e) return false;
+    return e->unitRole == UNIT_ROLE_FARMER &&
+           e->navProfile == NAV_PROFILE_FREE_GOAL;
+}
 
-    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
-        return pathfind_nav_radius(target) + pathfind_nav_radius(e) + BASE_DEPOSIT_SLOT_GAP;
+static const Entity *pathfind_farmer_home_base_target(const Entity *e, const Battlefield *bf) {
+    if (!pathfind_is_farmer_home_base_mover(e) || !bf) return NULL;
+
+    const Entity *movementTarget = pathfind_contact_cloud_target(e, bf);
+    if (movementTarget &&
+        movementTarget->type == ENTITY_BUILDING &&
+        movementTarget->ownerID == e->ownerID) {
+        return movementTarget;
     }
-
-    return combat_static_target_occupancy_radius(e, target);
-}
-
-static float pathfind_static_shell_stamp_radius(const Entity *target) {
-    if (!target) return 0.0f;
-    return pathfind_nav_radius(target) +
-           (float)NAV_MAX_MOBILE_BODY_RADIUS +
-           (float)PATHFIND_CONTACT_GAP;
-}
-
-static const Entity *pathfind_find_enclosing_friendly_static_shell(const Entity *self,
-                                                                   const Battlefield *bf) {
-    if (!self || !bf) return NULL;
 
     const Entity *best = NULL;
     float bestDistSq = INFINITY;
     for (int i = 0; i < bf->entityCount; ++i) {
         const Entity *other = bf->entities[i];
-        if (!other || other == self) continue;
+        if (!other || other == e) continue;
         if (!other->alive || other->markedForRemoval) continue;
-        if (other->ownerID != self->ownerID) continue;
-        if (other->type != ENTITY_BUILDING &&
-            other->navProfile != NAV_PROFILE_STATIC) {
-            continue;
-        }
+        if (other->type != ENTITY_BUILDING) continue;
+        if (other->ownerID != e->ownerID) continue;
 
-        float dx = self->position.x - other->position.x;
-        float dy = self->position.y - other->position.y;
+        Vector2 anchor = pathfind_target_anchor(other);
+        float dx = e->position.x - anchor.x;
+        float dy = e->position.y - anchor.y;
         float distSq = dx * dx + dy * dy;
-        float shell = pathfind_static_shell_stamp_radius(other);
-        if (distSq > shell * shell) continue;
+        float cloud = pathfind_farmer_home_base_cloud_radius(e, other);
+        if (distSq > cloud * cloud) continue;
 
         if (!best || distSq < bestDistSq) {
             best = other;
@@ -396,10 +435,41 @@ static const Entity *pathfind_find_enclosing_friendly_static_shell(const Entity 
     return best;
 }
 
+static float pathfind_farmer_home_base_cloud_radius(const Entity *e, const Entity *base) {
+    if (!e || !base) return 0.0f;
+
+    float outerTrafficRadius = pathfind_static_traffic_radius(base) +
+                               pathfind_nav_radius(e) +
+                               BASE_DEPOSIT_SLOT_GAP;
+    float trafficRadius = combat_static_target_occupancy_radius(e, base);
+    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
+        trafficRadius = outerTrafficRadius;
+    }
+
+    return (trafficRadius > outerTrafficRadius) ? trafficRadius : outerTrafficRadius;
+}
+
+static float pathfind_contact_cloud_radius_for_entity(const Entity *e, const Entity *target,
+                                                      PathfindContactCloudKind kind) {
+    if (!e || !target) return 0.0f;
+
+    if (kind == CONTACT_CLOUD_FARMER_PRIMARY) {
+        return pathfind_static_traffic_radius(target) +
+               pathfind_nav_radius(e) +
+               BASE_DEPOSIT_SLOT_GAP;
+    }
+    if (kind == CONTACT_CLOUD_FARMER_HOME_BASE) {
+        return pathfind_farmer_home_base_cloud_radius(e, target);
+    }
+
+    return combat_static_target_occupancy_radius(e, target);
+}
+
 static void pathfind_build_free_goal_request(const Entity *e, const Battlefield *bf,
                                              Vector2 goal, float stopRadius,
                                              NavFreeGoalRequest *outRequest) {
     if (!e || !outRequest) return;
+    (void)bf;
 
     *outRequest = (NavFreeGoalRequest){
         .goalX = goal.x,
@@ -411,36 +481,42 @@ static void pathfind_build_free_goal_request(const Entity *e, const Battlefield 
         .carveCenterY = 0.0f,
         .carveInnerRadius = 0.0f,
     };
-
-    if (!bf) return;
-
-    const Entity *target = NULL;
-    if (e->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY) {
-        target = pathfind_contact_cloud_target(e, bf);
-    }
-    if (!target) {
-        target = pathfind_find_enclosing_friendly_static_shell(e, bf);
-    }
-    if (!target) return;
-
-    outRequest->carveTargetId = target->id;
-    outRequest->carveCenterX = target->position.x;
-    outRequest->carveCenterY = target->position.y;
-    outRequest->carveInnerRadius = pathfind_nav_radius(target);
 }
 
-static bool pathfind_same_contact_cloud_pair(const Entity *self, const Entity *other,
-                                             const Entity *target) {
-    if (!self || !other || !target) return false;
-    if (self->ownerID != other->ownerID) return false;
-    if (other->movementTargetId != target->id) return false;
+static PathfindContactCloudKind pathfind_contact_cloud_pair_kind(const Entity *self,
+                                                                 const Entity *other,
+                                                                 const Battlefield *bf,
+                                                                 const Entity **outTarget) {
+    if (outTarget) *outTarget = NULL;
+    if (!self || !other || !bf) return CONTACT_CLOUD_NONE;
+    if (self->ownerID != other->ownerID) return CONTACT_CLOUD_NONE;
 
-    bool sameAssaultCloud = (self->navProfile == NAV_PROFILE_ASSAULT &&
-                             other->navProfile == NAV_PROFILE_ASSAULT);
-    bool sameDepositCloud = (self->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
-                             other->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY);
+    const Entity *assaultTarget = pathfind_contact_cloud_target(self, bf);
+    if (assaultTarget &&
+        other->movementTargetId == assaultTarget->id &&
+        self->navProfile == NAV_PROFILE_ASSAULT &&
+        other->navProfile == NAV_PROFILE_ASSAULT) {
+        if (outTarget) *outTarget = assaultTarget;
+        return CONTACT_CLOUD_ASSAULT;
+    }
 
-    return sameAssaultCloud || sameDepositCloud;
+    const Entity *homeBase = pathfind_farmer_home_base_target(self, bf);
+    if (!homeBase) return CONTACT_CLOUD_NONE;
+
+    const Entity *otherHomeBase = pathfind_farmer_home_base_target(other, bf);
+    if (!otherHomeBase || otherHomeBase->id != homeBase->id) {
+        return CONTACT_CLOUD_NONE;
+    }
+
+    if (outTarget) *outTarget = homeBase;
+    if (self->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
+        other->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
+        self->movementTargetId == homeBase->id &&
+        other->movementTargetId == homeBase->id) {
+        return CONTACT_CLOUD_FARMER_PRIMARY;
+    }
+
+    return CONTACT_CLOUD_FARMER_HOME_BASE;
 }
 
 static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 candidate,
@@ -448,26 +524,27 @@ static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 ca
                                                   const Battlefield *bf,
                                                   float *outSoftPenaltyScale) {
     if (outSoftPenaltyScale) *outSoftPenaltyScale = 0.0f;
-    const Entity *target = pathfind_contact_cloud_target(self, bf);
-    if (!target) return false;
-    if (!pathfind_same_contact_cloud_pair(self, other, target)) return false;
+    const Entity *target = NULL;
+    PathfindContactCloudKind kind =
+        pathfind_contact_cloud_pair_kind(self, other, bf, &target);
+    if (kind == CONTACT_CLOUD_NONE || !target) return false;
 
-    float selfCloud = pathfind_contact_cloud_radius_for_entity(self, target);
-    float otherCloud = pathfind_contact_cloud_radius_for_entity(other, target);
+    float selfCloud = pathfind_contact_cloud_radius_for_entity(self, target, kind);
+    float otherCloud = pathfind_contact_cloud_radius_for_entity(other, target, kind);
     if (selfCloud <= 0.0f || otherCloud <= 0.0f) return false;
 
-    float selfDx = candidate.x - target->position.x;
-    float selfDy = candidate.y - target->position.y;
+    Vector2 targetAnchor = pathfind_target_anchor(target);
+    float selfDx = candidate.x - targetAnchor.x;
+    float selfDy = candidate.y - targetAnchor.y;
     float selfDist = sqrtf(selfDx * selfDx + selfDy * selfDy);
-    float otherDx = other->position.x - target->position.x;
-    float otherDy = other->position.y - target->position.y;
+    float otherDx = other->position.x - targetAnchor.x;
+    float otherDy = other->position.y - targetAnchor.y;
     float otherDist = sqrtf(otherDx * otherDx + otherDy * otherDy);
 
-    bool depositCloud = (self->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY &&
-                         other->reservedDepositSlotKind == DEPOSIT_SLOT_PRIMARY);
     float selfOverlapRadius = selfCloud;
     float otherOverlapRadius = otherCloud;
-    if (depositCloud) {
+    if (kind == CONTACT_CLOUD_FARMER_PRIMARY ||
+        kind == CONTACT_CLOUD_FARMER_HOME_BASE) {
         selfOverlapRadius += pathfind_nav_radius(self);
         otherOverlapRadius += pathfind_nav_radius(other);
     } else {
@@ -480,8 +557,12 @@ static bool pathfind_allows_contact_cloud_overlap(const Entity *self, Vector2 ca
     bool insideCloud = selfDist <= selfOverlapRadius && otherDist <= otherOverlapRadius;
     if (!insideCloud) return false;
 
-    if (!depositCloud && outSoftPenaltyScale) {
-        *outSoftPenaltyScale = PATHFIND_ASSAULT_CLOUD_SOFT_OVERLAP_SCALE;
+    if (outSoftPenaltyScale) {
+        if (kind == CONTACT_CLOUD_ASSAULT) {
+            *outSoftPenaltyScale = PATHFIND_ASSAULT_CLOUD_SOFT_OVERLAP_SCALE;
+        } else if (kind == CONTACT_CLOUD_FARMER_HOME_BASE) {
+            *outSoftPenaltyScale = PATHFIND_HOME_BASE_TRAFFIC_SOFT_OVERLAP_SCALE;
+        }
     }
     return true;
 }
@@ -555,8 +636,9 @@ static bool pathfind_build_target_nav_goal(const Entity *e, const Entity *target
     bool isRanged = e->engagementMode == ATTACK_ENGAGEMENT_DIRECT_RANGE;
 
     NavTargetGoal goal = { 0 };
-    goal.targetX = target->position.x;
-    goal.targetY = target->position.y;
+    Vector2 targetAnchor = pathfind_target_anchor(target);
+    goal.targetX = targetAnchor.x;
+    goal.targetY = targetAnchor.y;
     goal.outerRadius = stopRadius;
     goal.targetBodyRadius = target->bodyRadius;
     goal.innerRadiusMin = target->bodyRadius + e->bodyRadius +
@@ -688,8 +770,9 @@ static bool pathfind_static_target_flow_active(const Entity *e, const Battlefiel
     float flowOuterRadius = pathfind_static_target_flow_outer_radius(e, target);
     if (flowOuterRadius <= 0.0f) return false;
 
-    float dx = e->position.x - target->position.x;
-    float dy = e->position.y - target->position.y;
+    Vector2 targetAnchor = pathfind_target_anchor(target);
+    float dx = e->position.x - targetAnchor.x;
+    float dy = e->position.y - targetAnchor.y;
     float dist = sqrtf(dx * dx + dy * dy);
     return dist <= flowOuterRadius;
 }
@@ -731,8 +814,9 @@ static float pathfind_static_target_flow_preference(const Entity *e, Vector2 can
     float flowWidth = flowOuterRadius - attackRadius;
     if (flowWidth <= 0.001f) return 0.0f;
 
-    float dx = candidate.x - target->position.x;
-    float dy = candidate.y - target->position.y;
+    Vector2 targetAnchor = pathfind_target_anchor(target);
+    float dx = candidate.x - targetAnchor.x;
+    float dy = candidate.y - targetAnchor.y;
     float candidateDist = sqrtf(dx * dx + dy * dy);
     if (candidateDist > flowOuterRadius) return 0.0f;
 
@@ -789,8 +873,15 @@ static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
         const Entity *other = bf->entities[i];
         if (!pathfind_is_blocker(e, other)) continue;
 
-        float dx = other->position.x - candidate.x;
-        float dy = other->position.y - candidate.y;
+        Vector2 blockerCenter = other->position;
+        if (pathfind_is_current_static_target(e, other)) {
+            blockerCenter = pathfind_target_anchor(other);
+        } else if (other->type == ENTITY_BUILDING ||
+                   other->navProfile == NAV_PROFILE_STATIC) {
+            blockerCenter = pathfind_static_blocker_center(other);
+        }
+        float dx = blockerCenter.x - candidate.x;
+        float dy = blockerCenter.y - candidate.y;
         float centerDist = sqrtf(dx * dx + dy * dy);
         float hardShell = selfRadius + pathfind_blocker_radius_for_self(e, other) +
                           PATHFIND_CONTACT_GAP;
@@ -811,8 +902,8 @@ static bool pathfind_evaluate_candidate(const Entity *e, Vector2 goal,
         }
 
         if (centerDist < legalShell) {
-            float curDx = other->position.x - e->position.x;
-            float curDy = other->position.y - e->position.y;
+            float curDx = blockerCenter.x - e->position.x;
+            float curDy = blockerCenter.y - e->position.y;
             float currentDist = sqrtf(curDx * curDx + curDy * curDy);
             if (currentDist >= legalShell - 0.001f) return false;
             if (centerDist < currentDist - 0.001f) return false;
@@ -1298,8 +1389,9 @@ static bool pathfind_debug_preview_step_for_field(const Entity *e,
         int32_t tryCell = nav_cell_index_for_world(tryX, tryY);
         if (field->hardBlocked[tryCell]) break;
         if (target) {
-            float dxTarget = tryX - target->position.x;
-            float dyTarget = tryY - target->position.y;
+            Vector2 targetAnchor = pathfind_target_anchor(target);
+            float dxTarget = tryX - targetAnchor.x;
+            float dyTarget = tryY - targetAnchor.y;
             if (dxTarget * dxTarget + dyTarget * dyTarget < minSepTargetSq) {
                 break;
             }
@@ -1593,8 +1685,8 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
     // plus the target's body plus the contact gap. DIRECT_RANGE and
     // MELEE_RING fields seed cells all the way to the target center
     // (for mobile targets the target has no static footprint), so the
-    // stepper must enforce this here. STATIC targets already get the
-    // nav_stamp_static_entity mover-clearance shell, so this is a
+    // stepper must enforce this here. STATIC targets also carry a
+    // hard blocker core in field->hardBlocked, so this is usually a
     // no-op for them -- but the check is cheap and catches all kinds.
     float minSepTargetSq = target->bodyRadius + e->bodyRadius +
                             (float)PATHFIND_CONTACT_GAP;
@@ -1614,11 +1706,12 @@ static bool pathfind_step_target_flow(Entity *e, NavFrame *nav,
         // Target-body contact shell. Refuse sub-steps that would pull
         // the attacker center inside (attacker.body + target.body +
         // gap). For STATIC targets this is already enforced by the
-        // static-entity stamp shell; for mobile targets it is the
+        // static-entity hard core; for mobile targets it is the
         // only thing keeping the attacker from walking into the
         // target sprite.
-        float dxT = tryX - target->position.x;
-        float dyT = tryY - target->position.y;
+        Vector2 targetAnchor = pathfind_target_anchor(target);
+        float dxT = tryX - targetAnchor.x;
+        float dyT = tryY - targetAnchor.y;
         if (dxT * dxT + dyT * dyT < minSepTargetSq) break;
         posX = tryX;
         posY = tryY;

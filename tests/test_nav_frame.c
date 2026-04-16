@@ -689,7 +689,7 @@ static void test_free_goal_field_and_caching(void) {
     printf("  [ok] free-goal field cache by (goalCell, radius, side)\n");
 }
 
-static void test_free_goal_carve_opens_target_owned_shell_only(void) {
+static void test_free_goal_carve_opens_target_owned_outer_band_only(void) {
     static NavFrame nav;
     nav_frame_init(&nav);
     Battlefield bf;
@@ -698,7 +698,7 @@ static void test_free_goal_carve_opens_target_owned_shell_only(void) {
 
     const int targetId = 77;
     nav_snapshot_entity_position(&nav, targetId, 540.0f, 540.0f);
-    nav_stamp_static_entity(&nav, targetId, 540.0f, 540.0f, BASE_NAV_RADIUS);
+    nav_stamp_static_entity(&nav, targetId, 540.0f, 540.0f, 80.0f);
 
     NavFreeGoalRequest blockedReq = make_free_goal_request(592.0f, 592.0f, 10.0f, 0);
     const NavField *blockedField = nav_get_or_build_free_goal_field(&nav, &bf, &blockedReq);
@@ -720,10 +720,30 @@ static void test_free_goal_carve_opens_target_owned_shell_only(void) {
     assert(!carvedField->hardBlocked[goalCell]);
     assert(carvedField->distance[goalCell] == 0);
 
-    int32_t innerCell = nav_cell_index_for_world(592.0f, 560.0f);
+    int32_t innerCell = nav_cell_index_for_world(560.0f, 560.0f);
     assert(carvedField->hardBlocked[innerCell]);
     assert(carvedField->distance[innerCell] == NAV_DIST_UNREACHABLE);
-    printf("  [ok] free-goal carve opens target shell without clearing core\n");
+    printf("  [ok] free-goal carve opens owned outer band without clearing core\n");
+}
+
+static void test_stamp_static_entity_cell_marks_owned_target(void) {
+    static NavFrame nav;
+    nav_frame_init(&nav);
+    Battlefield bf;
+    make_default_battlefield(&bf);
+    nav_begin_frame(&nav, &bf);
+
+    const int ownerId = 91;
+    nav_stamp_static_entity_cell(&nav, ownerId, 604.0f, 540.0f);
+
+    int32_t rightCell = nav_cell_index_for_world(604.0f, 540.0f);
+    assert(nav.staticBlockers.blocked[rightCell]);
+    assert(nav.staticBlockers.blockerSrc[rightCell] == ownerId);
+
+    int32_t centerCell = nav_cell_index_for_world(540.0f, 540.0f);
+    assert(!nav.staticBlockers.blocked[centerCell]);
+    assert(nav.staticBlockers.blockerSrc[centerCell] == NAV_BLOCKER_SRC_NONE);
+    printf("  [ok] stamp_static_entity_cell marks one owned blocker cell\n");
 }
 
 static void test_density_cost_shapes_integration(void) {
@@ -1224,7 +1244,8 @@ int main(void) {
     test_target_field_melee_ring();
     test_target_field_direct_range();
     test_free_goal_field_and_caching();
-    test_free_goal_carve_opens_target_owned_shell_only();
+    test_free_goal_carve_opens_target_owned_outer_band_only();
+    test_stamp_static_entity_cell_marks_owned_target();
     test_density_cost_shapes_integration();
     test_target_field_blocked_arc_falls_back();
     test_target_field_blocked_ring_falls_back();

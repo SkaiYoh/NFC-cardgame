@@ -410,12 +410,10 @@ typedef struct {
     float  outerRadius;    // exact authored outer radius (cache key is quantized)
     float  arcCenterDeg;   // only read for STATIC_ATTACK
     float  arcHalfDeg;     // only read for STATIC_ATTACK
-    // Authored body radius of the target itself (not the inflated
-    // static-blocker shell). For STATIC_ATTACK fields, the builder uses
-    // this to carve a combat corridor through the global staticBlockers
-    // mask in the band [innerRadiusMin, outerRadius] so the ribbon
-    // can seed cells that sit inside the mover-clearance shell but
-    // outside the target's own body. Leave 0 for non-static fields.
+    // Authored body radius of the target itself. For STATIC_ATTACK fields,
+    // the builder uses this to preserve the target's inner no-entry core
+    // while carving any owned outer blocker cells that would otherwise
+    // prevent the combat ribbon from seeding approach cells.
     float  targetBodyRadius;
     // Minimum distance from the target center at which the stepper will
     // accept the attacker's position. For STATIC_ATTACK and MELEE_RING
@@ -435,10 +433,8 @@ typedef struct {
 // stop radius stopRadius. The builder may widen the seeded disk just enough to
 // guarantee at least one nearby cell center on the 32 px nav grid, while the
 // actual arrival test still uses stopRadius. Optionally, callers can carve the
-// blocker shell owned by one static target entity (identified by carveTargetId)
-// while preserving an inner no-entry radius. This lets a reserved deposit-slot
-// goal remain reachable even when it sits inside the target's inflated
-// mover-clearance shell.
+// owned outer blocker cells of one static target entity (identified by
+// carveTargetId) while preserving an inner no-entry radius.
 typedef struct {
     float   goalX;
     float   goalY;
@@ -516,25 +512,22 @@ float nav_goal_region_target_body_radius(const NavField *field);
 
 // Stamp a hard-blocked disk of the given radius into staticBlockers. Every
 // cell whose center lies within `radius` world units of (centerX, centerY)
-// is marked blocked. Production callers should use
-// nav_stamp_static_entity() instead -- this raw stamp does not apply the
-// mover-clearance shell, so the stepper's cell-center-only check cannot
-// preserve the old radius-aware candidate-fan rule on its own.
+// is marked blocked. This raw stamp carries no blocker ownership metadata.
 void nav_stamp_static_blocker_disk(NavFrame *nav, float centerX, float centerY,
                                     float radius);
 
-// Stamp a NAV_PROFILE_STATIC entity footprint with the mover-clearance
-// shell added: the stamped radius is
-//   entityRadius + NAV_MAX_MOBILE_BODY_RADIUS + PATHFIND_CONTACT_GAP
-// which preserves the pre-Phase-3b radius-aware separation rule
-// `selfRadius + blockerRadius + gap` under the center-based flow stepper.
-// game.c calls this for every live NAV_PROFILE_STATIC entity during the
-// per-frame rasterization pass; tests mirror the same call sequence.
-// `entityId` is recorded in staticBlockers.blockerSrc so target-field
-// carves can distinguish this entity's cells from overlapping blockers.
+// Stamp an owned hard-blocked disk for a NAV_PROFILE_STATIC entity. Unlike
+// nav_stamp_static_blocker_disk(), this records `entityId` in blockerSrc so
+// target-field carves can distinguish this entity's cells from overlapping
+// blockers.
 void nav_stamp_static_entity(NavFrame *nav, int32_t entityId,
                               float centerX, float centerY,
                               float entityRadius);
+
+// Stamp the single blocker cell containing (worldX, worldY) and attribute it
+// to `entityId`. Used for authored static-entity cell masks.
+void nav_stamp_static_entity_cell(NavFrame *nav, int32_t entityId,
+                                  float worldX, float worldY);
 
 // Add one unit of density for `side` at the cell containing (x, y). Called
 // once per live mobile troop during the per-frame density pass.

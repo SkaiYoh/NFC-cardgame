@@ -771,11 +771,9 @@ static void nav_build_target_field(NavFrame *nav, NavField *field,
     nav_target_field_stamp_key(field, &goal, rangeQ);
 
     // Combat-corridor carve for STATIC_ATTACK. The global staticBlockers
-    // mask uses nav_stamp_static_entity's mover-clearance shell, which
-    // is intentionally wider than any single attacker's combat range.
-    // Attackers approaching from outside the shell need to cross through
-    // it to reach the combat ring, so we clear every cell this target
-    // owns (as attributed by staticBlockers.blockerSrc) EXCEPT the
+    // mask contains the target's owned hard core. Attackers approaching
+    // from outside that core still need approach cells near the combat
+    // ring, so we clear every blocker cell this target owns EXCEPT the
     // innermost cells inside the stepper's target-body contact shell.
     // Cells attributed to other static entities are preserved.
     //
@@ -1047,12 +1045,19 @@ static void nav_stamp_blocker_disk_internal(NavFrame *nav,
 void nav_stamp_static_entity(NavFrame *nav, int32_t entityId,
                               float centerX, float centerY,
                               float entityRadius) {
-    // Add the mover-clearance shell once, at stamp time, so the
-    // center-based flow stepper's cell-center check is geometrically
-    // equivalent to the old candidate-fan's radius-aware rejection.
-    float shell = (float)NAV_MAX_MOBILE_BODY_RADIUS + (float)PATHFIND_CONTACT_GAP;
     nav_stamp_blocker_disk_internal(nav, entityId, centerX, centerY,
-                                     entityRadius + shell);
+                                     entityRadius);
+}
+
+void nav_stamp_static_entity_cell(NavFrame *nav, int32_t entityId,
+                                  float worldX, float worldY) {
+    if (!nav || entityId < 0) return;
+
+    int32_t idx = nav_cell_index_for_world(worldX, worldY);
+    if (idx < 0 || idx >= NAV_CELLS) return;
+
+    nav->staticBlockers.blocked[idx] = 1;
+    nav->staticBlockers.blockerSrc[idx] = entityId;
 }
 
 void nav_stamp_static_blocker_disk(NavFrame *nav, float centerX, float centerY,

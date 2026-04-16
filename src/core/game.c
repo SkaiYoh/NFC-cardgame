@@ -9,6 +9,7 @@
 #include "debug_events.h"
 #include "../data/card_catalog.h"
 #include "../logic/card_effects.h"
+#include "../logic/base_geometry.h"
 #include "../logic/farmer.h"
 #include "../logic/nav_frame.h"
 #include "../logic/win_condition.h"
@@ -258,18 +259,31 @@ void game_update(GameState *g) {
         Entity *e = bf->entities[i];
         if (!e || !e->alive) continue;
         int side = (e->ownerID == 0) ? 0 : 1;
+        Vector2 navAnchor = e->position;
+        Vector2 navBlockerCenter = e->position;
+        if (e->navProfile == NAV_PROFILE_STATIC &&
+            e->type == ENTITY_BUILDING) {
+            navAnchor = base_interaction_anchor(e);
+            navBlockerCenter = base_nav_blocker_center(e);
+        }
         // Freeze every live entity's position in the nav snapshot before
         // any movement runs, so target fields built mid-tick always see
         // the same pivot regardless of update order.
-        nav_snapshot_entity_position(&g->nav, e->id, e->position.x, e->position.y);
+        nav_snapshot_entity_position(&g->nav, e->id, navAnchor.x, navAnchor.y);
         if (e->navProfile == NAV_PROFILE_STATIC) {
-            float radius = (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
-            if (radius <= 0.0f) radius = BASE_NAV_RADIUS;
-            // Inflates internally by NAV_MAX_MOBILE_BODY_RADIUS + gap so
-            // the cell-center-only flow stepper still keeps movers a
-            // full shell away from the authored footprint.
-            nav_stamp_static_entity(&g->nav, e->id,
-                                    e->position.x, e->position.y, radius);
+            if (e->type == ENTITY_BUILDING) {
+                for (int cellIdx = 0; cellIdx < BASE_NAV_HARD_CORE_CELL_COUNT; ++cellIdx) {
+                    Vector2 cellPoint = { 0 };
+                    if (!base_nav_hard_core_cell_point(e, cellIdx, &cellPoint)) continue;
+                    nav_stamp_static_entity_cell(&g->nav, e->id,
+                                                cellPoint.x, cellPoint.y);
+                }
+            } else {
+                float radius = (e->navRadius > 0.0f) ? e->navRadius : e->bodyRadius;
+                if (radius <= 0.0f) radius = BASE_NAV_RADIUS;
+                nav_stamp_static_entity(&g->nav, e->id,
+                                        navBlockerCenter.x, navBlockerCenter.y, radius);
+            }
         } else {
             nav_stamp_density(&g->nav, side, e->position.x, e->position.y);
         }
