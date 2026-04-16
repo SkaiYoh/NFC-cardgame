@@ -207,8 +207,8 @@ INSERT INTO cards (card_id, name, cost, cost_resource, type, rules_text, data) V
       "energy_bot_color":   "green",
       "show_energy_bot":    false
     },
-    "hp":          200,
-    "maxHP":       200,
+    "hp":          120,
+    "maxHP":       120,
     "attack":      8,
     "healAmount":  18,
     "attackSpeed": 0.7,
